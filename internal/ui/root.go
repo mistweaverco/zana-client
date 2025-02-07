@@ -68,6 +68,9 @@ var (
 	// Page.
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
+
+	updateAvailableStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
+	missingInRegistryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000"))
 )
 
 type item struct {
@@ -112,7 +115,7 @@ func (m model) View() string {
 	row := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		activeTab.Render("Installed"),
-		tab.Render("Available"),
+		tab.Render("Search Registry"),
 		tab.Render("About"),
 	)
 	gap := tabGap.Render(strings.Repeat(" ", max(0, m.width-lipgloss.Width(row)-2)))
@@ -125,7 +128,9 @@ func (m model) View() string {
 func Show() {
 	items := []list.Item{
 		item{title: "kulala-ls", desc: "A language server for .http files."},
-		item{title: "kulala-fmt", desc: "A formatter and linter for .http files."},
+		item{title: "kulala-fmt " + updateAvailableStyle.Render("update available"), desc: "A formatter and linter for .http files."},
+		item{title: "eslint", desc: "A formatter and linter for JavaScript."},
+		item{title: "kulala-cmp-graphql " + missingInRegistryStyle.Render("missing in registry"), desc: "A completion provider for GraphQL."},
 	}
 
 	m := model{
