@@ -35,12 +35,11 @@ func initialModel() model {
 
 func (m *model) Unzip() tea.Cmd {
 	return func() tea.Msg {
-		done := make(chan struct{})
 		go func() {
 			files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
-			done <- struct{}{}
+			// Send the message to notify that unzipping is finished
+			tea.Println("") // Triggers UI update to process the message
 		}()
-		<-done // Wait for unzip to finish in the background goroutine
 		return unzipFinishedMsg{}
 	}
 }
