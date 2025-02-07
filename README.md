@@ -13,6 +13,10 @@
 
 <p></p>
 
+![Zana Demo Gif](assets/demo.gif)
+
+<p></p>
+
 Zana 📦 is Mason.nvim 🧱, but maintained by the community 🌈.
 
 Zana is swahili for "tools" or "tooling".
