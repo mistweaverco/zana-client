@@ -3,44 +3,79 @@ package registry
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
+
+var REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/registry.json.zip"
 
 type errMsg error
 
-type model struct {
-	spinner  spinner.Model
-	quitting bool
-	err      error
-}
+type downloadFinishedMsg struct{}
 
-var timeToQuitInSeconds = 5
-var timeEnd int64 = 0
-var timeStart int64 = 0
+type unzipFinishedMsg struct{}
+
+type model struct {
+	spinner     spinner.Model
+	quitting    bool
+	err         error
+	message     string
+	downloading bool
+}
 
 func initialModel() model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	return model{spinner: s}
+	return model{spinner: s, message: "Getting latest info from the registry"}
+}
+
+func (m *model) Unzip() tea.Cmd {
+	return func() tea.Msg {
+		done := make(chan struct{})
+		go func() {
+			files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
+			done <- struct{}{}
+		}()
+		<-done // Wait for unzip to finish in the background goroutine
+		return unzipFinishedMsg{}
+	}
+}
+
+func (m *model) downloadRegistry() (model, tea.Cmd) {
+	m.message = "Downloading registry"
+	m.downloading = true
+
+	return *m, func() tea.Msg {
+		done := make(chan struct{})
+		go func() {
+			files.Download(REGISTRY_URL, files.GetTempPath()+files.PS+"zana-registry.json.zip")
+			done <- struct{}{}
+		}()
+		<-done // Wait for download to finish in the background goroutine
+		return downloadFinishedMsg{}
+	}
 }
 
 func (m model) Init() tea.Cmd {
-	timeStart = time.Now().Unix()
-	timeEnd = timeStart + int64(timeToQuitInSeconds)
 	return m.spinner.Tick
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if timePassed := time.Now().Unix(); timePassed >= timeEnd {
-		m.quitting = true
-		return m, tea.Quit
+	if !m.downloading {
+		return m.downloadRegistry()
 	}
 	switch msg := msg.(type) {
+	case downloadFinishedMsg:
+		m.message = "Registry downloaded successfully!"
+		return m, m.Unzip()
+	case unzipFinishedMsg:
+		m.message = "Registry unzipped successfully!"
+		m.quitting = true
+		return m, tea.Quit
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
@@ -65,7 +100,7 @@ func (m model) View() string {
 	if m.err != nil {
 		return m.err.Error()
 	}
-	str := fmt.Sprintf("\n\n   %s Getting latest info from the registry\n\n", m.spinner.View())
+	str := fmt.Sprintf("\n\n   %s "+m.message+"\n\n", m.spinner.View())
 	if m.quitting {
 		return str + "\n"
 	}
