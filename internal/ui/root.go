@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 )
 
 var (
@@ -69,8 +70,9 @@ var (
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
 
-	updateAvailableStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
-	missingInRegistryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000"))
+	updateAvailableStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
+	missingInRegistryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000"))
+	checkingForUpdatesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#73F59F"))
 )
 
 type item struct {
@@ -126,11 +128,13 @@ func (m model) View() string {
 }
 
 func Show() {
-	items := []list.Item{
-		item{title: "kulala-ls", desc: "A language server for .http files."},
-		item{title: "kulala-fmt " + updateAvailableStyle.Render("update available"), desc: "A formatter and linter for .http files."},
-		item{title: "eslint", desc: "A formatter and linter for JavaScript."},
-		item{title: "kulala-cmp-graphql " + missingInRegistryStyle.Render("missing in registry"), desc: "A completion provider for GraphQL."},
+
+	registryItems := registry_parser.GetData()
+
+	items := []list.Item{}
+
+	for _, regItem := range registryItems {
+		items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + checkingForUpdatesStyle.Render("Checking for updates...")})
 	}
 
 	m := model{
