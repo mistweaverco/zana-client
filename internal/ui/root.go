@@ -148,17 +148,17 @@ func Show() {
 		// So we could check for updates, but can't install it,
 		// because we have no information on how to install it.
 		if regItem.Source.ID == "" {
-			localItem.title = localPackage.SourceID
-			localItem.desc = installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("Not found in registry")
+			localItem.title = localPackage.SourceID + " " + installedVersionStyle.Render(localPackage.Version)
+			localItem.desc = missingInRegistryStyle.Render("Not found in registry")
 		} else if updateAvailable {
-			localItem.title = regItem.Name
-			localItem.desc = regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)
+			localItem.title = regItem.Name + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)
+			localItem.desc = regItem.Description
 		} else if remoteVersion == "" {
-			localItem.title = regItem.Name
-			localItem.desc = regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("No remote version found")
+			localItem.title = regItem.Name + " " + installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("No remote version found")
+			localItem.desc = regItem.Description
 		} else {
-			localItem.title = regItem.Name
-			localItem.desc = regItem.Description + " " + installedVersionStyle.Render(localPackage.Version)
+			localItem.title = regItem.Name + " " + installedVersionStyle.Render(localPackage.Version)
+			localItem.desc = regItem.Description
 		}
 		items = append(items, localItem)
 	}
