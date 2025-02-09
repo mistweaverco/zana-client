@@ -43,6 +43,8 @@ func GetLatestReleaseVersionNumber(sourceId string) string {
 	switch provider {
 	case ProviderGitHub:
 		return gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
+	case ProviderNPM:
+		return npmProvider.GetLatestReleaseVersionNumber(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 		return ""
@@ -58,6 +60,12 @@ func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
 	switch provider {
 	case ProviderGitHub:
 		latestVersion := gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
+		if semver.IsGreater(version, latestVersion) {
+			return true, latestVersion
+		}
+		return false, latestVersion
+	case ProviderNPM:
+		latestVersion := npmProvider.GetLatestReleaseVersionNumber(sourceId)
 		if semver.IsGreater(version, latestVersion) {
 			return true, latestVersion
 		}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
@@ -88,13 +89,16 @@ func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
 type model struct {
-	installedList list.Model
-	tabs          list.Model
-	width, height int
+	installedList  list.Model
+	tabs           list.Model
+	width, height  int
+	spinner        spinner.Model
+	spinnerVisible bool
+	spinnerMessage string
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return m.spinner.Tick
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -108,11 +112,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		tabHeight, _ := activeTab.GetFrameSize()
-		m.installedList.SetSize(msg.Width-h, msg.Height-v-tabHeight)
+		if !m.spinnerVisible {
+			m.installedList.SetSize(msg.Width-h, msg.Height-v-tabHeight)
+		}
 	}
 
 	var cmd tea.Cmd
-	m.installedList, cmd = m.installedList.Update(msg)
+	if !m.spinnerVisible {
+		m.installedList, cmd = m.installedList.Update(msg)
+	} else {
+		m.spinner, cmd = m.spinner.Update(msg)
+	}
 	return m, cmd
 }
 
@@ -127,12 +137,15 @@ func (m model) View() string {
 	gap := tabGap.Render(strings.Repeat(" ", max(0, m.width-lipgloss.Width(row)-2)))
 	row = lipgloss.JoinHorizontal(lipgloss.Bottom, row, gap)
 	doc.WriteString(row)
-	doc.WriteString(docStyle.Render(m.installedList.View()))
+	if !m.spinnerVisible {
+		doc.WriteString(docStyle.Render(m.installedList.View()))
+	} else {
+		doc.WriteString(docStyle.Render(fmt.Sprintf("\n\n   %s "+m.spinnerMessage+"\n\n", m.spinner.View())))
+	}
 	return doc.String()
 }
 
-func Show() {
-
+func (m model) fetchUpdates() (tea.Model, tea.Cmd) {
 	localPackages := local_packages_parser.GetData(false)
 
 	items := []list.Item{}
@@ -162,12 +175,17 @@ func Show() {
 		}
 		items = append(items, localItem)
 	}
+	return m, nil
+}
 
+func Show() {
 	m := model{
-		installedList: list.New(items, list.NewDefaultDelegate(), 0, 0),
+		spinner:        spinner.New(),
+		spinnerVisible: true,
+		spinnerMessage: "Checking for updates",
 	}
-
-	m.installedList.SetShowTitle(false)
+	m.spinner.Spinner = spinner.Dot
+	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
