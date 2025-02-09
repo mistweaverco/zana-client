@@ -1,6 +1,10 @@
 package updater
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/mistweaverco/zana-client/internal/lib/semver"
+)
 
 type Provider int
 
@@ -47,14 +51,6 @@ func GetLatestReleaseVersionNumber(sourceId string) string {
 	}
 }
 
-// versionIsUpdate checks if the remote version is greater than the installed version
-func versionIsUpdate(installedVersion string, remoteVersion string) bool {
-	if remoteVersion > installedVersion {
-		return true
-	}
-	return false
-}
-
 // CheckIfUpdateIsAvailable checks if an update is available for a given package
 // and returns a boolean indicating if an update is available and the latest version number
 func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
@@ -62,7 +58,7 @@ func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
 	switch provider {
 	case ProviderGitHub:
 		latestVersion := gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
-		if versionIsUpdate(version, latestVersion) {
+		if semver.IsGreater(version, latestVersion) {
 			return true, latestVersion
 		}
 		return false, latestVersion

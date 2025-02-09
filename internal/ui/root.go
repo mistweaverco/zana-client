@@ -138,7 +138,7 @@ func Show() {
 
 	for _, regItem := range registryItems {
 		localPackage := local_packages_parser.GetBySourceId(regItem.Source.ID)
-		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.SourceID, regItem.Source.ID)
+		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.Version, regItem.Source.ID)
 		if updateAvailable {
 			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)})
 		} else if remoteVersion == "" {
