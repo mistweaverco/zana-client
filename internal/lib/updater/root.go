@@ -39,7 +39,6 @@ func Update(source string) {
 	switch provider {
 	case ProviderGitHub:
 		gitHubProvider.Update(source)
-		// Update GitHub
 	case ProviderGitLab:
 		gitLabProvider.Update(source)
 	case ProviderBitbucket:
