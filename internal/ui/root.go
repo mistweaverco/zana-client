@@ -140,13 +140,13 @@ func Show() {
 	for _, localPackage := range localPackages.Packages {
 		regItem := registry_parser.GetBySourceId(localPackage.SourceID)
 		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.Version, regItem.Source.ID)
-		// Not found in registry,
-		// So we could check for updates, but can't install it,
-		// because we have no information on how to install it.
 		localItem := item{
 			sourceId:        localPackage.SourceID,
 			updateAvailable: updateAvailable,
 		}
+		// Not found in registry,
+		// So we could check for updates, but can't install it,
+		// because we have no information on how to install it.
 		if regItem.Source.ID == "" {
 			localItem.title = localPackage.SourceID
 			localItem.desc = installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("Not found in registry")
