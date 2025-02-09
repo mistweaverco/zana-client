@@ -10,7 +10,17 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
 
-var REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/registry.json.zip"
+// REGISTRY_URL is the URL to the latest registry file
+// use the environment variable ZANA_REGISTRY_URL to override
+var DEFAULT_REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/registry.json.zip"
+var OVERRIDE_REGISTRY_URL = os.Getenv("ZANA_REGISTRY_URL")
+
+var REGISTRY_URL = func() string {
+	if OVERRIDE_REGISTRY_URL != "" {
+		return OVERRIDE_REGISTRY_URL
+	}
+	return DEFAULT_REGISTRY_URL
+}()
 
 type errMsg error
 
