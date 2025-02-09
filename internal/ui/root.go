@@ -14,6 +14,8 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/updater"
 )
 
+type updateCheckFinishedMsg struct{}
+
 var (
 
 	// General.
@@ -95,6 +97,8 @@ type model struct {
 	spinner        spinner.Model
 	spinnerVisible bool
 	spinnerMessage string
+	updating       bool
+	updated        bool
 }
 
 func (m model) Init() tea.Cmd {
@@ -102,22 +106,27 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	if !m.updating {
+		return m.fetchUpdates()
+	}
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
+	case updateCheckFinishedMsg:
+		m.updating = false
+		m.spinnerVisible = false
+		m.installedList, cmd = m.installedList.Update(msg)
+		return m, cmd
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.width = msg.Width
 		m.height = msg.Height
 		tabHeight, _ := activeTab.GetFrameSize()
-		if !m.spinnerVisible {
-			m.installedList.SetSize(msg.Width-h, msg.Height-v-tabHeight)
-		}
+		m.installedList.SetSize(msg.Width-h, msg.Height-v-tabHeight)
 	}
-
-	var cmd tea.Cmd
 	if !m.spinnerVisible {
 		m.installedList, cmd = m.installedList.Update(msg)
 	} else {
@@ -146,10 +155,9 @@ func (m model) View() string {
 }
 
 func (m model) fetchUpdates() (tea.Model, tea.Cmd) {
+	m.updating = true
 	localPackages := local_packages_parser.GetData(false)
-
 	items := []list.Item{}
-
 	for _, localPackage := range localPackages.Packages {
 		regItem := registry_parser.GetBySourceId(localPackage.SourceID)
 		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.Version, regItem.Source.ID)
@@ -175,6 +183,10 @@ func (m model) fetchUpdates() (tea.Model, tea.Cmd) {
 		}
 		items = append(items, localItem)
 	}
+	m.installedList.SetItems(items)
+	m.spinnerMessage = "Updates checked"
+	m.spinnerVisible = false
+	m.updated = true
 	return m, nil
 }
 
@@ -186,6 +198,8 @@ func Show() {
 	}
 	m.spinner.Spinner = spinner.Dot
 	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	m.installedList = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	m.installedList.SetShowTitle(false)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
