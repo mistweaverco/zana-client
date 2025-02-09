@@ -79,7 +79,8 @@ var (
 )
 
 type item struct {
-	title, desc string
+	title, desc, sourceId string
+	updateAvailable       bool
 }
 
 func (i item) Title() string       { return i.title }
@@ -132,20 +133,34 @@ func (m model) View() string {
 
 func Show() {
 
-	registryItems := registry_parser.GetData()
+	localPackages := local_packages_parser.GetData(false)
 
 	items := []list.Item{}
 
-	for _, regItem := range registryItems {
-		localPackage := local_packages_parser.GetBySourceId(regItem.Source.ID)
+	for _, localPackage := range localPackages.Packages {
+		regItem := registry_parser.GetBySourceId(localPackage.SourceID)
 		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.Version, regItem.Source.ID)
-		if updateAvailable {
-			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)})
-		} else if remoteVersion == "" {
-			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("Not found in registry")})
-		} else {
-			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version)})
+		// Not found in registry,
+		// So we could check for updates, but can't install it,
+		// because we have no information on how to install it.
+		localItem := item{
+			sourceId:        localPackage.SourceID,
+			updateAvailable: updateAvailable,
 		}
+		if regItem.Source.ID == "" {
+			localItem.title = localPackage.SourceID
+			localItem.desc = installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("Not found in registry")
+		} else if updateAvailable {
+			localItem.title = regItem.Name
+			localItem.desc = regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)
+		} else if remoteVersion == "" {
+			localItem.title = regItem.Name
+			localItem.desc = regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("No remote version found")
+		} else {
+			localItem.title = regItem.Name
+			localItem.desc = regItem.Description + " " + installedVersionStyle.Render(localPackage.Version)
+		}
+		items = append(items, localItem)
 	}
 
 	m := model{

@@ -29,7 +29,13 @@ type RegistryItem struct {
 
 type RegistryRoot []RegistryItem
 
-func GetData() RegistryRoot {
+var data RegistryRoot
+var hasData bool
+
+func GetData(force bool) RegistryRoot {
+	if hasData && !force {
+		return data
+	}
 	registryFile := files.GetAppRegistryFilePath()
 	var registry RegistryRoot
 	jsonFile, err := os.Open(registryFile)
@@ -40,4 +46,14 @@ func GetData() RegistryRoot {
 	byteValue, _ := io.ReadAll(jsonFile)
 	json.Unmarshal(byteValue, &registry)
 	return registry
+}
+
+func GetBySourceId(sourceId string) RegistryItem {
+	registryRoot := GetData(false)
+	for _, item := range registryRoot {
+		if item.Source.ID == sourceId {
+			return item
+		}
+	}
+	return RegistryItem{}
 }
