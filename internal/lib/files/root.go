@@ -23,6 +23,18 @@ func Download(url string, dest string) {
 	io.Copy(out, resp.Body)
 }
 
+func GetAppLocalPackagesFilePath() string {
+	return GetNeovimConfigPath() + PS + "zana.json"
+}
+
+func GetNeovimConfigPath() string {
+	userConfigDir, err := os.UserConfigDir()
+	if err != nil {
+		panic(err)
+	}
+	return userConfigDir + PS + "nvim"
+}
+
 func GetAppDataPath() string {
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {

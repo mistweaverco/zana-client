@@ -13,30 +13,34 @@ import (
 type GitHubProvider struct{}
 
 // getPackageId returns the package ID from a given source
-func (g *GitHubProvider) getPackageId(source string) string {
-	source = strings.TrimPrefix(source, "pkg:")
-	parts := strings.Split(source, "/")
-	return parts[1]
+func (g *GitHubProvider) getPackageId(sourceId string) string {
+	sourceId = strings.TrimPrefix(sourceId, "pkg:")
+	parts := strings.Split(sourceId, "/")
+	return strings.Join(parts[1:], "/")
 }
 
 // getWebUrl returns the GitHub web URL for a given source
-func (g *GitHubProvider) getWebUrl(source string) string {
-	return "https://github.com/" + g.getPackageId(source)
+func (g *GitHubProvider) getWebUrl(sourceId string) string {
+	return "https://github.com/" + g.getPackageId(sourceId)
 }
 
 // getApiUrl returns the GitHub API URL for a given source
-func (g *GitHubProvider) getApiUrl(source string) string {
-	return "https://api.github.com/repos/" + g.getPackageId(source)
+func (g *GitHubProvider) getApiUrl(sourceId string) string {
+	return "https://api.github.com/repos/" + g.getPackageId(sourceId)
 }
 
 // Update updates a package via the GitHub provider
-func (g *GitHubProvider) Update(source string) {
-	log.Info("Updating via GitHub provider", "source", source)
+func (g *GitHubProvider) Update(sourceId string) {
+	log.Info("Updating via GitHub provider", "source", sourceId)
+}
+
+func stripVersionPrefix(version string) string {
+	return strings.TrimPrefix(version, "v")
 }
 
 // GetLatestReleaseVersionNumber returns the latest release version number for a GitHub repository
-func (g *GitHubProvider) GetLatestReleaseVersionNumber(source string) string {
-	url := g.getApiUrl(source) + "/releases/latest"
+func (g *GitHubProvider) GetLatestReleaseVersionNumber(sourceId string) string {
+	url := g.getApiUrl(sourceId) + "/releases/latest"
 
 	// Create an HTTP GET request
 	resp, err := http.Get(url)
@@ -69,5 +73,5 @@ func (g *GitHubProvider) GetLatestReleaseVersionNumber(source string) string {
 		return ""
 	}
 
-	return release.TagName
+	return stripVersionPrefix(release.TagName)
 }

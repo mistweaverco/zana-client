@@ -17,16 +17,16 @@ var gitLabProvider GitLabProvider = GitLabProvider{}
 var bitbucketProvider BitbucketProvider = BitbucketProvider{}
 var npmProvider NPMProvider = NPMProvider{}
 
-func detectProvider(source string) Provider {
+func detectProvider(sourceId string) Provider {
 	var provider Provider
 	switch {
-	case strings.HasPrefix(source, "pkg:github"):
+	case strings.HasPrefix(sourceId, "pkg:github"):
 		provider = ProviderGitHub
-	case strings.HasPrefix(source, "pkg:gitlab"):
+	case strings.HasPrefix(sourceId, "pkg:gitlab"):
 		provider = ProviderGitLab
-	case strings.HasPrefix(source, "pkg:bitbucket"):
+	case strings.HasPrefix(sourceId, "pkg:bitbucket"):
 		provider = ProviderBitbucket
-	case strings.HasPrefix(source, "pkg:npm"):
+	case strings.HasPrefix(sourceId, "pkg:npm"):
 		provider = ProviderNPM
 	default:
 		provider = ProviderUnsupported
@@ -34,17 +34,57 @@ func detectProvider(source string) Provider {
 	return provider
 }
 
-func Update(source string) {
-	provider := detectProvider(source)
+func GetLatestReleaseVersionNumber(sourceId string) string {
+	provider := detectProvider(sourceId)
 	switch provider {
 	case ProviderGitHub:
-		gitHubProvider.Update(source)
+		return gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
+	case ProviderUnsupported:
+		// Unsupported provider
+		return ""
+	default:
+		return ""
+	}
+}
+
+// versionIsUpdate checks if the remote version is greater than the installed version
+func versionIsUpdate(installedVersion string, remoteVersion string) bool {
+	if remoteVersion > installedVersion {
+		return true
+	}
+	return false
+}
+
+// CheckIfUpdateIsAvailable checks if an update is available for a given package
+// and returns a boolean indicating if an update is available and the latest version number
+func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
+	provider := detectProvider(sourceId)
+	switch provider {
+	case ProviderGitHub:
+		latestVersion := gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
+		if versionIsUpdate(version, latestVersion) {
+			return true, latestVersion
+		}
+		return false, latestVersion
+	case ProviderUnsupported:
+		// Unsupported provider
+		return false, ""
+	default:
+		return false, ""
+	}
+}
+
+func Update(sourceId string) {
+	provider := detectProvider(sourceId)
+	switch provider {
+	case ProviderGitHub:
+		gitHubProvider.Update(sourceId)
 	case ProviderGitLab:
-		gitLabProvider.Update(source)
+		gitLabProvider.Update(sourceId)
 	case ProviderBitbucket:
-		bitbucketProvider.Update(source)
+		bitbucketProvider.Update(sourceId)
 	case ProviderNPM:
-		npmProvider.Update(source)
+		npmProvider.Update(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}

@@ -10,16 +10,16 @@
       "items": {
         "type": "object",
         "properties": {
-          "source": {
+          "source_id": {
             "type": "string",
-            "pattern": "^(pkg|npm):.+$"
+            "pattern": "^pkg:(github|npm)/.+$"
           },
           "version": {
             "type": "string",
             "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
           }
         },
-        "required": ["source", "version"],
+        "required": ["source_id", "version"],
         "additionalProperties": false
       }
     }

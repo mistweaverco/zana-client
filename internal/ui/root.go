@@ -8,7 +8,9 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
+	"github.com/mistweaverco/zana-client/internal/lib/updater"
 )
 
 var (
@@ -73,6 +75,7 @@ var (
 	updateAvailableStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
 	missingInRegistryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000"))
 	checkingForUpdatesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#73F59F"))
+	installedVersionStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
 )
 
 type item struct {
@@ -134,7 +137,15 @@ func Show() {
 	items := []list.Item{}
 
 	for _, regItem := range registryItems {
-		items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + checkingForUpdatesStyle.Render("Checking for updates...")})
+		localPackage := local_packages_parser.GetBySourceId(regItem.Source.ID)
+		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.SourceID, regItem.Source.ID)
+		if updateAvailable {
+			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)})
+		} else if remoteVersion == "" {
+			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version) + " " + missingInRegistryStyle.Render("Not found in registry")})
+		} else {
+			items = append(items, item{title: regItem.Name, desc: regItem.Description + " " + installedVersionStyle.Render(localPackage.Version)})
+		}
 	}
 
 	m := model{
