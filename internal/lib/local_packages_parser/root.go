@@ -54,3 +54,13 @@ func GetBySourceId(sourceId string) LocalPackageItem {
 	}
 	return LocalPackageItem{}
 }
+
+func IsPackageInstalled(sourceId string) bool {
+	localPackageRoot := GetData(false)
+	for _, item := range localPackageRoot.Packages {
+		if item.SourceID == sourceId {
+			return true
+		}
+	}
+	return false
+}

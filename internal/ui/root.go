@@ -25,6 +25,7 @@ var (
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
 
+	packagedInstalledStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
 	updateAvailableStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
 	missingInRegistryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000"))
 	checkingForUpdatesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#73F59F"))
@@ -101,6 +102,7 @@ func (i localPackageItem) FilterValue() string { return i.title }
 // Item struct for the list
 type registryPackageItem struct {
 	title, desc, sourceId string
+	installed             bool
 }
 
 func (i registryPackageItem) Title() string       { return i.title }
@@ -211,10 +213,16 @@ func (m model) setupRegistryList() list.Model {
 	registryItems := []list.Item{}
 
 	for _, registryPackage := range registryPackages {
+		isInstalled := local_packages_parser.IsPackageInstalled(registryPackage.Source.ID)
+		title := registryPackage.Name
+		if isInstalled {
+			title = title + " " + packagedInstalledStyle.Render("Installed")
+		}
 		regItem := registryPackageItem{
-			sourceId: registryPackage.Source.ID,
-			title:    registryPackage.Name,
-			desc:     registryPackage.Description,
+			sourceId:  registryPackage.Source.ID,
+			title:     title,
+			desc:      registryPackage.Description,
+			installed: isInstalled,
 		}
 		registryItems = append(registryItems, regItem)
 	}
