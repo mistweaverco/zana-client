@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
@@ -45,6 +46,12 @@ func GetData(force bool) RegistryRoot {
 	defer jsonFile.Close()
 	byteValue, _ := io.ReadAll(jsonFile)
 	json.Unmarshal(byteValue, &registry)
+	// Sort the registry by name
+	hasData = true
+	data = registry
+	sort.Slice(registry, func(i, j int) bool {
+		return registry[i].Name < registry[j].Name
+	})
 	return registry
 }
 
