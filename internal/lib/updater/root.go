@@ -3,6 +3,7 @@ package updater
 import (
 	"strings"
 
+	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
 )
 
@@ -38,44 +39,17 @@ func detectProvider(sourceId string) Provider {
 	return provider
 }
 
-func GetLatestReleaseVersionNumber(sourceId string) string {
-	provider := detectProvider(sourceId)
-	switch provider {
-	case ProviderGitHub:
-		return gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
-	case ProviderNPM:
-		return npmProvider.GetLatestReleaseVersionNumber(sourceId)
-	case ProviderUnsupported:
-		// Unsupported provider
-		return ""
-	default:
-		return ""
-	}
-}
-
 // CheckIfUpdateIsAvailable checks if an update is available for a given package
 // and returns a boolean indicating if an update is available and the latest version number
 func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
-	provider := detectProvider(sourceId)
-	switch provider {
-	case ProviderGitHub:
-		latestVersion := gitHubProvider.GetLatestReleaseVersionNumber(sourceId)
-		if semver.IsGreater(version, latestVersion) {
-			return true, latestVersion
-		}
-		return false, latestVersion
-	case ProviderNPM:
-		latestVersion := npmProvider.GetLatestReleaseVersionNumber(sourceId)
-		if semver.IsGreater(version, latestVersion) {
-			return true, latestVersion
-		}
-		return false, latestVersion
-	case ProviderUnsupported:
-		// Unsupported provider
-		return false, ""
-	default:
+	latestVersion := registry_parser.GetLatestVersion(sourceId)
+	if latestVersion == "" {
 		return false, ""
 	}
+	if semver.IsGreater(version, latestVersion) {
+		return true, latestVersion
+	}
+	return false, ""
 }
 
 func Update(sourceId string) {

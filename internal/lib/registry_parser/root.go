@@ -19,6 +19,7 @@ type RegistryItemSource struct {
 
 type RegistryItem struct {
 	Name        string             `json:"name"`
+	Version     string             `json:"version"`
 	Description string             `json:"description"`
 	Homepage    string             `json:"homepage"`
 	Licenses    []string           `json:"licenses"`
@@ -63,4 +64,9 @@ func GetBySourceId(sourceId string) RegistryItem {
 		}
 	}
 	return RegistryItem{}
+}
+
+func GetLatestVersion(sourceId string) string {
+	item := GetBySourceId(sourceId)
+	return item.Version
 }
