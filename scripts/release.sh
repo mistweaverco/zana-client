@@ -9,13 +9,13 @@ GH_TAG="v$VERSION"
 FILES=()
 
 LINUX_FILES=(
-  "dist/${BIN_NAME}-linux-386.deb"
-  "dist/${BIN_NAME}-linux-amd64.deb"
+  "dist/${BIN_NAME}-linux-386"
+  "dist/${BIN_NAME}-linux-amd64"
 )
 
 MACOS_FILES=(
-  "dist/${BIN_NAME}-darwin-arm64.exe"
-  "dist/${BIN_NAME}-darwin-amd64.exe"
+  "dist/${BIN_NAME}-darwin-arm64"
+  "dist/${BIN_NAME}-darwin-amd64"
 )
 
 WINDOWS_FILES=(
@@ -78,15 +78,9 @@ print_files() {
 
 do_gh_release() {
   if [ "$RELEASE_ACTION" == "edit" ]; then
-    if [ -z "$REPLACE" ]; then
-      echo "Trying to upload files to existing release $GH_TAG"
-      print_files
-      gh release upload "$GH_TAG" "${FILES[@]}"
-    else
-      echo "Overwriting existing release $GH_TAG"
-      print_files
-      gh release upload --clobber "$GH_TAG" "${FILES[@]}"
-    fi
+    echo "Overwriting existing release $GH_TAG"
+    print_files
+    gh release upload --clobber "$GH_TAG" "${FILES[@]}"
   else
     echo "Creating new release $GH_TAG"
     print_files
