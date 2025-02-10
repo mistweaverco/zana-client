@@ -14,8 +14,6 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/updater"
 )
 
-type updateCheckFinishedMsg struct{}
-
 var (
 	// General styles
 	normal    = lipgloss.Color("#EEEEEE")
@@ -37,6 +35,7 @@ var (
 type Tab struct {
 	Title    string
 	IsActive bool
+	Id       string
 }
 
 func (t Tab) Render() string {
@@ -90,18 +89,29 @@ func RenderTabs(tabs []Tab, totalWidth int) string {
 }
 
 // Item struct for the list
-type item struct {
+type localPackageItem struct {
 	title, desc, sourceId string
 	updateAvailable       bool
 }
 
-func (i item) Title() string       { return i.title }
-func (i item) Description() string { return i.desc }
-func (i item) FilterValue() string { return i.title }
+func (i localPackageItem) Title() string       { return i.title }
+func (i localPackageItem) Description() string { return i.desc }
+func (i localPackageItem) FilterValue() string { return i.title }
+
+// Item struct for the list
+type registryPackageItem struct {
+	title, desc, sourceId string
+}
+
+func (i registryPackageItem) Title() string       { return i.title }
+func (i registryPackageItem) Description() string { return i.desc }
+func (i registryPackageItem) FilterValue() string { return i.title }
 
 // Main model
 type model struct {
 	installedList  list.Model
+	registryList   list.Model
+	aboutPage      string
 	tabs           []Tab
 	activeTabIndex int
 
@@ -120,7 +130,7 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if !m.updating {
-		return m.fetchUpdates()
+		return m.initLists()
 	}
 
 	switch msg := msg.(type) {
@@ -128,26 +138,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "shift+tab":
+			m.activeTabIndex = (m.activeTabIndex - 1 + len(m.tabs)) % len(m.tabs)
+			m.updateTabs()
 		case "tab":
 			m.activeTabIndex = (m.activeTabIndex + 1) % len(m.tabs)
 			m.updateTabs()
 		}
-
-	case updateCheckFinishedMsg:
-		m.updating = false
-		m.spinnerVisible = false
-		m.installedList, cmd = m.installedList.Update(msg)
-		return m, cmd
 
 	case tea.WindowSizeMsg:
 		h, v := docStyle.GetFrameSize()
 		m.width = msg.Width
 		m.height = msg.Height
 		m.installedList.SetSize(msg.Width-h, msg.Height-v-3) // Adjusted for tab height
+		m.registryList.SetSize(msg.Width-h, msg.Height-v-3)  // Adjusted for tab height
 	}
 
 	if !m.spinnerVisible {
-		m.installedList, cmd = m.installedList.Update(msg)
+		switch m.getActiveTabId() {
+		case "installed":
+			m.installedList, cmd = m.installedList.Update(msg)
+		case "registry":
+			m.registryList, cmd = m.registryList.Update(msg)
+		case "about":
+		default:
+		}
 	} else {
 		m.spinner, cmd = m.spinner.Update(msg)
 	}
@@ -161,12 +176,29 @@ func (m *model) updateTabs() {
 	}
 }
 
+func (m *model) getActiveTabId() string {
+	for i := range m.tabs {
+		if m.tabs[i].IsActive {
+			return m.tabs[i].Id
+		}
+	}
+	return ""
+}
+
 func (m model) View() string {
 	doc := strings.Builder{}
 	doc.WriteString(RenderTabs(m.tabs, m.width))
 
 	if !m.spinnerVisible {
-		doc.WriteString(docStyle.Render(m.installedList.View()))
+		switch m.getActiveTabId() {
+		case "installed":
+			doc.WriteString(docStyle.Render(m.installedList.View()))
+		case "registry":
+			doc.WriteString(docStyle.Render(m.registryList.View()))
+		case "about":
+			doc.WriteString(docStyle.Render(m.aboutPage))
+		default:
+		}
 	} else {
 		doc.WriteString(docStyle.Render(fmt.Sprintf("\n\n   %s "+m.spinnerMessage+"\n\n", m.spinner.View())))
 	}
@@ -174,16 +206,34 @@ func (m model) View() string {
 	return doc.String()
 }
 
-func (m model) fetchUpdates() (tea.Model, tea.Cmd) {
+func (m model) setupRegistryList() list.Model {
+	registryPackages := registry_parser.GetData(false)
+	registryItems := []list.Item{}
+
+	for _, registryPackage := range registryPackages {
+		regItem := registryPackageItem{
+			sourceId: registryPackage.Source.ID,
+			title:    registryPackage.Name,
+			desc:     registryPackage.Description,
+		}
+		registryItems = append(registryItems, regItem)
+	}
+
+	m.registryList.SetItems(registryItems)
+
+	return m.registryList
+}
+
+func (m model) initLists() (tea.Model, tea.Cmd) {
 	m.updating = true
 	localPackages := local_packages_parser.GetData(false)
-	items := []list.Item{}
+	installedItems := []list.Item{}
 
 	for _, localPackage := range localPackages.Packages {
 		regItem := registry_parser.GetBySourceId(localPackage.SourceID)
 		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.Version, regItem.Source.ID)
 
-		localItem := item{
+		localItem := localPackageItem{
 			sourceId:        localPackage.SourceID,
 			updateAvailable: updateAvailable,
 		}
@@ -199,10 +249,13 @@ func (m model) fetchUpdates() (tea.Model, tea.Cmd) {
 			localItem.desc = regItem.Description
 		}
 
-		items = append(items, localItem)
+		installedItems = append(installedItems, localItem)
 	}
 
-	m.installedList.SetItems(items)
+	m.installedList.SetItems(installedItems)
+
+	m.registryList = m.setupRegistryList()
+
 	m.spinnerMessage = "Updates checked"
 	m.spinnerVisible = false
 	m.updated = true
@@ -216,9 +269,9 @@ func Show() {
 		spinnerVisible: true,
 		spinnerMessage: "Checking for updates",
 		tabs: []Tab{
-			{Title: "Installed", IsActive: true},
-			{Title: "Search Registry"},
-			{Title: "About"},
+			{Title: "Installed", IsActive: true, Id: "installed"},
+			{Title: "Search Registry", Id: "registry"},
+			{Title: "About", Id: "about"},
 		},
 	}
 
@@ -226,6 +279,11 @@ func Show() {
 	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	m.installedList = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	m.installedList.SetShowTitle(false)
+	m.registryList = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	m.registryList.SetShowTitle(false)
+	m.aboutPage = "Zana 📦 is Mason.nvim 🧱, but maintained by the community 🌈.\n\n" +
+		"Built with ❤️ by the community.\n\n" +
+		"https://github.com/mistweaverco/zana-client"
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 

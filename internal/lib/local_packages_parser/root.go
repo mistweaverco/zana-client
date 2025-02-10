@@ -32,7 +32,10 @@ func GetData(force bool) LocalPackageRoot {
 	var localPackageRoot LocalPackageRoot
 	jsonFile, err := os.Open(localPackagesFile)
 	if err != nil {
-		panic(err)
+		data = LocalPackageRoot{
+			Packages: []LocalPackageItem{},
+		}
+		return data
 	}
 	defer jsonFile.Close()
 	byteValue, _ := io.ReadAll(jsonFile)
