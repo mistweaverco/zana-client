@@ -29,11 +29,13 @@ type downloadFinishedMsg struct{}
 type unzipFinishedMsg struct{}
 
 type model struct {
-	spinner     spinner.Model
-	quitting    bool
-	err         error
-	message     string
-	downloading bool
+	spinner          spinner.Model
+	quitting         bool
+	err              error
+	message          string
+	downloading      bool
+	downloadFinished bool
+	unzipFinished    bool
 }
 
 func initialModel() model {
@@ -43,30 +45,20 @@ func initialModel() model {
 	return model{spinner: s, message: "Getting latest info from the registry"}
 }
 
-func (m *model) Unzip() tea.Cmd {
-	return func() tea.Msg {
-		go func() {
-			files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
-			// Send the message to notify that unzipping is finished
-			tea.Println("") // Triggers UI update to process the message
-		}()
-		return unzipFinishedMsg{}
-	}
+func (m model) Unzip() model {
+	files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
+	m.message = "Registry unzipped successfully!"
+	m.unzipFinished = true
+	return m
 }
 
-func (m *model) downloadRegistry() (model, tea.Cmd) {
+func (m model) downloadRegistry() model {
 	m.message = "Downloading registry"
 	m.downloading = true
-
-	return *m, func() tea.Msg {
-		done := make(chan struct{})
-		go func() {
-			files.Download(REGISTRY_URL, files.GetTempPath()+files.PS+"zana-registry.json.zip")
-			done <- struct{}{}
-		}()
-		<-done // Wait for download to finish in the background goroutine
-		return downloadFinishedMsg{}
-	}
+	files.Download(REGISTRY_URL, files.GetTempPath()+files.PS+"zana-registry.json.zip")
+	m.message = "Registry downloaded successfully!"
+	m.downloadFinished = true
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -74,17 +66,21 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	if !m.downloading {
-		return m.downloadRegistry()
+		m.spinner, cmd = m.spinner.Update(msg)
+		m = m.downloadRegistry()
 	}
-	switch msg := msg.(type) {
-	case downloadFinishedMsg:
-		m.message = "Registry downloaded successfully!"
-		return m, m.Unzip()
-	case unzipFinishedMsg:
-		m.message = "Registry unzipped successfully!"
+	if !m.downloadFinished {
+		m.spinner, cmd = m.spinner.Update(msg)
+		m = m.Unzip()
+	}
+	if !m.unzipFinished {
+		m.spinner, cmd = m.spinner.Update(msg)
 		m.quitting = true
 		return m, tea.Quit
+	}
+	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "esc", "ctrl+c":
@@ -99,7 +95,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
-		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
