@@ -71,11 +71,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		m = m.downloadRegistry()
 	}
-	if !m.downloadFinished {
+	if m.downloadFinished {
 		m.spinner, cmd = m.spinner.Update(msg)
 		m = m.Unzip()
 	}
-	if !m.unzipFinished {
+	if m.unzipFinished {
 		m.spinner, cmd = m.spinner.Update(msg)
 		m.quitting = true
 		return m, tea.Quit
