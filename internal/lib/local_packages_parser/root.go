@@ -2,6 +2,7 @@ package local_packages_parser
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 
@@ -43,6 +44,40 @@ func GetData(force bool) LocalPackageRoot {
 	hasData = true
 	data = localPackageRoot
 	return data
+}
+
+func AddLocalPackage(sourceId string, version string) {
+	localPackageRoot := GetData(true)
+	packageExists := false
+
+	// Check if the package is already installed
+	for i, pkg := range localPackageRoot.Packages {
+		if pkg.SourceID == sourceId {
+			// Update the existing package with the new version
+			localPackageRoot.Packages[i].Version = version
+			packageExists = true
+			break
+		}
+	}
+
+	// If not found, add the new package
+	if !packageExists {
+		localPackageRoot.Packages = append(localPackageRoot.Packages, LocalPackageItem{
+			SourceID: sourceId,
+			Version:  version,
+		})
+	}
+
+	localPackagesFile := files.GetNeovimConfigPath() + files.PS + "zana.json"
+	jsonData, err := json.Marshal(localPackageRoot)
+	if err != nil {
+		fmt.Println("Error marshaling JSON:", err)
+		return
+	}
+
+	if err := os.WriteFile(localPackagesFile, jsonData, 0644); err != nil {
+		fmt.Println("Error writing to file:", err)
+	}
 }
 
 func GetBySourceId(sourceId string) LocalPackageItem {

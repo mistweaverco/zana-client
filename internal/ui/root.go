@@ -91,8 +91,8 @@ func RenderTabs(tabs []Tab, totalWidth int) string {
 
 // Item struct for the list
 type localPackageItem struct {
-	title, desc, sourceId string
-	updateAvailable       bool
+	title, desc, sourceId, version string
+	updateAvailable                bool
 }
 
 func (i localPackageItem) Title() string       { return i.title }
@@ -101,8 +101,8 @@ func (i localPackageItem) FilterValue() string { return i.title }
 
 // Item struct for the list
 type registryPackageItem struct {
-	title, desc, sourceId string
-	installed             bool
+	title, desc, sourceId, version string
+	installed                      bool
 }
 
 func (i registryPackageItem) Title() string       { return i.title }
@@ -146,6 +146,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			m.activeTabIndex = (m.activeTabIndex + 1) % len(m.tabs)
 			m.updateTabs()
+		case "enter":
+			switch m.getActiveTabId() {
+			case "installed":
+				selected := m.installedList.SelectedItem().(localPackageItem)
+				if selected.updateAvailable {
+					updater.Install(selected.sourceId, selected.version)
+				}
+			case "registry":
+				selected := m.installedList.SelectedItem().(localPackageItem)
+				updater.Install(selected.sourceId, selected.version)
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -222,6 +233,7 @@ func (m model) setupRegistryList() list.Model {
 			sourceId:  registryPackage.Source.ID,
 			title:     title,
 			desc:      registryPackage.Description,
+			version:   registryPackage.Version,
 			installed: isInstalled,
 		}
 		registryItems = append(registryItems, regItem)
@@ -243,6 +255,7 @@ func (m model) initLists() (tea.Model, tea.Cmd) {
 
 		localItem := localPackageItem{
 			sourceId:        localPackage.SourceID,
+			version:         localPackage.Version,
 			updateAvailable: updateAvailable,
 		}
 

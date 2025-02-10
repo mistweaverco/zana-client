@@ -23,10 +23,14 @@ func Download(url string, dest string) {
 	io.Copy(out, resp.Body)
 }
 
+// GetAppLocalPackagesFilePath returns the path to the local packages file
+// e.g. /home/user/.config/zana/zana.json
 func GetAppLocalPackagesFilePath() string {
 	return GetNeovimConfigPath() + PS + "zana.json"
 }
 
+// GetNeovimConfigPath returns the path to the neovim config directory
+// e.g. /home/user/.config/nvim
 func GetNeovimConfigPath() string {
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
@@ -35,30 +39,39 @@ func GetNeovimConfigPath() string {
 	return userConfigDir + PS + "nvim"
 }
 
+// GetAppDataPath returns the path to the app data directory
+// e.g. /home/user/.config/zana
 func GetAppDataPath() string {
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
 		panic(err)
 	}
-	return userConfigDir + PS + "zana"
+	return EnsureDirExists(userConfigDir + PS + "zana")
 }
 
+// GetTempPath returns the path to the temp directory
+// e.g. /tmp
 func GetTempPath() string {
 	return os.TempDir()
 }
 
+// GetAppRegistryFilePath returns the path to the registry file
+// e.g. /home/user/.config/zana/registry.json
 func GetAppRegistryFilePath() string {
 	return GetAppDataPath() + PS + "registry.json"
 }
 
+// GetAppPackagesPath returns the path to the packages directory
+// e.g. /home/user/.config/zana/packages
 func GetAppPackagesPath() string {
-	return GetAppDataPath() + PS + "packages"
+	return EnsureDirExists(GetAppDataPath() + PS + "packages")
 }
 
-func EnsureDirExists(path string) {
+func EnsureDirExists(path string) string {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		os.MkdirAll(path, 0755)
 	}
+	return path
 }
 
 func Unzip(src, dest string) error {

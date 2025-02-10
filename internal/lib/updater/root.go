@@ -52,17 +52,17 @@ func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
 	return false, ""
 }
 
-func Update(sourceId string) {
+func Install(sourceId string, version string) {
 	provider := detectProvider(sourceId)
 	switch provider {
 	case ProviderGitHub:
-		gitHubProvider.Update(sourceId)
+		gitHubProvider.Install(sourceId, version)
 	case ProviderGitLab:
-		gitLabProvider.Update(sourceId)
+		gitLabProvider.Install(sourceId, version)
 	case ProviderBitbucket:
-		bitbucketProvider.Update(sourceId)
+		bitbucketProvider.Install(sourceId, version)
 	case ProviderNPM:
-		npmProvider.Update(sourceId)
+		npmProvider.Install(sourceId, version)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}

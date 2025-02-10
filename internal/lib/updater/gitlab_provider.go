@@ -4,6 +4,7 @@ import "github.com/charmbracelet/log"
 
 type GitLabProvider struct{}
 
-func (g *GitLabProvider) Update(source string) {
+// Install or update a package via the GitLab provider
+func (g *GitLabProvider) Install(source string, version string) {
 	log.Info("Updating via GitLab provider", "source", source)
 }

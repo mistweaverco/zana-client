@@ -15,7 +15,7 @@ func (g *GitHubProvider) getPackageId(sourceId string) string {
 	return strings.Join(parts[1:], "/")
 }
 
-// Update updates a package via the GitHub provider
-func (g *GitHubProvider) Update(sourceId string) {
+// Install or update a package via the GitHub provider
+func (g *GitHubProvider) Install(sourceId string, version string) {
 	log.Info("Updating via GitHub provider", "source", sourceId)
 }

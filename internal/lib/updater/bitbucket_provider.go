@@ -4,6 +4,7 @@ import "github.com/charmbracelet/log"
 
 type BitbucketProvider struct{}
 
-func (g *BitbucketProvider) Update(source string) {
+// Install or update a package via the Bitbucket provider
+func (g *BitbucketProvider) Install(source string, version string) {
 	log.Info("Updating via Bitbucket provider", "source", source)
 }
