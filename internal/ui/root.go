@@ -409,7 +409,7 @@ func initialModel() model {
 	installedRows := make([]table.Row, 0, len(installedItems))
 	for _, item := range installedItems {
 		installedRows = append(installedRows, table.Row{
-			item.sourceId,
+			item.title,
 			truncateString(item.version, 20), // Add truncation with a reasonable default width
 		})
 	}
@@ -499,18 +499,29 @@ func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
 
 func getLocalPackagesData() []localPackageItem {
 	localItems := []localPackageItem{}
+	localPackages := local_packages_parser.GetData(true).Packages
+	registryPackages := registry_parser.GetData(true)
 
-	for _, item := range local_packages_parser.GetData(true).Packages {
-		registryItem := registry_parser.GetBySourceId(item.SourceID)
-		updateAvailable, _ := updater.CheckIfUpdateIsAvailable(item.Version, item.SourceID)
+	// Create a map for quick lookup of local package versions by sourceID
+	localPackageMap := make(map[string]string)
+	for _, localPkg := range localPackages {
+		localPackageMap[localPkg.SourceID] = localPkg.Version
+	}
 
-		localItems = append(localItems, localPackageItem{
-			title:           registryItem.Name,
-			desc:            registryItem.Description,
-			sourceId:        item.SourceID,
-			version:         item.Version,
-			updateAvailable: updateAvailable,
-		})
+	// Iterate over registry entries
+	for _, registryItem := range registryPackages {
+		// Check if this registry item is installed locally
+		if localVersion, isInstalled := localPackageMap[registryItem.Source.ID]; isInstalled {
+			updateAvailable, _ := updater.CheckIfUpdateIsAvailable(localVersion, registryItem.Source.ID)
+
+			localItems = append(localItems, localPackageItem{
+				title:           registryItem.Name,
+				desc:            registryItem.Description,
+				sourceId:        registryItem.Source.ID,
+				version:         localVersion,
+				updateAvailable: updateAvailable,
+			})
+		}
 	}
 
 	return localItems
