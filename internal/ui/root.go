@@ -424,7 +424,7 @@ func initialModel() model {
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(highlight)
 	ti.Prompt = "🔍 "
 
-	return model{
+	m := model{
 		installedTable: installedTable,
 		registryTable:  registryTable,
 		tabs: []Tab{
@@ -436,6 +436,20 @@ func initialModel() model {
 		spinnerMessage: "Checking for updates",
 		searchInput:    ti,
 	}
+
+	// Initialize the tables with data
+	m.installedTable.SetRows([]table.Row{})
+	regItems := getRegistryItemsData()
+	registryRows := make([]table.Row, 0, len(regItems))
+	for _, item := range regItems {
+		registryRows = append(registryRows, table.Row{
+			item.title,
+			item.version,
+		})
+	}
+	m.registryTable.SetRows(registryRows)
+
+	return m
 }
 
 func Show() {
@@ -475,12 +489,7 @@ func (m *model) updateRegistryTableRows(items []registryPackageItem) {
 	m.registryTable.SetRows(rows)
 }
 
-// Message types
-type registryMsg struct{}
-type localPackagesMsg struct{}
-
-func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
-	m.spinnerVisible = false
+func getRegistryItemsData() []registryPackageItem {
 	registryItems := []registryPackageItem{}
 
 	for _, item := range registry_parser.GetData(true) {
@@ -492,9 +501,16 @@ func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
 			installed: false,
 		})
 	}
+	return registryItems
+}
 
-	// Update the registry table with the new data
-	m.updateRegistryTableRows(registryItems)
+// Message types
+type registryMsg struct{}
+type localPackagesMsg struct{}
+
+func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
+	m.spinnerVisible = false
+	m.updateRegistryTableRows(getRegistryItemsData())
 	return m, nil
 }
 
