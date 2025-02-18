@@ -9,7 +9,7 @@
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge)](https://github.com/mistweaverco/zana-client/releases/latest)
 [![Discord](assets/badge-discord.svg)](https://getzana.net/discord)
 
-[Requirements](#requirements) • [Install](#install) • [Documentation](https://neovim.getzana.net/)
+[Requirements](#requirements) • [Install](#install) • [What is working?](#what-is-working)
 
 <p></p>
 
@@ -17,11 +17,12 @@
 
 <p></p>
 
-Zana 📦 is Mason.nvim 🧱, but maintained by the community 🌈.
+Zana GUI 🕹️. Zana 📦 aims to be like Mason.nvim 🧱, but maintained by the community 🌈.
 
 Zana is swahili for "tools" or "tooling".
 
-A package manager for Neovim.
+A minimal package manager for Neovim which
+uses the [Zana Registry][zana-registry] to install and manage packages.
 
 Easily install and manage LSP servers, DAP servers, linters, and formatters.
 
@@ -35,17 +36,38 @@ Currently, Zana is in pre-alpha and under active development.
 
 ## Requirements
 
-- Unix-like OS
-  - SH, Bash, or ZSH
-- Windows
-  - PwSh
+Because Zana is a package manager for Neovim, you need to have Neovim installed.
+Also, because Zana is a TUI, you need to have a terminal emulator installed.
+
+Besides that, we shell out to `npm`, `pip`, `cargo`, `go`, and `git` to install packages,
+depending on the package type.
+
+E.g. if you want to install `pkg:npm` packages, you need to have `npm` installed.
 
 ## Install
 
-Just head over to the
-[releases page][releases-page] and
-download the latest release for your OS.
+Just head over to the [download page][download-page] or
+grab it directtly from the [releases][releases-page].
+
+## What is working?
+
+- [x] [registry](https://github.com/mistweaverco/zana-registry) updates on startup
+- [ ] Updates available for installed packages?
+- [ ] Filtering packages
+- [x] Vim keymaps
+- [ ] Install `pkg:npm` packages
+- [ ] Update `pkg:npm` packages
+- [ ] Install `pkg:github` packages
+- [ ] Update `pkg:github` packages
+- [ ] Install `pkg:pypi` packages
+- [ ] Update `pkg:pypi` packages
+- [ ] Install `pkg:golang` packages
+- [ ] Update `pkg:golang` packages
+- [ ] Install `pkg:cargo` packages
+- [ ] Update `pkg:cargo` packages
 
 
-
+[download-page]: https://getzana.net/#download
 [releases-page]: https://github.com/mistweaverco/zana-client/releases/latest
+[zana-registry]: https://github.com/mistweaverco/zana-registry
+
