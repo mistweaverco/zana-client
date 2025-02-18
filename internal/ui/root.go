@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
@@ -32,11 +33,19 @@ var (
 	installedVersionStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
 )
 
+type TabType int
+
+const (
+	TabNormal TabType = iota
+	TabSearch
+)
+
 // Tab struct for modular tabs
 type Tab struct {
 	Title    string
 	IsActive bool
 	Id       string
+	Type     TabType
 }
 
 func (t Tab) Render() string {
@@ -72,7 +81,7 @@ func (t Tab) Render() string {
 }
 
 // RenderTabs creates the tab row with a full-width bottom line
-func RenderTabs(tabs []Tab, totalWidth int) string {
+func RenderTabs(m model, tabs []Tab, totalWidth int) string {
 	var renderedTabs []string
 	for _, tab := range tabs {
 		renderedTabs = append(renderedTabs, tab.Render())
@@ -80,10 +89,33 @@ func RenderTabs(tabs []Tab, totalWidth int) string {
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
 
-	gapWidth := totalWidth - lipgloss.Width(row)
+	// Style for the search input
+	searchStyle := lipgloss.NewStyle().
+		Border(lipgloss.Border{
+			Top:         "─",
+			Bottom:      "─",
+			Left:        "│",
+			Right:       "│",
+			TopLeft:     "╭",
+			TopRight:    "╮",
+			BottomLeft:  "┴",
+			BottomRight: "┴",
+		}, true).
+		BorderForeground(highlight).
+		Padding(0, 1)
+
+	searchView := searchStyle.Render(m.searchInput.View())
+
+	// Calculate space between tabs and search
+	gapWidth := totalWidth - lipgloss.Width(row) - lipgloss.Width(searchView)
 	if gapWidth > 0 {
 		gap := strings.Repeat("─", gapWidth)
-		row += lipgloss.NewStyle().Foreground(highlight).Render(gap)
+		row = lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			row,
+			lipgloss.NewStyle().Foreground(highlight).Render(gap),
+			searchView,
+		)
 	}
 
 	return row
@@ -116,6 +148,7 @@ type model struct {
 	aboutPage      string
 	tabs           []Tab
 	activeTabIndex int
+	searchInputs   []textinput.Model
 
 	width, height  int
 	spinner        spinner.Model
@@ -123,6 +156,7 @@ type model struct {
 	spinnerMessage string
 	updating       bool
 	updated        bool
+	searchInput    textinput.Model
 }
 
 func (m model) Init() tea.Cmd {
@@ -157,6 +191,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				selected := m.installedList.SelectedItem().(localPackageItem)
 				updater.Install(selected.sourceId, selected.version)
 			}
+		case "/":
+			m.searchInput.Focus()
+			return m, m.searchInput.Focus()
+		case "esc":
+			m.searchInput.Blur()
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
@@ -180,6 +220,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 	}
 
+	// Handle search input updates
+	if m.searchInput.Focused() {
+		var cmd tea.Cmd
+		m.searchInput, cmd = m.searchInput.Update(msg)
+		return m, cmd
+	}
+
 	return m, cmd
 }
 
@@ -200,7 +247,8 @@ func (m *model) getActiveTabId() string {
 
 func (m model) View() string {
 	doc := strings.Builder{}
-	doc.WriteString(RenderTabs(m.tabs, m.width))
+	tabsRow := RenderTabs(m, m.tabs, m.width)
+	doc.WriteString(tabsRow)
 
 	if !m.spinnerVisible {
 		switch m.getActiveTabId() {
@@ -284,27 +332,31 @@ func (m model) initLists() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func Show() {
-	m := model{
-		spinner:        spinner.New(),
+func initialModel() model {
+	ti := textinput.New()
+	ti.Placeholder = "Search..."
+	ti.Width = 20
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(highlight)
+	ti.Prompt = "🔍 "
+
+	return model{
+		installedList:  list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0),
+		registryList:   list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0),
+		tabs:           []Tab{{Title: "Installed", IsActive: true, Id: "installed"}, {Title: "Registry", Id: "registry"}, {Title: "About", Id: "about"}},
+		spinner:        spinner.New(spinner.WithSpinner(spinner.Points)),
 		spinnerVisible: true,
 		spinnerMessage: "Checking for updates",
-		tabs: []Tab{
-			{Title: "Installed", IsActive: true, Id: "installed"},
-			{Title: "Search Registry", Id: "registry"},
-			{Title: "About", Id: "about"},
-		},
+		searchInput:    ti,
 	}
+}
+
+func Show() {
+	m := initialModel()
 
 	m.spinner.Spinner = spinner.Dot
 	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	m.installedList = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	m.installedList.SetShowTitle(false)
-	m.registryList = list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	m.registryList.SetShowTitle(false)
-	m.aboutPage = "Zana 📦 is Mason.nvim 🧱, but maintained by the community 🌈.\n\n" +
-		"Built with ❤️ by the community.\n\n" +
-		"https://github.com/mistweaverco/zana-client"
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
