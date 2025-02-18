@@ -177,6 +177,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nameWidth := int(float64(width) * 0.6) // 60% of width for name
 		versionWidth := width - nameWidth - 2  // Remaining width for version, account for borders
 
+		// Ensure minimum widths
+		if versionWidth < 20 {
+			versionWidth = 20
+			nameWidth = width - versionWidth - 2
+		}
+
 		// Update column widths
 		m.installedTable.SetColumns([]table.Column{
 			{Title: "Name", Width: nameWidth},
@@ -292,7 +298,7 @@ func (m *model) getRegistryPackages() []registryPackageItem {
 			title:     item.Name,
 			desc:      item.Description,
 			sourceId:  item.Source.ID,
-			version:   item.Version,
+			version:   strings.TrimSpace(item.Version),
 			installed: false,
 		})
 	}
@@ -444,7 +450,7 @@ func initialModel() model {
 	for _, item := range regItems {
 		registryRows = append(registryRows, table.Row{
 			item.title,
-			item.version,
+			truncateString(item.version, 20), // Add truncation with a reasonable default width
 		})
 	}
 	m.registryTable.SetRows(registryRows)
@@ -469,9 +475,13 @@ func Show() {
 func (m *model) updateInstalledTableRows(items []localPackageItem) {
 	rows := make([]table.Row, len(items))
 	for i, item := range items {
+		// Get the version column width and truncate if necessary
+		versionWidth := m.installedTable.Columns()[1].Width
+		truncatedVersion := truncateString(item.version, versionWidth)
+
 		rows[i] = table.Row{
 			item.title,
-			item.version,
+			truncatedVersion,
 			item.desc,
 		}
 	}
@@ -481,9 +491,13 @@ func (m *model) updateInstalledTableRows(items []localPackageItem) {
 func (m *model) updateRegistryTableRows(items []registryPackageItem) {
 	rows := make([]table.Row, len(items))
 	for i, item := range items {
+		// Get the version column width and truncate if necessary
+		versionWidth := m.registryTable.Columns()[1].Width
+		truncatedVersion := truncateString(item.version, versionWidth)
+
 		rows[i] = table.Row{
 			item.title,
-			item.version,
+			truncatedVersion,
 		}
 	}
 	m.registryTable.SetRows(rows)
@@ -497,7 +511,7 @@ func getRegistryItemsData() []registryPackageItem {
 			title:     item.Name,
 			desc:      item.Description,
 			sourceId:  item.Source.ID,
-			version:   item.Version,
+			version:   strings.TrimSpace(item.Version),
 			installed: false,
 		})
 	}
@@ -548,4 +562,33 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Update the truncateString function
+func truncateString(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+	}
+
+	// If string is already shorter than max length, return as is
+	if len(s) <= maxLen {
+		return s
+	}
+
+	// Ensure we have room for ellipsis
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+
+	// For version strings containing a hash (indicated by a dash followed by hex),
+	// try to truncate at the dash
+	if idx := strings.LastIndex(s, "-"); idx > 0 && idx < maxLen-3 {
+		// Check if what follows looks like a hash
+		if len(s) > idx+1 && strings.Contains("0123456789abcdef", strings.ToLower(string(s[idx+1]))) {
+			return s[:idx] + "..."
+		}
+	}
+
+	// Standard truncation
+	return s[:maxLen-3] + "..."
 }
