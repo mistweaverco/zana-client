@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -26,11 +27,7 @@ var (
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
 
-	packagedInstalledStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
-	updateAvailableStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
-	missingInRegistryStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#ff0000"))
-	checkingForUpdatesStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#73F59F"))
-	installedVersionStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
+	updateAvailableStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
 )
 
 type TabType int
@@ -256,12 +253,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Helper function to filter installed table
 func (m *model) filterInstalledTable(query string) {
 	if query == "" {
-		m.updateInstalledTableRows(m.getInstalledPackages()) // Show all rows
+		m.updateInstalledTableRows(getLocalPackagesData()) // Show all rows
 		return
 	}
 
 	filtered := []localPackageItem{}
-	for _, item := range m.getInstalledPackages() {
+	for _, item := range getLocalPackagesData() {
 		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) {
 			filtered = append(filtered, item)
 		}
@@ -283,10 +280,6 @@ func (m *model) filterRegistryTable(query string) {
 		}
 	}
 	m.updateRegistryTableRows(filtered)
-}
-
-func (m *model) getInstalledPackages() []localPackageItem {
-	return []localPackageItem{}
 }
 
 func (m *model) getRegistryPackages() []registryPackageItem {
@@ -325,29 +318,6 @@ func (m model) View() string {
 		tabsRow,
 		content,
 	)
-}
-
-func (m model) setupRegistryList() table.Model {
-	registryPackages := registry_parser.GetData(false)
-	registryItems := []registryPackageItem{}
-
-	for _, registryPackage := range registryPackages {
-		isInstalled := local_packages_parser.IsPackageInstalled(registryPackage.Source.ID)
-		title := registryPackage.Name
-		if isInstalled {
-			title = title + " " + packagedInstalledStyle.Render("Installed")
-		}
-		regItem := registryPackageItem{
-			sourceId:  registryPackage.Source.ID,
-			title:     title,
-			desc:      registryPackage.Description,
-			version:   registryPackage.Version,
-			installed: isInstalled,
-		}
-		registryItems = append(registryItems, regItem)
-	}
-
-	return m.registryTable
 }
 
 func initialModel() model {
@@ -443,15 +413,37 @@ func Show() {
 // Helper function to update table rows from package items
 func (m *model) updateInstalledTableRows(items []localPackageItem) {
 	rows := make([]table.Row, len(items))
+
+	greenCellStyle := lipgloss.NewStyle().Foreground(special)
+	defaultCellStyle := lipgloss.NewStyle().Foreground(normal)
+
 	for i, item := range items {
 		// Get the version column width and truncate if necessary
 		versionWidth := m.installedTable.Columns()[1].Width
 		truncatedVersion := truncateString(item.version, versionWidth)
 
-		rows[i] = table.Row{
+		row := table.Row{
 			item.title,
 			truncatedVersion,
-			item.desc,
+		}
+
+		if item.updateAvailable {
+			// Apply green background to each cell in the row
+			styledRow := table.Row{}
+			for _, cell := range row {
+				styledCell := greenCellStyle.Render(cell)
+				styledRow = append(styledRow, styledCell)
+			}
+			rows[i] = styledRow
+		} else {
+			//Apply default style.
+			styledRow := table.Row{}
+			for _, cell := range row {
+				styledCell := defaultCellStyle.Render(cell)
+				styledRow = append(styledRow, styledCell)
+			}
+			rows[i] = styledRow
+
 		}
 	}
 	m.installedTable.SetRows(rows)
@@ -512,16 +504,38 @@ func getLocalPackagesData() []localPackageItem {
 	for _, registryItem := range registryPackages {
 		// Check if this registry item is installed locally
 		if localVersion, isInstalled := localPackageMap[registryItem.Source.ID]; isInstalled {
-			updateAvailable, _ := updater.CheckIfUpdateIsAvailable(localVersion, registryItem.Source.ID)
+			updateAvailable, _ := updater.CheckIfUpdateIsAvailable(localVersion, registryItem.Version)
 
+			versionStyled := localVersion
+
+			if updateAvailable {
+				// Add a special style for the version if an update is available
+				versionStyled = localVersion + " -> " + registryItem.Version
+			}
 			localItems = append(localItems, localPackageItem{
 				title:           registryItem.Name,
 				desc:            registryItem.Description,
 				sourceId:        registryItem.Source.ID,
-				version:         localVersion,
+				version:         versionStyled,
 				updateAvailable: updateAvailable,
 			})
 		}
+	}
+
+	// if an update is available sort the list by update available first
+	if len(localItems) > 0 {
+		sort.Slice(localItems, func(i, j int) bool {
+			// Primary sort: updateAvailable
+			if localItems[i].updateAvailable && !localItems[j].updateAvailable {
+				return true
+			}
+			if !localItems[i].updateAvailable && localItems[j].updateAvailable {
+				return false
+			}
+
+			// Secondary sort: Title (if updateAvailable is the same)
+			return localItems[i].title < localItems[j].title
+		})
 	}
 
 	return localItems
@@ -561,15 +575,6 @@ func truncateString(s string, maxLen int) string {
 	// Ensure we have room for ellipsis
 	if maxLen <= 3 {
 		return s[:maxLen]
-	}
-
-	// For version strings containing a hash (indicated by a dash followed by hex),
-	// try to truncate at the dash
-	if idx := strings.LastIndex(s, "-"); idx > 0 && idx < maxLen-3 {
-		// Check if what follows looks like a hash
-		if len(s) > idx+1 && strings.Contains("0123456789abcdef", strings.ToLower(string(s[idx+1]))) {
-			return s[:idx] + "..."
-		}
 	}
 
 	// Standard truncation

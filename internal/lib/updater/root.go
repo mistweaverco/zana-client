@@ -3,7 +3,6 @@ package updater
 import (
 	"strings"
 
-	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
 )
 
@@ -41,13 +40,9 @@ func detectProvider(sourceId string) Provider {
 
 // CheckIfUpdateIsAvailable checks if an update is available for a given package
 // and returns a boolean indicating if an update is available and the latest version number
-func CheckIfUpdateIsAvailable(version string, sourceId string) (bool, string) {
-	latestVersion := registry_parser.GetLatestVersion(sourceId)
-	if latestVersion == "" {
-		return false, ""
-	}
-	if semver.IsGreater(version, latestVersion) {
-		return true, latestVersion
+func CheckIfUpdateIsAvailable(localVersion string, remoteVersion string) (bool, string) {
+	if semver.IsGreater(localVersion, remoteVersion) {
+		return true, remoteVersion
 	}
 	return false, ""
 }
