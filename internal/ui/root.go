@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -87,7 +87,7 @@ func RenderTabs(m model, tabs []Tab, totalWidth int) string {
 		renderedTabs = append(renderedTabs, tab.Render())
 	}
 
-	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedTabs...)
+	row := lipgloss.JoinHorizontal(lipgloss.Bottom, renderedTabs...)
 
 	// Style for the search input
 	searchStyle := lipgloss.NewStyle().
@@ -111,7 +111,7 @@ func RenderTabs(m model, tabs []Tab, totalWidth int) string {
 	if gapWidth > 0 {
 		gap := strings.Repeat("─", gapWidth)
 		row = lipgloss.JoinHorizontal(
-			lipgloss.Top,
+			lipgloss.Bottom,
 			row,
 			lipgloss.NewStyle().Foreground(highlight).Render(gap),
 			searchView,
@@ -143,12 +143,11 @@ func (i registryPackageItem) FilterValue() string { return i.title }
 
 // Main model
 type model struct {
-	installedList  list.Model
-	registryList   list.Model
-	aboutPage      string
+	installedTable table.Model
+	registryTable  table.Model
 	tabs           []Tab
 	activeTabIndex int
-	searchInputs   []textinput.Model
+	searchInput    textinput.Model
 
 	width, height  int
 	spinner        spinner.Model
@@ -156,7 +155,6 @@ type model struct {
 	spinnerMessage string
 	updating       bool
 	updated        bool
-	searchInput    textinput.Model
 }
 
 func (m model) Init() tea.Cmd {
@@ -165,111 +163,146 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	if !m.updating {
-		return m.initLists()
-	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
-		case "shift+tab":
-			m.activeTabIndex = (m.activeTabIndex - 1 + len(m.tabs)) % len(m.tabs)
-			m.updateTabs()
-		case "tab":
-			m.activeTabIndex = (m.activeTabIndex + 1) % len(m.tabs)
-			m.updateTabs()
-		case "enter":
-			switch m.getActiveTabId() {
-			case "installed":
-				selected := m.installedList.SelectedItem().(localPackageItem)
-				if selected.updateAvailable {
-					updater.Install(selected.sourceId, selected.version)
-				}
-			case "registry":
-				selected := m.installedList.SelectedItem().(localPackageItem)
-				updater.Install(selected.sourceId, selected.version)
-			}
-		case "/":
-			m.searchInput.Focus()
-			return m, m.searchInput.Focus()
-		case "esc":
-			m.searchInput.Blur()
-			return m, nil
-		}
-
 	case tea.WindowSizeMsg:
-		h, v := docStyle.GetFrameSize()
 		m.width = msg.Width
 		m.height = msg.Height
-		m.installedList.SetSize(msg.Width-h, msg.Height-v-3) // Adjusted for tab height
-		m.registryList.SetSize(msg.Width-h, msg.Height-v-3)  // Adjusted for tab height
-	}
 
-	if !m.spinnerVisible {
-		switch m.getActiveTabId() {
-		case "installed":
-			m.installedList, cmd = m.installedList.Update(msg)
-		case "registry":
-			m.registryList, cmd = m.registryList.Update(msg)
-		case "about":
-		default:
+		// Update table dimensions
+		m.installedTable.SetWidth(msg.Width)
+		m.registryTable.SetWidth(msg.Width)
+
+		// Set height to leave room for tabs and borders
+		tableHeight := msg.Height - 4 // Adjust this value based on your needs
+		m.installedTable.SetHeight(tableHeight)
+		m.registryTable.SetHeight(tableHeight)
+
+		return m, nil
+
+	case tea.KeyMsg:
+		if !m.searchInput.Focused() {
+			switch msg.String() {
+			case "tab", "shift+tab":
+				// Handle tab switching
+				m.activeTabIndex = (m.activeTabIndex + 1) % len(m.tabs)
+				// Update active state of tabs
+				for i := range m.tabs {
+					m.tabs[i].IsActive = (i == m.activeTabIndex)
+				}
+				return m, nil
+			case "/":
+				m.searchInput.Focus()
+				return m, m.searchInput.Focus()
+			case "esc":
+				m.searchInput.Blur()
+				return m, nil
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			}
+
+			// Handle table navigation when search is not focused
+			switch m.activeTabIndex {
+			case 0:
+				m.installedTable, cmd = m.installedTable.Update(msg)
+			case 1:
+				m.registryTable, cmd = m.registryTable.Update(msg)
+			}
+		} else {
+			// Handle search input updates
+			m.searchInput, cmd = m.searchInput.Update(msg)
+
+			// Filter table rows based on search
+			if m.activeTabIndex == 0 {
+				m.filterInstalledTable(m.searchInput.Value())
+			} else {
+				m.filterRegistryTable(m.searchInput.Value())
+			}
 		}
-	} else {
-		m.spinner, cmd = m.spinner.Update(msg)
-	}
-
-	// Handle search input updates
-	if m.searchInput.Focused() {
-		var cmd tea.Cmd
-		m.searchInput, cmd = m.searchInput.Update(msg)
-		return m, cmd
 	}
 
 	return m, cmd
 }
 
-func (m *model) updateTabs() {
-	for i := range m.tabs {
-		m.tabs[i].IsActive = (i == m.activeTabIndex)
+// Helper function to filter installed table
+func (m *model) filterInstalledTable(query string) {
+	if query == "" {
+		m.updateInstalledTableRows(m.getInstalledPackages()) // Show all rows
+		return
 	}
-}
 
-func (m *model) getActiveTabId() string {
-	for i := range m.tabs {
-		if m.tabs[i].IsActive {
-			return m.tabs[i].Id
+	filtered := []localPackageItem{}
+	for _, item := range m.getInstalledPackages() {
+		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) ||
+			strings.Contains(strings.ToLower(item.desc), strings.ToLower(query)) {
+			filtered = append(filtered, item)
 		}
 	}
-	return ""
+	m.updateInstalledTableRows(filtered)
+}
+
+// Helper function to filter registry table
+func (m *model) filterRegistryTable(query string) {
+	if query == "" {
+		m.updateRegistryTableRows(m.getRegistryPackages()) // Show all rows
+		return
+	}
+
+	filtered := []registryPackageItem{}
+	for _, item := range m.getRegistryPackages() {
+		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) ||
+			strings.Contains(strings.ToLower(item.desc), strings.ToLower(query)) {
+			filtered = append(filtered, item)
+		}
+	}
+	m.updateRegistryTableRows(filtered)
+}
+
+func (m *model) getInstalledPackages() []localPackageItem {
+	return []localPackageItem{}
+}
+
+func (m *model) getRegistryPackages() []registryPackageItem {
+	data := registry_parser.GetData(false)
+	regItems := []registryPackageItem{}
+
+	for _, item := range data {
+		regItems = append(regItems, registryPackageItem{
+			title:     item.Name,
+			desc:      item.Description,
+			sourceId:  item.Source.ID,
+			version:   item.Version,
+			installed: false,
+		})
+	}
+
+	return regItems
 }
 
 func (m model) View() string {
-	doc := strings.Builder{}
-	tabsRow := RenderTabs(m, m.tabs, m.width)
-	doc.WriteString(tabsRow)
+	var content string
 
-	if !m.spinnerVisible {
-		switch m.getActiveTabId() {
-		case "installed":
-			doc.WriteString(docStyle.Render(m.installedList.View()))
-		case "registry":
-			doc.WriteString(docStyle.Render(m.registryList.View()))
-		case "about":
-			doc.WriteString(docStyle.Render(m.aboutPage))
-		default:
-		}
-	} else {
-		doc.WriteString(docStyle.Render(fmt.Sprintf("\n\n   %s "+m.spinnerMessage+"\n\n", m.spinner.View())))
+	switch m.activeTabIndex {
+	case 0:
+		content = m.installedTable.View()
+	case 1:
+		content = m.registryTable.View()
 	}
 
-	return doc.String()
+	// Render the top bar with tabs and search
+	tabsRow := RenderTabs(m, m.tabs, m.width)
+
+	// Join the components vertically with the correct order
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		tabsRow,
+		content,
+	)
 }
 
-func (m model) setupRegistryList() list.Model {
+func (m model) setupRegistryList() table.Model {
 	registryPackages := registry_parser.GetData(false)
-	registryItems := []list.Item{}
+	registryItems := []registryPackageItem{}
 
 	for _, registryPackage := range registryPackages {
 		isInstalled := local_packages_parser.IsPackageInstalled(registryPackage.Source.ID)
@@ -287,15 +320,13 @@ func (m model) setupRegistryList() list.Model {
 		registryItems = append(registryItems, regItem)
 	}
 
-	m.registryList.SetItems(registryItems)
-
-	return m.registryList
+	return m.registryTable
 }
 
 func (m model) initLists() (tea.Model, tea.Cmd) {
 	m.updating = true
 	localPackages := local_packages_parser.GetData(false)
-	installedItems := []list.Item{}
+	installedItems := []localPackageItem{}
 
 	for _, localPackage := range localPackages.Packages {
 		regItem := registry_parser.GetBySourceId(localPackage.SourceID)
@@ -321,9 +352,7 @@ func (m model) initLists() (tea.Model, tea.Cmd) {
 		installedItems = append(installedItems, localItem)
 	}
 
-	m.installedList.SetItems(installedItems)
-
-	m.registryList = m.setupRegistryList()
+	m.registryTable = m.setupRegistryList()
 
 	m.spinnerMessage = "Updates checked"
 	m.spinnerVisible = false
@@ -333,6 +362,42 @@ func (m model) initLists() (tea.Model, tea.Cmd) {
 }
 
 func initialModel() model {
+	// Define table columns
+	columns := []table.Column{
+		{Title: "Name", Width: 20},
+		{Title: "Version", Width: 10},
+		{Title: "Description", Width: 40},
+	}
+
+	// Initialize tables with default styles
+	installedTable := table.New(
+		table.WithColumns(columns),
+		table.WithFocused(true),
+		table.WithHeight(10),
+	)
+
+	registryTable := table.New(
+		table.WithColumns(columns),
+		table.WithFocused(true),
+		table.WithHeight(10),
+	)
+
+	// Style the tables
+	baseStyle := table.DefaultStyles()
+	baseStyle.Header = baseStyle.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	baseStyle.Selected = baseStyle.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+
+	installedTable.SetStyles(baseStyle)
+	registryTable.SetStyles(baseStyle)
+
+	// Initialize search input
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
 	ti.Width = 20
@@ -340,9 +405,12 @@ func initialModel() model {
 	ti.Prompt = "🔍 "
 
 	return model{
-		installedList:  list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0),
-		registryList:   list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0),
-		tabs:           []Tab{{Title: "Installed", IsActive: true, Id: "installed"}, {Title: "Registry", Id: "registry"}, {Title: "About", Id: "about"}},
+		installedTable: installedTable,
+		registryTable:  registryTable,
+		tabs: []Tab{
+			{Title: "Installed", IsActive: true, Id: "installed"},
+			{Title: "Registry", Id: "registry"},
+		},
 		spinner:        spinner.New(spinner.WithSpinner(spinner.Points)),
 		spinnerVisible: true,
 		spinnerMessage: "Checking for updates",
@@ -355,13 +423,87 @@ func Show() {
 
 	m.spinner.Spinner = spinner.Dot
 	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	m.installedList.SetShowTitle(false)
-	m.registryList.SetShowTitle(false)
-
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
 	}
+}
+
+// Helper function to update table rows from package items
+func (m *model) updateInstalledTableRows(items []localPackageItem) {
+	rows := make([]table.Row, len(items))
+	for i, item := range items {
+		rows[i] = table.Row{
+			item.title,
+			item.version,
+			item.desc,
+		}
+	}
+	m.installedTable.SetRows(rows)
+}
+
+func (m *model) updateRegistryTableRows(items []registryPackageItem) {
+	rows := make([]table.Row, len(items))
+	for i, item := range items {
+		rows[i] = table.Row{
+			item.title,
+			item.version,
+			item.desc,
+		}
+	}
+	m.registryTable.SetRows(rows)
+}
+
+// Message types
+type registryMsg struct{}
+type localPackagesMsg struct{}
+
+func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
+	m.spinnerVisible = false
+	registryItems := []registryPackageItem{}
+
+	for _, item := range registry_parser.GetData(true) {
+		registryItems = append(registryItems, registryPackageItem{
+			title:     item.Name,
+			desc:      item.Description,
+			sourceId:  item.Source.ID,
+			version:   item.Version,
+			installed: false,
+		})
+	}
+
+	// Update the registry table with the new data
+	m.updateRegistryTableRows(registryItems)
+	return m, nil
+}
+
+func (m model) handleLocalPackagesMsg(msg localPackagesMsg) (tea.Model, tea.Cmd) {
+	localItems := []localPackageItem{}
+
+	for _, item := range local_packages_parser.GetData(true).Packages {
+		registryItem := registry_parser.GetBySourceId(item.SourceID)
+		updateAvailable, _ := updater.CheckIfUpdateIsAvailable(item.Version, item.SourceID)
+
+		localItems = append(localItems, localPackageItem{
+			title:           registryItem.Name,
+			desc:            registryItem.Description,
+			sourceId:        item.SourceID,
+			version:         item.Version,
+			updateAvailable: updateAvailable,
+		})
+	}
+
+	// Update the installed table with the new data
+	m.updateInstalledTableRows(localItems)
+	return m, nil
+}
+
+func (m model) handleSpinnerTick() (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	if m.spinnerVisible {
+		m.spinner, cmd = m.spinner.Update(spinner.TickMsg{})
+	}
+	return m, cmd
 }
