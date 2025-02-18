@@ -166,15 +166,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		// Limit maximum window size to 80x25
+		width := min(msg.Width, 80)
+		height := min(msg.Height, 25)
+
+		m.width = width
+		m.height = height
+
+		// Calculate dynamic column widths
+		nameWidth := int(float64(width) * 0.6) // 60% of width for name
+		versionWidth := width - nameWidth - 2  // Remaining width for version, account for borders
+
+		// Update column widths
+		m.installedTable.SetColumns([]table.Column{
+			{Title: "Name", Width: nameWidth},
+			{Title: "Version", Width: versionWidth},
+		})
+		m.registryTable.SetColumns([]table.Column{
+			{Title: "Name", Width: nameWidth},
+			{Title: "Version", Width: versionWidth},
+		})
 
 		// Update table dimensions
-		m.installedTable.SetWidth(msg.Width)
-		m.registryTable.SetWidth(msg.Width)
+		m.installedTable.SetWidth(width)
+		m.registryTable.SetWidth(width)
 
 		// Set height to leave room for tabs and borders
-		tableHeight := msg.Height - 4 // Adjust this value based on your needs
+		tableHeight := height - 4 // Account for tabs and borders
 		m.installedTable.SetHeight(tableHeight)
 		m.registryTable.SetHeight(tableHeight)
 
@@ -209,6 +227,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.registryTable, cmd = m.registryTable.Update(msg)
 			}
 		} else {
+			switch msg.String() {
+			case "esc":
+				m.searchInput.Blur()
+				return m, nil
+			}
 			// Handle search input updates
 			m.searchInput, cmd = m.searchInput.Update(msg)
 
@@ -233,8 +256,7 @@ func (m *model) filterInstalledTable(query string) {
 
 	filtered := []localPackageItem{}
 	for _, item := range m.getInstalledPackages() {
-		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) ||
-			strings.Contains(strings.ToLower(item.desc), strings.ToLower(query)) {
+		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) {
 			filtered = append(filtered, item)
 		}
 	}
@@ -250,8 +272,7 @@ func (m *model) filterRegistryTable(query string) {
 
 	filtered := []registryPackageItem{}
 	for _, item := range m.getRegistryPackages() {
-		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) ||
-			strings.Contains(strings.ToLower(item.desc), strings.ToLower(query)) {
+		if strings.Contains(strings.ToLower(item.title), strings.ToLower(query)) {
 			filtered = append(filtered, item)
 		}
 	}
@@ -362,24 +383,23 @@ func (m model) initLists() (tea.Model, tea.Cmd) {
 }
 
 func initialModel() model {
-	// Define table columns
+	// Define table columns with proportional widths
 	columns := []table.Column{
-		{Title: "Name", Width: 20},
-		{Title: "Version", Width: 10},
-		{Title: "Description", Width: 40},
+		{Title: "Name", Width: 0},    // Width will be set dynamically
+		{Title: "Version", Width: 0}, // Width will be set dynamically
 	}
 
 	// Initialize tables with default styles
 	installedTable := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
-		table.WithHeight(10),
+		table.WithHeight(20), // Reduced height to fit in 25 lines
 	)
 
 	registryTable := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
-		table.WithHeight(10),
+		table.WithHeight(20), // Reduced height to fit in 25 lines
 	)
 
 	// Style the tables
@@ -450,7 +470,6 @@ func (m *model) updateRegistryTableRows(items []registryPackageItem) {
 		rows[i] = table.Row{
 			item.title,
 			item.version,
-			item.desc,
 		}
 	}
 	m.registryTable.SetRows(rows)
@@ -506,4 +525,11 @@ func (m model) handleSpinnerTick() (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(spinner.TickMsg{})
 	}
 	return m, cmd
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
