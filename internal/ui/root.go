@@ -228,7 +228,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			switch msg.String() {
-			case "esc":
+			case "esc", "enter":
 				m.searchInput.Blur()
 				return m, nil
 			}
