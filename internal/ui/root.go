@@ -163,21 +163,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Limit maximum window size to 80x25
-		width := min(msg.Width, 80)
-		height := min(msg.Height, 25)
-
-		m.width = width
-		m.height = height
+		// Remove size limitations
+		m.width = msg.Width
+		m.height = msg.Height
 
 		// Calculate dynamic column widths
-		nameWidth := int(float64(width) * 0.6) // 60% of width for name
-		versionWidth := width - nameWidth - 2  // Remaining width for version, account for borders
+		nameWidth := int(float64(m.width) * 0.7) // 70% of width for name
+		versionWidth := m.width - nameWidth - 2  // Remaining width for version, accounting for borders
 
 		// Ensure minimum widths
-		if versionWidth < 20 {
-			versionWidth = 20
-			nameWidth = width - versionWidth - 2
+		minVersionWidth := 15
+		if versionWidth < minVersionWidth {
+			versionWidth = minVersionWidth
+			nameWidth = m.width - versionWidth - 2
 		}
 
 		// Update column widths
@@ -191,11 +189,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 
 		// Update table dimensions
-		m.installedTable.SetWidth(width)
-		m.registryTable.SetWidth(width)
+		m.installedTable.SetWidth(m.width)
+		m.registryTable.SetWidth(m.width)
 
 		// Set height to leave room for tabs and borders
-		tableHeight := height - 4 // Account for tabs and borders
+		tableHeight := m.height - 4 // Account for tabs and borders
 		m.installedTable.SetHeight(tableHeight)
 		m.registryTable.SetHeight(tableHeight)
 
@@ -331,13 +329,11 @@ func initialModel() model {
 	installedTable := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
-		table.WithHeight(20), // Reduced height to fit in 25 lines
 	)
 
 	registryTable := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
-		table.WithHeight(20), // Reduced height to fit in 25 lines
 	)
 
 	// Style the tables
@@ -380,7 +376,7 @@ func initialModel() model {
 	for _, item := range installedItems {
 		installedRows = append(installedRows, table.Row{
 			item.title,
-			truncateString(item.version, 20), // Add truncation with a reasonable default width
+			item.version,
 		})
 	}
 	m.installedTable.SetRows(installedRows)
@@ -389,7 +385,7 @@ func initialModel() model {
 	for _, item := range regItems {
 		registryRows = append(registryRows, table.Row{
 			item.title,
-			truncateString(item.version, 20), // Add truncation with a reasonable default width
+			item.version,
 		})
 	}
 	m.registryTable.SetRows(registryRows)
@@ -414,36 +410,18 @@ func Show() {
 func (m *model) updateInstalledTableRows(items []localPackageItem) {
 	rows := make([]table.Row, len(items))
 
-	greenCellStyle := lipgloss.NewStyle().Foreground(special)
-	defaultCellStyle := lipgloss.NewStyle().Foreground(normal)
-
 	for i, item := range items {
 		// Get the version column width and truncate if necessary
 		versionWidth := m.installedTable.Columns()[1].Width
-		truncatedVersion := truncateString(item.version, versionWidth)
+		version := item.version
+		if item.updateAvailable {
+			version = "🔼 " + version
+		}
+		truncatedVersion := truncateString(version, versionWidth)
 
-		row := table.Row{
+		rows[i] = table.Row{
 			item.title,
 			truncatedVersion,
-		}
-
-		if item.updateAvailable {
-			// Apply green background to each cell in the row
-			styledRow := table.Row{}
-			for _, cell := range row {
-				styledCell := greenCellStyle.Render(cell)
-				styledRow = append(styledRow, styledCell)
-			}
-			rows[i] = styledRow
-		} else {
-			//Apply default style.
-			styledRow := table.Row{}
-			for _, cell := range row {
-				styledCell := defaultCellStyle.Render(cell)
-				styledRow = append(styledRow, styledCell)
-			}
-			rows[i] = styledRow
-
 		}
 	}
 	m.installedTable.SetRows(rows)
@@ -510,7 +488,7 @@ func getLocalPackagesData() []localPackageItem {
 
 			if updateAvailable {
 				// Add a special style for the version if an update is available
-				versionStyled = localVersion + " -> " + registryItem.Version
+				versionStyled = "🔼 " + localVersion + " -> " + registryItem.Version
 			}
 			localItems = append(localItems, localPackageItem{
 				title:           registryItem.Name,
@@ -553,13 +531,6 @@ func (m model) handleSpinnerTick() (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(spinner.TickMsg{})
 	}
 	return m, cmd
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func truncateString(s string, maxLen int) string {
