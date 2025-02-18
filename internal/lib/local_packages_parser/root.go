@@ -10,7 +10,7 @@ import (
 )
 
 type LocalPackageItem struct {
-	SourceID string `json:"source_id"`
+	SourceID string `json:"sourceId"`
 	Version  string `json:"version"`
 }
 

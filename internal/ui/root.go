@@ -207,7 +207,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if !m.searchInput.Focused() {
 			switch msg.String() {
-			case "tab", "shift+tab":
+			case "tab", "shift+tab", "right", "left", "h", "l":
 				// Handle tab switching
 				m.activeTabIndex = (m.activeTabIndex + 1) % len(m.tabs)
 				// Update active state of tabs
@@ -350,44 +350,6 @@ func (m model) setupRegistryList() table.Model {
 	return m.registryTable
 }
 
-func (m model) initLists() (tea.Model, tea.Cmd) {
-	m.updating = true
-	localPackages := local_packages_parser.GetData(false)
-	installedItems := []localPackageItem{}
-
-	for _, localPackage := range localPackages.Packages {
-		regItem := registry_parser.GetBySourceId(localPackage.SourceID)
-		updateAvailable, remoteVersion := updater.CheckIfUpdateIsAvailable(localPackage.Version, regItem.Source.ID)
-
-		localItem := localPackageItem{
-			sourceId:        localPackage.SourceID,
-			version:         localPackage.Version,
-			updateAvailable: updateAvailable,
-		}
-
-		if regItem.Source.ID == "" {
-			localItem.title = localPackage.SourceID + " " + installedVersionStyle.Render(localPackage.Version)
-			localItem.desc = missingInRegistryStyle.Render("Not found in registry")
-		} else if updateAvailable {
-			localItem.title = regItem.Name + " " + installedVersionStyle.Render(localPackage.Version) + " " + updateAvailableStyle.Render("Update available: "+remoteVersion)
-			localItem.desc = regItem.Description
-		} else {
-			localItem.title = regItem.Name + " " + installedVersionStyle.Render(localPackage.Version)
-			localItem.desc = regItem.Description
-		}
-
-		installedItems = append(installedItems, localItem)
-	}
-
-	m.registryTable = m.setupRegistryList()
-
-	m.spinnerMessage = "Updates checked"
-	m.spinnerVisible = false
-	m.updated = true
-
-	return m, nil
-}
-
 func initialModel() model {
 	// Define table columns with proportional widths
 	columns := []table.Column{
@@ -443,8 +405,15 @@ func initialModel() model {
 		searchInput:    ti,
 	}
 
-	// Initialize the tables with data
-	m.installedTable.SetRows([]table.Row{})
+	installedItems := getLocalPackagesData()
+	installedRows := make([]table.Row, 0, len(installedItems))
+	for _, item := range installedItems {
+		installedRows = append(installedRows, table.Row{
+			item.sourceId,
+			truncateString(item.version, 20), // Add truncation with a reasonable default width
+		})
+	}
+	m.installedTable.SetRows(installedRows)
 	regItems := getRegistryItemsData()
 	registryRows := make([]table.Row, 0, len(regItems))
 	for _, item := range regItems {
@@ -528,7 +497,7 @@ func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) handleLocalPackagesMsg(msg localPackagesMsg) (tea.Model, tea.Cmd) {
+func getLocalPackagesData() []localPackageItem {
 	localItems := []localPackageItem{}
 
 	for _, item := range local_packages_parser.GetData(true).Packages {
@@ -544,8 +513,12 @@ func (m model) handleLocalPackagesMsg(msg localPackagesMsg) (tea.Model, tea.Cmd)
 		})
 	}
 
+	return localItems
+}
+
+func (m model) handleLocalPackagesMsg(msg localPackagesMsg) (tea.Model, tea.Cmd) {
 	// Update the installed table with the new data
-	m.updateInstalledTableRows(localItems)
+	m.updateInstalledTableRows(getLocalPackagesData())
 	return m, nil
 }
 
@@ -564,7 +537,6 @@ func min(a, b int) int {
 	return b
 }
 
-// Update the truncateString function
 func truncateString(s string, maxLen int) string {
 	if maxLen <= 0 {
 		return ""
