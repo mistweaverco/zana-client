@@ -64,9 +64,9 @@ grab it directtly from the [releases][releases-page].
 - [ ] Install `pkg:github` packages
 - [ ] Update `pkg:github` packages
 - [ ] Remove `pkg:github` packages
-- [ ] Install `pkg:pypi` packages
-- [ ] Update `pkg:pypi` packages
-- [ ] Remove `pkg:pypi` packages
+- [x] Install `pkg:pypi` packages
+- [x] Update `pkg:pypi` packages
+- [x] Remove `pkg:pypi` packages
 - [ ] Install `pkg:golang` packages
 - [ ] Update `pkg:golang` packages
 - [ ] Remove `pkg:golang` packages
