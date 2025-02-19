@@ -15,6 +15,7 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/updater"
+	"github.com/mistweaverco/zana-client/internal/modal"
 )
 
 var (
@@ -147,6 +148,9 @@ type model struct {
 	activeTabIndex int
 	searchInput    textinput.Model
 
+	visibleInstalledData []localPackageItem
+	visibleRegistryData  []registryPackageItem
+
 	width, height  int
 	spinner        spinner.Model
 	spinnerVisible bool
@@ -154,10 +158,18 @@ type model struct {
 	updating       bool
 	updated        bool
 	currentView    string
+	modal          *modal.Modal
 }
 
 func (m model) Init() tea.Cmd {
 	return m.spinner.Tick
+}
+
+func (m model) showModal(msg string) (tea.Model, tea.Cmd) {
+	newModal := modal.New(msg)
+	m.modal = &newModal
+	*m.modal, _ = m.modal.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+	return m, nil
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -168,6 +180,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Remove size limitations
 		m.width = msg.Width
 		m.height = msg.Height
+
+		if m.modal != nil {
+			*m.modal, _ = m.modal.Update(msg)
+		}
 
 		// Calculate dynamic column widths
 		nameWidth := int(float64(m.width) * 0.7) // 70% of width for name
@@ -203,6 +219,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// For all views
 	case tea.KeyMsg:
+		if m.modal != nil {
+			updatedModal, cmd := m.modal.Update(msg)
+			// Check for an empty message, which indicates a closed modal.
+			if updatedModal.Message == "" {
+				m.modal = nil
+				return m, cmd
+			}
+			m.modal = &updatedModal
+			return m, cmd
+		}
 		if !m.searchInput.Focused() {
 			switch msg.String() {
 			case "tab", "shift+tab", "right", "left", "h", "l":
@@ -258,7 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "i":
 					// TODO: view package details
-					return m, nil
+					return m.showModal("Not yet implemented")
 				case "backspace":
 					selectedIndex := m.installedTable.Cursor()
 					data := getLocalPackagesData()
@@ -270,9 +296,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				case "enter":
 					selectedIndex := m.installedTable.Cursor()
-					data := getLocalPackagesData()
-					row := data[selectedIndex]
+					row := m.visibleInstalledData[selectedIndex]
 					if updater.Install(row.sourceId, row.remoteVersion) == false {
+						newModal := modal.New("Error installing package")
+						m.modal = &newModal
 						log.Println("Error installing package")
 					}
 					return m, nil
@@ -286,17 +313,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "i":
 					// TODO: view package details
-					return m, nil
+					return m.showModal("Not yet implemented")
 				case "enter":
 					selectedIndex := m.registryTable.Cursor()
-					data := getRegistryItemsData()
-					row := data[selectedIndex]
+					row := m.visibleRegistryData[selectedIndex]
 					if updater.Install(row.sourceId, row.version) == false {
-						// TODO: show an error message via a toast
 						log.Println("Error installing package")
+						return m.showModal("Error installing package")
 					}
 					m.updateInstalledTableRows(getLocalPackagesData())
-					return m, nil
+					return m.showModal("Package installed successfully")
 				}
 			}
 		}
@@ -356,6 +382,10 @@ func (m *model) getRegistryPackages() []registryPackageItem {
 
 func (m model) View() string {
 	var content string
+
+	if m.modal != nil {
+		return m.modal.View()
+	}
 
 	switch m.activeTabIndex {
 	case 0:
@@ -471,6 +501,7 @@ func Show() {
 // Helper function to update table rows from package items
 func (m *model) updateInstalledTableRows(items []localPackageItem) {
 	rows := make([]table.Row, len(items))
+	m.visibleInstalledData = items
 
 	for i, item := range items {
 		// Get the version column width and truncate if necessary
@@ -486,11 +517,13 @@ func (m *model) updateInstalledTableRows(items []localPackageItem) {
 			truncatedVersion,
 		}
 	}
+
 	m.installedTable.SetRows(rows)
 }
 
 func (m *model) updateRegistryTableRows(items []registryPackageItem) {
 	rows := make([]table.Row, len(items))
+	m.visibleRegistryData = items
 	for i, item := range items {
 		// Get the version column width and truncate if necessary
 		versionWidth := m.registryTable.Columns()[1].Width
