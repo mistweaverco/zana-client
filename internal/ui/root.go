@@ -260,14 +260,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// TODO: view package details
 					return m, nil
 				case "backspace":
-					// TODO: remove package
+					selectedIndex := m.installedTable.Cursor()
+					data := getLocalPackagesData()
+					row := data[selectedIndex]
+					if updater.Remove(row.sourceId) == false {
+						log.Println("Error uninstalling package")
+					}
+					m.updateInstalledTableRows(getLocalPackagesData())
 					return m, nil
 				case "enter":
 					selectedIndex := m.installedTable.Cursor()
 					data := getLocalPackagesData()
 					row := data[selectedIndex]
 					if updater.Install(row.sourceId, row.remoteVersion) == false {
-						panic("Error installing package")
+						log.Println("Error installing package")
 					}
 					return m, nil
 				}
@@ -280,9 +286,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "i":
 					// TODO: view package details
-					return m, nil
-				case "backspace":
-					// TODO: remove package
 					return m, nil
 				case "enter":
 					selectedIndex := m.registryTable.Cursor()
@@ -423,6 +426,7 @@ func initialModel() model {
 		spinnerVisible: true,
 		spinnerMessage: "Checking for updates",
 		searchInput:    ti,
+		currentView:    "installed",
 	}
 
 	installedItems := getLocalPackagesData()

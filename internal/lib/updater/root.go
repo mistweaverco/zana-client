@@ -63,3 +63,14 @@ func Install(sourceId string, version string) bool {
 	}
 	return false
 }
+
+func Remove(sourceId string) bool {
+	provider := detectProvider(sourceId)
+	switch provider {
+	case ProviderNPM:
+		return npmProvider.Remove(sourceId)
+	case ProviderUnsupported:
+		// Unsupported provider
+	}
+	return false
+}
