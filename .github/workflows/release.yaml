@@ -20,10 +20,9 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PLATFORM=linux" >> $GITHUB_ENV
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
           go-version: 1.22
-          cache: true
       - name: Build for Linux
         run: ./scripts/build.sh
       - name: Release for Linux
@@ -44,10 +43,9 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PLATFORM=macos" >> $GITHUB_ENV
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
           go-version: 1.22
-          cache: true
       - name: Build for macOS
         run: ./scripts/build.sh
       - name: Release for macOS
@@ -68,10 +66,9 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "PLATFORM=windows" >> $GITHUB_ENV
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
           go-version: 1.22
-          cache: true
       - name: Build for Windows
         run: ./scripts/build.sh
       - name: Release for Windows
