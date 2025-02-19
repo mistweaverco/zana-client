@@ -46,7 +46,7 @@ func GetData(force bool) LocalPackageRoot {
 	return data
 }
 
-func AddLocalPackage(sourceId string, version string) {
+func AddLocalPackage(sourceId string, version string) error {
 	localPackageRoot := GetData(true)
 	packageExists := false
 
@@ -68,16 +68,41 @@ func AddLocalPackage(sourceId string, version string) {
 		})
 	}
 
-	localPackagesFile := files.GetNeovimConfigPath() + files.PS + "zana.json"
+	localPackagesFile := files.GetNeovimConfigPath() + files.PS + "zana-lock.json"
 	jsonData, err := json.Marshal(localPackageRoot)
 	if err != nil {
 		fmt.Println("Error marshaling JSON:", err)
-		return
+		return err
 	}
 
 	if err := os.WriteFile(localPackagesFile, jsonData, 0644); err != nil {
 		fmt.Println("Error writing to file:", err)
+		return err
 	}
+	return nil
+}
+
+func RemoveLocalPackage(sourceId string) error {
+	localPackageRoot := GetData(true)
+	for i, pkg := range localPackageRoot.Packages {
+		if pkg.SourceID == sourceId {
+			localPackageRoot.Packages = append(localPackageRoot.Packages[:i], localPackageRoot.Packages[i+1:]...)
+			break
+		}
+	}
+
+	localPackagesFile := files.GetNeovimConfigPath() + files.PS + "zana-lock.json"
+	jsonData, err := json.Marshal(localPackageRoot)
+	if err != nil {
+		fmt.Println("Error marshaling JSON:", err)
+		return err
+	}
+
+	if err := os.WriteFile(localPackagesFile, jsonData, 0644); err != nil {
+		fmt.Println("Error writing to file:", err)
+		return err
+	}
+	return nil
 }
 
 func GetBySourceId(sourceId string) LocalPackageItem {

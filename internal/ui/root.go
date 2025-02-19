@@ -120,8 +120,8 @@ func RenderTabs(m model, tabs []Tab, totalWidth int) string {
 
 // Item struct for the list
 type localPackageItem struct {
-	title, desc, sourceId, version string
-	updateAvailable                bool
+	title, desc, sourceId, version, remoteVersion string
+	updateAvailable                               bool
 }
 
 func (i localPackageItem) Title() string       { return i.title }
@@ -217,7 +217,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// TODO: remove package
 				return m, nil
 			case "enter":
-				// TODO: update/install package
+				selectedIndex := m.installedTable.Cursor()
+				data := getLocalPackagesData()
+				row := data[selectedIndex]
+				m.spinnerVisible = true
+				if updater.Install(row.sourceId, row.remoteVersion) == false {
+					panic("Error installing package")
+				}
 				return m, nil
 			case "/":
 				m.searchInput.Focus()
@@ -383,6 +389,10 @@ func initialModel() model {
 	installedItems := getLocalPackagesData()
 	installedRows := make([]table.Row, 0, len(installedItems))
 	for _, item := range installedItems {
+		version := item.version
+		if item.updateAvailable {
+			version = "🔼 " + version + " -> " + item.remoteVersion
+		}
 		installedRows = append(installedRows, table.Row{
 			item.title,
 			item.version,
@@ -492,18 +502,12 @@ func getLocalPackagesData() []localPackageItem {
 		// Check if this registry item is installed locally
 		if localVersion, isInstalled := localPackageMap[registryItem.Source.ID]; isInstalled {
 			updateAvailable, _ := updater.CheckIfUpdateIsAvailable(localVersion, registryItem.Version)
-
-			versionStyled := localVersion
-
-			if updateAvailable {
-				// Add a special style for the version if an update is available
-				versionStyled = "🔼 " + localVersion + " -> " + registryItem.Version
-			}
 			localItems = append(localItems, localPackageItem{
 				title:           registryItem.Name,
 				desc:            registryItem.Description,
 				sourceId:        registryItem.Source.ID,
-				version:         versionStyled,
+				version:         localVersion,
+				remoteVersion:   registryItem.Version,
 				updateAvailable: updateAvailable,
 			})
 		}
