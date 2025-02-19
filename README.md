@@ -9,7 +9,7 @@
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge)](https://github.com/mistweaverco/zana-client/releases/latest)
 [![Discord](assets/badge-discord.svg)](https://getzana.net/discord)
 
-[Requirements](#requirements) • [Install](#install) • [What is working?](#what-is-working)
+[Requirements](#requirements) • [Install](#install) • [Usage](#usage) • [What is working?](#what-is-working)
 
 <p></p>
 
@@ -21,7 +21,7 @@ Zana GUI 🕹️. Zana 📦 aims to be like Mason.nvim 🧱, but maintained by t
 
 Zana is swahili for "tools" or "tooling".
 
-A minimal package manager for Neovim which
+A minimal package manager for Neovim (and other editors) which
 uses the [Zana Registry][zana-registry] to install and manage packages.
 
 Easily install and manage LSP servers, DAP servers, linters, and formatters.
@@ -36,8 +36,7 @@ Currently, Zana is in pre-alpha and under active development.
 
 ## Requirements
 
-Because Zana is a package manager for Neovim, you need to have Neovim installed.
-Also, because Zana is a TUI, you need to have a terminal emulator installed.
+Zana is a TUI, therefore you need to have a terminal emulator available.
 
 Besides that, we shell out to `npm`, `pip`, `cargo`, `go`, and `git` to install packages,
 depending on the package type.
@@ -51,6 +50,48 @@ For the packages to work in Neovim, you need to
 
 Just head over to the [download page][download-page] or
 grab it directtly from the [releases][releases-page].
+
+## Usage
+
+The heart of Zana is its `zana-lock.json` file.
+This file is used to keep track of the installed packages and their versions.
+
+Zana expects `zana-lock.json` to be in the following directories:
+
+- Linux: `$XDG_CONFIG_HOME/zana/zana-lock.json` or `$HOME/.config/zana/zana-lock.json`
+- macOS: `$HOME/Library/Application Support/zana/zana-lock.json`
+- Windows: `%APPDATA%\zana\zana-lock.json`
+
+If the file does not exist,
+Zana will create it for you (when you install a package).
+
+1. Start Zana by running `zana` in your terminal.
+2. Use the arrow keys (or hjkl) to navigate the packages.
+3. Use `enter` to install a package.
+4. Use `enter` to update a package.
+5. Use `backspace` to remove a package.
+6. Use `/` to filter packages.
+7. Use `q` to quit Zana.
+
+It's advised to keep the `zana-lock.json` file in version control.
+
+### Where are the packages?
+
+Zana uses a basepath to install packages of different types.
+
+The basepath is:
+
+- Linux: `$XDG_DATA_HOME/zana` or `$HOME/.local/share/zana`
+- macOS: `$HOME/Library/Application Support/zana`
+- Windows: `%APPDATA%\zana`
+
+The packages are installed in the following directories:
+
+- `pkg:npm`: `$basepath/npm`
+- `pkg:pypi`: `$basepath/pypi`
+- `pkg:github`: `$basepath/github`
+- `pkg:golang`: `$basepath/golang`
+- `pkg:cargo`: `$basepath/cargo`
 
 ## What is working?
 
