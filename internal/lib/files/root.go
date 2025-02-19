@@ -24,19 +24,9 @@ func Download(url string, dest string) {
 }
 
 // GetAppLocalPackagesFilePath returns the path to the local packages file
-// e.g. /home/user/.config/nvim/zana-lock.json
+// e.g. /home/user/.config/zana/zana-lock.json
 func GetAppLocalPackagesFilePath() string {
-	return GetNeovimConfigPath() + PS + "zana-lock.json"
-}
-
-// GetNeovimConfigPath returns the path to the neovim config directory
-// e.g. /home/user/.config/nvim
-func GetNeovimConfigPath() string {
-	userConfigDir, err := os.UserConfigDir()
-	if err != nil {
-		panic(err)
-	}
-	return userConfigDir + PS + "nvim"
+	return GetAppDataPath() + PS + "zana-lock.json"
 }
 
 // GetAppDataPath returns the path to the app data directory

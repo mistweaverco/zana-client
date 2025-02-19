@@ -81,9 +81,9 @@ Zana uses a basepath to install packages of different types.
 
 The basepath is:
 
-- Linux: `$XDG_DATA_HOME/zana` or `$HOME/.local/share/zana`
-- macOS: `$HOME/Library/Application Support/zana`
-- Windows: `%APPDATA%\zana`
+- Linux: `$XDG_CONFIG_HOME/zana/packages` or `$HOME/.config/zana/packages`
+- macOS: `$HOME/Library/Application Support/zana/packages`
+- Windows: `%APPDATA%\zana\packages`
 
 The packages are installed in the following directories:
 

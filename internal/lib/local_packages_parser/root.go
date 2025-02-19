@@ -68,7 +68,7 @@ func AddLocalPackage(sourceId string, version string) error {
 		})
 	}
 
-	localPackagesFile := files.GetNeovimConfigPath() + files.PS + "zana-lock.json"
+	localPackagesFile := files.GetAppLocalPackagesFilePath()
 	jsonData, err := json.Marshal(localPackageRoot)
 	if err != nil {
 		fmt.Println("Error marshaling JSON:", err)
@@ -91,7 +91,7 @@ func RemoveLocalPackage(sourceId string) error {
 		}
 	}
 
-	localPackagesFile := files.GetNeovimConfigPath() + files.PS + "zana-lock.json"
+	localPackagesFile := files.GetAppLocalPackagesFilePath()
 	jsonData, err := json.Marshal(localPackageRoot)
 	if err != nil {
 		fmt.Println("Error marshaling JSON:", err)
