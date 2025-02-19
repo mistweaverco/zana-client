@@ -11,11 +11,13 @@ type Provider int
 const (
 	ProviderNPM Provider = iota
 	ProviderPyPi
+	ProviderGolang
 	ProviderUnsupported
 )
 
 var npmProvider NPMProvider = *NewProviderNPM()
 var pypiProvider PyPiProvider = *NewProviderPyPi()
+var golangProvider GolangProvider = *NewProviderGolang()
 
 func detectProvider(sourceId string) Provider {
 	var provider Provider
@@ -24,6 +26,8 @@ func detectProvider(sourceId string) Provider {
 		provider = ProviderNPM
 	case strings.HasPrefix(sourceId, pypiProvider.PREFIX):
 		provider = ProviderPyPi
+	case strings.HasPrefix(sourceId, golangProvider.PREFIX):
+		provider = ProviderGolang
 	default:
 		provider = ProviderUnsupported
 	}
@@ -42,6 +46,7 @@ func CheckIfUpdateIsAvailable(localVersion string, remoteVersion string) (bool, 
 func SyncAll() {
 	npmProvider.Sync()
 	pypiProvider.Sync()
+	golangProvider.Sync()
 }
 
 func Install(sourceId string, version string) bool {
@@ -51,6 +56,8 @@ func Install(sourceId string, version string) bool {
 		return npmProvider.Install(sourceId, version)
 	case ProviderPyPi:
 		return pypiProvider.Install(sourceId, version)
+	case ProviderGolang:
+		return golangProvider.Install(sourceId, version)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -64,6 +71,8 @@ func Remove(sourceId string) bool {
 		return npmProvider.Remove(sourceId)
 	case ProviderPyPi:
 		return pypiProvider.Remove(sourceId)
+	case ProviderGolang:
+		return golangProvider.Remove(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}

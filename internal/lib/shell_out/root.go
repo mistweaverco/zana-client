@@ -1,6 +1,7 @@
 package shell_out
 
 import (
+	"os"
 	"os/exec"
 )
 
@@ -8,6 +9,7 @@ func ShellOut(command string, args []string, dir string, env []string) (int, err
 	cmd := exec.Command(command, args...)
 	cmd.Dir = dir
 	if env != nil {
+		env = append(env, os.Environ()...)
 		cmd.Env = append(cmd.Env, env...)
 	}
 	err := cmd.Run()

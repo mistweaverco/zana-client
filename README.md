@@ -110,9 +110,9 @@ The packages are installed in the following directories:
 - [x] Install `pkg:pypi` packages
 - [x] Update `pkg:pypi` packages
 - [x] Remove `pkg:pypi` packages
-- [ ] Install `pkg:golang` packages
-- [ ] Update `pkg:golang` packages
-- [ ] Remove `pkg:golang` packages
+- [x] Install `pkg:golang` packages
+- [x] Update `pkg:golang` packages
+- [x] Remove `pkg:golang` packages
 - [ ] Install `pkg:cargo` packages
 - [ ] Update `pkg:cargo` packages
 - [ ] Remove `pkg:cargo` packages
