@@ -3,7 +3,7 @@ package updater
 import (
 	"strings"
 
-	"github.com/charmbracelet/log"
+	"log"
 )
 
 type GitHubProvider struct{}
@@ -17,5 +17,5 @@ func (g *GitHubProvider) getPackageId(sourceId string) string {
 
 // Install or update a package via the GitHub provider
 func (g *GitHubProvider) Install(sourceId string, version string) {
-	log.Info("Updating via GitHub provider", "source", sourceId)
+	log.Println("Updating via GitHub provider", "source", sourceId)
 }

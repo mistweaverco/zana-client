@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -152,6 +153,7 @@ type model struct {
 	spinnerMessage string
 	updating       bool
 	updated        bool
+	currentView    string
 }
 
 func (m model) Init() tea.Cmd {
@@ -199,6 +201,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+		// For all views
 	case tea.KeyMsg:
 		if !m.searchInput.Focused() {
 			switch msg.String() {
@@ -209,21 +212,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				for i := range m.tabs {
 					m.tabs[i].IsActive = (i == m.activeTabIndex)
 				}
-				return m, nil
-			case "i":
-				// TODO: view package details
-				return m, nil
-			case "backspace":
-				// TODO: remove package
-				return m, nil
-			case "enter":
-				selectedIndex := m.installedTable.Cursor()
-				data := getLocalPackagesData()
-				row := data[selectedIndex]
-				m.spinnerVisible = true
-				if updater.Install(row.sourceId, row.remoteVersion) == false {
-					panic("Error installing package")
-				}
+				m.currentView = m.tabs[m.activeTabIndex].Id
 				return m, nil
 			case "/":
 				m.searchInput.Focus()
@@ -256,6 +245,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filterInstalledTable(m.searchInput.Value())
 			} else {
 				m.filterRegistryTable(m.searchInput.Value())
+			}
+		}
+	}
+
+	// Only for specific views
+	switch m.currentView {
+	case "installed":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if !m.searchInput.Focused() {
+				switch msg.String() {
+				case "i":
+					// TODO: view package details
+					return m, nil
+				case "backspace":
+					// TODO: remove package
+					return m, nil
+				case "enter":
+					selectedIndex := m.installedTable.Cursor()
+					data := getLocalPackagesData()
+					row := data[selectedIndex]
+					if updater.Install(row.sourceId, row.remoteVersion) == false {
+						panic("Error installing package")
+					}
+					return m, nil
+				}
+			}
+		}
+	case "registry":
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			if !m.searchInput.Focused() {
+				switch msg.String() {
+				case "i":
+					// TODO: view package details
+					return m, nil
+				case "backspace":
+					// TODO: remove package
+					return m, nil
+				case "enter":
+					selectedIndex := m.registryTable.Cursor()
+					data := getRegistryItemsData()
+					row := data[selectedIndex]
+					if updater.Install(row.sourceId, row.version) == false {
+						// TODO: show an error message via a toast
+						log.Println("Error installing package")
+					}
+					m.updateInstalledTableRows(getLocalPackagesData())
+					return m, nil
+				}
 			}
 		}
 	}
