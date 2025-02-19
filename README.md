@@ -44,6 +44,9 @@ depending on the package type.
 
 E.g. if you want to install `pkg:npm` packages, you need to have `npm` installed.
 
+For the packages to work in Neovim, you need to
+[Zana.nvim](https://github.com/mistweaverco/zana.nvim) installed.
+
 ## Install
 
 Just head over to the [download page][download-page] or
