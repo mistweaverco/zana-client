@@ -4,9 +4,12 @@ import (
 	"os/exec"
 )
 
-func ShellOut(command string, args []string, dir string) (int, error) {
+func ShellOut(command string, args []string, dir string, env []string) (int, error) {
 	cmd := exec.Command(command, args...)
 	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = append(cmd.Env, env...)
+	}
 	err := cmd.Run()
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {

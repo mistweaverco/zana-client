@@ -460,6 +460,7 @@ func initialModel() model {
 	}
 
 	installedItems := getLocalPackagesData()
+	m.visibleInstalledData = installedItems
 	installedRows := make([]table.Row, 0, len(installedItems))
 	for _, item := range installedItems {
 		version := item.version
@@ -473,6 +474,7 @@ func initialModel() model {
 	}
 	m.installedTable.SetRows(installedRows)
 	regItems := getRegistryItemsData()
+	m.visibleRegistryData = regItems
 	registryRows := make([]table.Row, 0, len(regItems))
 	for _, item := range regItems {
 		registryRows = append(registryRows, table.Row{

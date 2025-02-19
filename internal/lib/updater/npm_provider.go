@@ -82,13 +82,13 @@ func syncPackages() bool {
 	if !packagesFound {
 		return true
 	}
-	pruneCode, err := shell_out.ShellOut("npm", []string{"prune"}, APP_PACKAGES_NPM_DIR)
+	pruneCode, err := shell_out.ShellOut("npm", []string{"prune"}, APP_PACKAGES_NPM_DIR, nil)
 	if err != nil || pruneCode != 0 {
 		fmt.Println("Error running npm prune:", err)
 		return false
 	}
 
-	installCode, err := shell_out.ShellOut("npm", []string{"install"}, APP_PACKAGES_NPM_DIR)
+	installCode, err := shell_out.ShellOut("npm", []string{"install"}, APP_PACKAGES_NPM_DIR, nil)
 	if err != nil || installCode != 0 {
 		fmt.Println("Error running npm install:", err)
 		return false
