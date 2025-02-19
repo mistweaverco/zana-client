@@ -84,7 +84,7 @@ do_gh_release() {
   else
     echo "Creating new release $GH_TAG"
     print_files
-    gh release create --generate-notes "$GH_TAG" "${FILES[@]}"
+    gh release create --generate-notes "$GH_TAG" "${FILES[@]}" || RELEASE_ACTION="edit" && do_gh_release
   fi
 }
 
