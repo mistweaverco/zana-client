@@ -162,8 +162,8 @@ func (m model) Init() tea.Cmd {
 	return m.spinner.Tick
 }
 
-func (m model) showModal(msg string) (tea.Model, tea.Cmd) {
-	newModal := modal.New(msg)
+func (m model) showModal(msg string, t string) (tea.Model, tea.Cmd) {
+	newModal := modal.New(msg, t)
 	m.modal = &newModal
 	*m.modal, _ = m.modal.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 	return m, nil

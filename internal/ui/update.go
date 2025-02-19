@@ -121,25 +121,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "i":
 					// TODO: view package details
-					return m.showModal("Not yet implemented")
+					return m.showModal("Not yet implemented", "warning")
 				case "backspace":
 					selectedIndex := m.installedTable.Cursor()
 					data := getLocalPackagesData()
 					row := data[selectedIndex]
 					if updater.Remove(row.sourceId) == false {
 						log.Println("Error uninstalling package")
+						m.updateInstalledTableRows(getLocalPackagesData())
+						return m.showModal("Error removing package", "error")
+					} else {
+						m.updateInstalledTableRows(getLocalPackagesData())
+						return m.showModal("Package removed successfully", "success")
 					}
-					m.updateInstalledTableRows(getLocalPackagesData())
-					return m, nil
 				case "enter":
 					selectedIndex := m.installedTable.Cursor()
 					row := m.visibleInstalledData[selectedIndex]
 					if updater.Install(row.sourceId, row.remoteVersion) == false {
-						newModal := modal.New("Error installing package")
+						newModal := modal.New("Error installing package", "error")
 						m.modal = &newModal
 						log.Println("Error installing package")
+						return m.showModal("Error installing package", "error")
+					} else {
+						return m.showModal("Package updated successfully", "success")
 					}
-					return m, nil
 				}
 			}
 		}
@@ -150,16 +155,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "i":
 					// TODO: view package details
-					return m.showModal("Not yet implemented")
+					return m.showModal("Not yet implemented", "warning")
 				case "enter":
 					selectedIndex := m.registryTable.Cursor()
 					row := m.visibleRegistryData[selectedIndex]
 					if updater.Install(row.sourceId, row.version) == false {
 						log.Println("Error installing package")
-						return m.showModal("Error installing package")
+						return m.showModal("Error installing package", "error")
 					}
 					m.updateInstalledTableRows(getLocalPackagesData())
-					return m.showModal("Package installed successfully")
+					return m.showModal("Package installed successfully", "success")
 				}
 			}
 		}

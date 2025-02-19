@@ -26,10 +26,12 @@ type Modal struct {
 	height   int
 	quitting bool
 	keys     keyMap
+	Type     string
 }
 
-func New(msg string) Modal {
+func New(msg string, t string) Modal {
 	return Modal{
+		Type:    t,
 		Message: msg,
 		keys:    keys,
 	}
@@ -84,14 +86,23 @@ func (m Modal) view(screenWidth, screenHeight int) string {
 
 	// Create the modal content
 	content := lipgloss.NewStyle().Width(modalWidth - 4).Align(lipgloss.Center).Render(m.Message)
-	closeButton := lipgloss.NewStyle().Padding(0, 1).Render("[Close]")
+	closeButton := lipgloss.NewStyle().Padding(0, 1).MarginTop(2).Render("[press enter to close]")
+
+	bordercolor := lipgloss.Color("#3ff")
+	if m.Type == "error" {
+		bordercolor = lipgloss.Color("#f33")
+	} else if m.Type == "success" {
+		bordercolor = lipgloss.Color("#3f3")
+	} else if m.Type == "warning" {
+		bordercolor = lipgloss.Color("#ff3")
+	}
 
 	// Create the modal box
 	modalBox := lipgloss.NewStyle().
 		Width(modalWidth).
 		Height(modalHeight).
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("205")).
+		BorderForeground(bordercolor).
 		Padding(1, 2).
 		Render(lipgloss.JoinVertical(lipgloss.Center, content, closeButton))
 
