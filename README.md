@@ -17,7 +17,9 @@
 
 <p></p>
 
-Zana GUI 🕹️. Zana 📦 aims to be like Mason.nvim 🧱, but maintained by the community 🌈.
+Zana 📦 aims to be like Mason.nvim 🧱,
+but with the goal of supporting 🌈 not only Neovim,
+but rather any other editor 🫶.
 
 Zana is swahili for "tools" or "tooling".
 
