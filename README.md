@@ -58,16 +58,21 @@ grab it directtly from the [releases][releases-page].
 - [x] Updates available for installed packages?
 - [x] Filtering packages
 - [x] Vim keymaps
-- [ ] Install `pkg:npm` packages
-- [ ] Update `pkg:npm` packages
+- [x] Install `pkg:npm` packages
+- [x] Update `pkg:npm` packages
+- [x] Remove `pkg:npm` packages
 - [ ] Install `pkg:github` packages
 - [ ] Update `pkg:github` packages
+- [ ] Remove `pkg:github` packages
 - [ ] Install `pkg:pypi` packages
 - [ ] Update `pkg:pypi` packages
+- [ ] Remove `pkg:pypi` packages
 - [ ] Install `pkg:golang` packages
 - [ ] Update `pkg:golang` packages
+- [ ] Remove `pkg:golang` packages
 - [ ] Install `pkg:cargo` packages
 - [ ] Update `pkg:cargo` packages
+- [ ] Remove `pkg:cargo` packages
 
 
 [download-page]: https://getzana.net/#download
