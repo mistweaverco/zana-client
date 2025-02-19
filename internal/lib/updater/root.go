@@ -9,29 +9,21 @@ import (
 type Provider int
 
 const (
-	ProviderGitHub Provider = iota
-	ProviderGitLab
-	ProviderBitbucket
-	ProviderNPM
+	ProviderNPM Provider = iota
+	ProviderPyPi
 	ProviderUnsupported
 )
 
-var gitHubProvider GitHubProvider = GitHubProvider{}
-var gitLabProvider GitLabProvider = GitLabProvider{}
-var bitbucketProvider BitbucketProvider = BitbucketProvider{}
-var npmProvider NPMProvider = NPMProvider{}
+var npmProvider NPMProvider = *NewProviderNPM()
+var pypiProvider PyPiProvider = *NewProviderPyPi()
 
 func detectProvider(sourceId string) Provider {
 	var provider Provider
 	switch {
-	case strings.HasPrefix(sourceId, "pkg:github"):
-		provider = ProviderGitHub
-	case strings.HasPrefix(sourceId, "pkg:gitlab"):
-		provider = ProviderGitLab
-	case strings.HasPrefix(sourceId, "pkg:bitbucket"):
-		provider = ProviderBitbucket
-	case strings.HasPrefix(sourceId, "pkg:npm"):
+	case strings.HasPrefix(sourceId, npmProvider.PREFIX):
 		provider = ProviderNPM
+	case strings.HasPrefix(sourceId, pypiProvider.PREFIX):
+		provider = ProviderPyPi
 	default:
 		provider = ProviderUnsupported
 	}
@@ -50,14 +42,10 @@ func CheckIfUpdateIsAvailable(localVersion string, remoteVersion string) (bool, 
 func Install(sourceId string, version string) bool {
 	provider := detectProvider(sourceId)
 	switch provider {
-	case ProviderGitHub:
-		gitHubProvider.Install(sourceId, version)
-	case ProviderGitLab:
-		gitLabProvider.Install(sourceId, version)
-	case ProviderBitbucket:
-		bitbucketProvider.Install(sourceId, version)
 	case ProviderNPM:
 		return npmProvider.Install(sourceId, version)
+	case ProviderPyPi:
+		return pypiProvider.Install(sourceId, version)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -69,6 +57,8 @@ func Remove(sourceId string) bool {
 	switch provider {
 	case ProviderNPM:
 		return npmProvider.Remove(sourceId)
+	case ProviderPyPi:
+		return pypiProvider.Remove(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}

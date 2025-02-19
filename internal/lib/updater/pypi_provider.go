@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -13,19 +12,19 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
 )
 
-type NPMProvider struct {
+type PyPiProvider struct {
 	APP_PACKAGES_DIR string
 	PREFIX           string
 }
 
-func NewProviderNPM() *NPMProvider {
-	p := &NPMProvider{}
-	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), "npm")
-	p.PREFIX = "pkg:npm/"
+func NewProviderPyPi() *PyPiProvider {
+	p := &PyPiProvider{}
+	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), "pypi")
+	p.PREFIX = "pkg:pypi/"
 	return p
 }
 
-func (p *NPMProvider) getRepo(sourceID string) string {
+func (p *PyPiProvider) getRepo(sourceID string) string {
 	re := regexp.MustCompile("^" + p.PREFIX + "(.*)")
 	matches := re.FindStringSubmatch(sourceID)
 	if len(matches) > 1 {
@@ -34,43 +33,40 @@ func (p *NPMProvider) getRepo(sourceID string) string {
 	return ""
 }
 
-func (p *NPMProvider) generatePackageJSON() bool {
+func (p *PyPiProvider) generateRequirementsTxt() bool {
 	found := false
-	packageJSON := struct {
-		Dependencies map[string]string `json:"dependencies"`
-	}{
-		Dependencies: make(map[string]string),
-	}
+	dependenciesTxt := make([]string, 0)
 
 	localPackages := local_packages_parser.GetData(true).Packages
 	for _, pkg := range localPackages {
 		if detectProvider(pkg.SourceID) != ProviderNPM {
 			continue
 		}
-		packageJSON.Dependencies[p.getRepo(pkg.SourceID)] = pkg.Version
+		dependenciesTxt = append(dependenciesTxt, fmt.Sprintf("%s==%s", p.getRepo(pkg.SourceID), pkg.Version))
 		found = true
 	}
 
-	filePath := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
+	filePath := filepath.Join(p.APP_PACKAGES_DIR, "requirements.txt")
 	file, err := os.Create(filePath)
 	if err != nil {
-		fmt.Println("Error creating package.json:", err)
+		log.Println("Error creating requirements.txt:", err)
 		return false
 	}
-	defer file.Close()
 
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	err = encoder.Encode(packageJSON)
-	if err != nil {
-		fmt.Println("Error encoding package.json:", err)
-		return false
+	for _, line := range dependenciesTxt {
+		_, err := file.WriteString(line + "\n")
+		if err != nil {
+			log.Println("Error writing to requirements.txt:", err)
+			return false
+		}
 	}
+
+	defer file.Close()
 
 	return found
 }
 
-func (p *NPMProvider) Clean() bool {
+func (p *PyPiProvider) Clean() bool {
 	err := os.RemoveAll(p.APP_PACKAGES_DIR)
 	if err != nil {
 		log.Println("Error removing directory:", err)
@@ -79,7 +75,7 @@ func (p *NPMProvider) Clean() bool {
 	return p.syncPackages()
 }
 
-func (p *NPMProvider) syncPackages() bool {
+func (p *PyPiProvider) syncPackages() bool {
 	if _, err := os.Stat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
 		err := os.Mkdir(p.APP_PACKAGES_DIR, 0755)
 		if err != nil {
@@ -88,27 +84,30 @@ func (p *NPMProvider) syncPackages() bool {
 		}
 	}
 
-	packagesFound := p.generatePackageJSON()
+	packagesFound := p.generateRequirementsTxt()
 
 	if !packagesFound {
 		return true
 	}
-	pruneCode, err := shell_out.ShellOut("npm", []string{"prune"}, p.APP_PACKAGES_DIR, nil)
-	if err != nil || pruneCode != 0 {
-		fmt.Println("Error running npm prune:", err)
-		return false
-	}
 
-	installCode, err := shell_out.ShellOut("npm", []string{"install"}, p.APP_PACKAGES_DIR, nil)
+	// TODO: find a non-hacky way to prune the packages in python
+
+	installCode, err := shell_out.ShellOut("pip", []string{
+		"install",
+		"-r",
+		"requirements.txt",
+		"--target",
+		"pkgs",
+	}, p.APP_PACKAGES_DIR, nil)
 	if err != nil || installCode != 0 {
-		fmt.Println("Error running npm install:", err)
+		log.Println("Error running pip install:", err)
 		return false
 	}
 
 	return installCode == 0
 }
 
-func (p *NPMProvider) Install(sourceID, version string) bool {
+func (p *PyPiProvider) Install(sourceID, version string) bool {
 	err := local_packages_parser.AddLocalPackage(sourceID, version)
 	if err != nil {
 		return false
@@ -116,7 +115,7 @@ func (p *NPMProvider) Install(sourceID, version string) bool {
 	return p.syncPackages()
 }
 
-func (p *NPMProvider) Remove(sourceID string) bool {
+func (p *PyPiProvider) Remove(sourceID string) bool {
 	err := local_packages_parser.RemoveLocalPackage(sourceID)
 	if err != nil {
 		return false
