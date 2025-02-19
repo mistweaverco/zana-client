@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mistweaverco/zana-client/internal/lib/files"
+	"github.com/mistweaverco/zana-client/internal/lib/updater"
 )
 
 var DEFAULT_REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/registry.json.zip"
@@ -18,6 +19,8 @@ type downloadStartedMsg struct{}
 type downloadFinishedMsg struct{}
 type unzipStartedMsg struct{}
 type unzipFinishedMsg struct{}
+type syncLocalPackagesStartedMsg struct{}
+type syncLocalPackagesFinishedMsg struct{}
 
 type model struct {
 	spinner          spinner.Model
@@ -26,7 +29,6 @@ type model struct {
 	message          string
 	downloading      bool
 	downloadFinished bool
-	unzipFinished    bool
 	registryURL      string
 }
 
@@ -68,6 +70,19 @@ func (m model) performUnzip() tea.Cmd {
 	}
 }
 
+func (m model) syncLocalPackages() tea.Cmd {
+	return func() tea.Msg {
+		return syncLocalPackagesStartedMsg{}
+	}
+}
+
+func (m model) performSyncLocalPackages() tea.Cmd {
+	return func() tea.Msg {
+		updater.SyncAll()
+		return syncLocalPackagesFinishedMsg{}
+	}
+}
+
 func (m model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, m.downloadRegistry())
 }
@@ -105,7 +120,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case unzipFinishedMsg:
 		m.message = "Registry unzipped successfully!"
-		m.unzipFinished = true
+		return m, m.syncLocalPackages()
+
+	case syncLocalPackagesStartedMsg:
+		m.message = "Syncing local packages"
+		return m, m.performSyncLocalPackages()
+
+	case syncLocalPackagesFinishedMsg:
+		m.message = "Local packages synced successfully!"
 		m.quitting = true
 		return m, tea.Quit
 

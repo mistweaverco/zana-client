@@ -72,10 +72,10 @@ func (p *PyPiProvider) Clean() bool {
 		log.Println("Error removing directory:", err)
 		return false
 	}
-	return p.syncPackages()
+	return p.Sync()
 }
 
-func (p *PyPiProvider) syncPackages() bool {
+func (p *PyPiProvider) Sync() bool {
 	if _, err := os.Stat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
 		err := os.Mkdir(p.APP_PACKAGES_DIR, 0755)
 		if err != nil {
@@ -112,7 +112,7 @@ func (p *PyPiProvider) Install(sourceID, version string) bool {
 	if err != nil {
 		return false
 	}
-	return p.syncPackages()
+	return p.Sync()
 }
 
 func (p *PyPiProvider) Remove(sourceID string) bool {
@@ -120,5 +120,5 @@ func (p *PyPiProvider) Remove(sourceID string) bool {
 	if err != nil {
 		return false
 	}
-	return p.syncPackages()
+	return p.Sync()
 }

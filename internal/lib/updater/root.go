@@ -39,6 +39,11 @@ func CheckIfUpdateIsAvailable(localVersion string, remoteVersion string) (bool, 
 	return false, ""
 }
 
+func SyncAll() {
+	npmProvider.Sync()
+	pypiProvider.Sync()
+}
+
 func Install(sourceId string, version string) bool {
 	provider := detectProvider(sourceId)
 	switch provider {
