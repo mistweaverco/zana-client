@@ -39,7 +39,7 @@ func (p *PyPiProvider) generateRequirementsTxt() bool {
 
 	localPackages := local_packages_parser.GetData(true).Packages
 	for _, pkg := range localPackages {
-		if detectProvider(pkg.SourceID) != ProviderNPM {
+		if detectProvider(pkg.SourceID) != ProviderPyPi {
 			continue
 		}
 		dependenciesTxt = append(dependenciesTxt, fmt.Sprintf("%s==%s", p.getRepo(pkg.SourceID), pkg.Version))
