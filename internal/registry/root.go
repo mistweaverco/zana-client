@@ -10,22 +10,13 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
 
-// REGISTRY_URL is the URL to the latest registry file
-// use the environment variable ZANA_REGISTRY_URL to override
 var DEFAULT_REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/registry.json.zip"
-var OVERRIDE_REGISTRY_URL = os.Getenv("ZANA_REGISTRY_URL")
-
-var REGISTRY_URL = func() string {
-	if OVERRIDE_REGISTRY_URL != "" {
-		return OVERRIDE_REGISTRY_URL
-	}
-	return DEFAULT_REGISTRY_URL
-}()
 
 type errMsg error
 
+type downloadStartedMsg struct{}
 type downloadFinishedMsg struct{}
-
+type unzipStartedMsg struct{}
 type unzipFinishedMsg struct{}
 
 type model struct {
@@ -36,50 +27,54 @@ type model struct {
 	downloading      bool
 	downloadFinished bool
 	unzipFinished    bool
+	registryURL      string
 }
 
 func initialModel() model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	return model{spinner: s, message: "Getting latest info from the registry"}
+	registryURL := DEFAULT_REGISTRY_URL
+	override := os.Getenv("ZANA_REGISTRY_URL")
+	if override != "" {
+		registryURL = override
+	}
+	return model{spinner: s, message: "Getting latest info from the registry", registryURL: registryURL}
 }
 
-func (m model) Unzip() model {
-	files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
-	m.message = "Registry unzipped successfully!"
-	m.unzipFinished = true
-	return m
+func (m model) downloadRegistry() tea.Cmd {
+	return func() tea.Msg {
+		return downloadStartedMsg{}
+	}
 }
 
-func (m model) downloadRegistry() model {
-	m.message = "Downloading registry"
-	m.downloading = true
-	files.Download(REGISTRY_URL, files.GetTempPath()+files.PS+"zana-registry.json.zip")
-	m.message = "Registry downloaded successfully!"
-	m.downloadFinished = true
-	return m
+func (m model) performDownload() tea.Cmd {
+	return func() tea.Msg {
+		files.Download(m.registryURL, files.GetTempPath()+files.PS+"zana-registry.json.zip")
+		return downloadFinishedMsg{}
+	}
+}
+
+func (m model) unzipRegistry() tea.Cmd {
+	return func() tea.Msg {
+		return unzipStartedMsg{}
+	}
+}
+
+func (m model) performUnzip() tea.Cmd {
+	return func() tea.Msg {
+		files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
+		return unzipFinishedMsg{}
+	}
 }
 
 func (m model) Init() tea.Cmd {
-	return m.spinner.Tick
+	return tea.Batch(m.spinner.Tick, m.downloadRegistry())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-	if !m.downloading {
-		m.spinner, cmd = m.spinner.Update(msg)
-		m = m.downloadRegistry()
-	}
-	if m.downloadFinished {
-		m.spinner, cmd = m.spinner.Update(msg)
-		m = m.Unzip()
-	}
-	if m.unzipFinished {
-		m.spinner, cmd = m.spinner.Update(msg)
-		m.quitting = true
-		return m, tea.Quit
-	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -94,6 +89,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 		return m, nil
 
+	case downloadStartedMsg:
+		m.message = "Downloading registry"
+		m.downloading = true
+		return m, m.performDownload()
+
+	case downloadFinishedMsg:
+		m.message = "Registry downloaded successfully!"
+		m.downloadFinished = true
+		return m, m.unzipRegistry()
+
+	case unzipStartedMsg:
+		m.message = "Unzipping registry"
+		return m, m.performUnzip()
+
+	case unzipFinishedMsg:
+		m.message = "Registry unzipped successfully!"
+		m.unzipFinished = true
+		m.quitting = true
+		return m, tea.Quit
+
 	default:
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
@@ -104,7 +119,7 @@ func (m model) View() string {
 	if m.err != nil {
 		return m.err.Error()
 	}
-	str := fmt.Sprintf("\n\n   %s "+m.message+"\n\n", m.spinner.View())
+	str := fmt.Sprintf("\n\n  %s "+m.message+"\n\n", m.spinner.View())
 	if m.quitting {
 		return str + "\n"
 	}
