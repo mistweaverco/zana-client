@@ -210,6 +210,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.tabs[i].IsActive = (i == m.activeTabIndex)
 				}
 				return m, nil
+			case "i":
+				// TODO: view package details
+				return m, nil
+			case "backspace":
+				// TODO: remove package
+				return m, nil
+			case "enter":
+				// TODO: update/install package
+				return m, nil
 			case "/":
 				m.searchInput.Focus()
 				return m, m.searchInput.Focus()

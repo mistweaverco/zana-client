@@ -52,8 +52,8 @@ grab it directtly from the [releases][releases-page].
 ## What is working?
 
 - [x] [registry](https://github.com/mistweaverco/zana-registry) updates on startup
-- [ ] Updates available for installed packages?
-- [ ] Filtering packages
+- [x] Updates available for installed packages?
+- [x] Filtering packages
 - [x] Vim keymaps
 - [ ] Install `pkg:npm` packages
 - [ ] Update `pkg:npm` packages
