@@ -5,8 +5,8 @@ import (
 	"runtime"
 
 	"github.com/charmbracelet/log"
+	"github.com/mistweaverco/zana-client/internal/boot"
 	"github.com/mistweaverco/zana-client/internal/config"
-	"github.com/mistweaverco/zana-client/internal/registry"
 	"github.com/mistweaverco/zana-client/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +23,7 @@ var rootCmd = &cobra.Command{
 			log.Info("Version", runtime.GOOS, VERSION)
 			return
 		} else {
-			registry.Update()
+			boot.Start()
 			ui.Show()
 		}
 	},

@@ -1,4 +1,4 @@
-package registry
+package boot
 
 import (
 	"fmt"
@@ -148,7 +148,7 @@ func (m model) View() string {
 	return str
 }
 
-func Update() {
+func Start() {
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Println(err)
