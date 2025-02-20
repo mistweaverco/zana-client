@@ -67,11 +67,11 @@ func initialModel() model {
 	for _, item := range installedItems {
 		version := item.version
 		if item.updateAvailable {
-			version = "🔼 " + version + " -> " + item.remoteVersion
+			version = " " + version + " -> " + item.remoteVersion
 		}
 		installedRows = append(installedRows, table.Row{
 			item.title,
-			item.version,
+			version,
 		})
 	}
 	m.installedTable.SetRows(installedRows)

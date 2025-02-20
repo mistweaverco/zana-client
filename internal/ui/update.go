@@ -141,8 +141,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						newModal := modal.New("Error installing package", "error")
 						m.modal = &newModal
 						log.Println("Error installing package")
+						m.updateInstalledTableRows(getLocalPackagesData())
 						return m.showModal("Error installing package", "error")
 					} else {
+						m.updateInstalledTableRows(getLocalPackagesData())
 						return m.showModal("Package updated successfully", "success")
 					}
 				}
