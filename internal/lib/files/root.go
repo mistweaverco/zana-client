@@ -46,9 +46,9 @@ func GetTempPath() string {
 }
 
 // GetAppRegistryFilePath returns the path to the registry file
-// e.g. /home/user/.config/zana/registry.json
+// e.g. /home/user/.config/zana/zana-registry.json
 func GetAppRegistryFilePath() string {
-	return GetAppDataPath() + PS + "registry.json"
+	return GetAppDataPath() + PS + "zana-registry.json"
 }
 
 // GetAppPackagesPath returns the path to the packages directory

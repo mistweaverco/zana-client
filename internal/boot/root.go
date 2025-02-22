@@ -11,7 +11,7 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/updater"
 )
 
-var DEFAULT_REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/registry.json.zip"
+var DEFAULT_REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
 
 type errMsg error
 
