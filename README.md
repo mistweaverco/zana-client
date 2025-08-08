@@ -9,7 +9,7 @@
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge)](https://github.com/mistweaverco/zana-client/releases/latest)
 [![Discord](assets/badge-discord.svg)](https://getzana.net/discord)
 
-[Requirements](#requirements) • [Install](#install) • [Usage](#usage) • [What is working?](#what-is-working)
+[Requirements](#requirements) • [Install](#install) • [Usage](#usage) • [What's working?](#whats-working)
 
 <p></p>
 
@@ -58,7 +58,11 @@ grab it directtly from the [releases][releases-page].
 The heart of Zana is its `zana-lock.json` file.
 This file is used to keep track of the installed packages and their versions.
 
-Zana expects `zana-lock.json` to be in the following directories:
+You can tell Zana where to find the `zana-lock.json` and
+the packages by setting the environment variable `ZANA_HOME`.
+
+If `ZANA_HOME` is not set,
+Zana will look for the `zana-lock.json` file in the default locations:
 
 - Linux: `$XDG_CONFIG_HOME/zana/zana-lock.json` or `$HOME/.config/zana/zana-lock.json`
 - macOS: `$HOME/Library/Application Support/zana/zana-lock.json`
@@ -81,7 +85,10 @@ It's advised to keep the `zana-lock.json` file in version control.
 
 Zana uses a basepath to install packages of different types.
 
-The basepath is:
+If you have set the `ZANA_HOME` environment variable,
+the basepath will be `$ZANA_HOME/packages`.
+
+If `ZANA_HOME` isn't set, the basepath is:
 
 - Linux: `$XDG_CONFIG_HOME/zana/packages` or `$HOME/.config/zana/packages`
 - macOS: `$HOME/Library/Application Support/zana/packages`
@@ -95,7 +102,7 @@ The packages are installed in the following directories:
 - `pkg:golang`: `$basepath/golang`
 - `pkg:cargo`: `$basepath/cargo`
 
-## What is working?
+## What's working?
 
 - [x] [registry](https://github.com/mistweaverco/zana-registry) updates on startup
 - [x] Updates available for installed packages?
