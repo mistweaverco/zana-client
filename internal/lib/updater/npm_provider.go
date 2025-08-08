@@ -322,7 +322,15 @@ func (p *NPMProvider) Install(sourceID, version string) bool {
 	// Get the package name before adding it to local packages
 	packageName := p.getRepo(sourceID)
 
-	err := local_packages_parser.AddLocalPackage(sourceID, version)
+	// Check if package is already installed with the correct version
+	nodeModulesPath := filepath.Join(p.APP_PACKAGES_DIR, "node_modules", packageName)
+	pkg, err := p.readPackageJSON(nodeModulesPath)
+	if err == nil && pkg != nil && pkg.Version == version {
+		// Already installed, skip
+		return true
+	}
+
+	err = local_packages_parser.AddLocalPackage(sourceID, version)
 	if err != nil {
 		return false
 	}

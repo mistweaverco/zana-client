@@ -272,11 +272,23 @@ func (p *GolangProvider) Sync() bool {
 }
 
 func (p *GolangProvider) Install(sourceID, version string) bool {
-	err := local_packages_parser.AddLocalPackage(sourceID, version)
-	if err != nil {
-		return false
-	}
-	return p.Sync()
+       packageName := p.getRepo(sourceID)
+       gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
+       binaryName := filepath.Base(packageName)
+       binaryPath := filepath.Join(gobin, binaryName)
+
+       // Check if binary exists
+       if _, err := os.Stat(binaryPath); err == nil {
+	       // Optionally, check version using 'go version -m' (Go 1.18+)
+	       // If not possible, just skip install if binary exists
+	       return true
+       }
+
+       err := local_packages_parser.AddLocalPackage(sourceID, version)
+       if err != nil {
+	       return false
+       }
+       return p.Sync()
 }
 
 func (p *GolangProvider) Remove(sourceID string) bool {

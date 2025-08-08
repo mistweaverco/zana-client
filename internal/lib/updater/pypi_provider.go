@@ -376,11 +376,23 @@ func (p *PyPiProvider) Sync() bool {
 }
 
 func (p *PyPiProvider) Install(sourceID, version string) bool {
-	err := local_packages_parser.AddLocalPackage(sourceID, version)
-	if err != nil {
-		return false
-	}
-	return p.Sync()
+       packageName := p.getRepo(sourceID)
+       packagePath := filepath.Join(p.APP_PACKAGES_DIR, packageName)
+       info, err := p.readPackageInfo(packagePath)
+       if err == nil && info != nil && info.Version == version {
+	       // Already installed, skip
+	       return true
+       }
+
+       err = local_packages_parser.AddLocalPackage(sourceID, version)
+       if err != nil {
+	       return false
+       }
+
+       // Sync to install the package
+       success := p.Sync()
+
+       return success
 }
 
 func (p *PyPiProvider) Remove(sourceID string) bool {
