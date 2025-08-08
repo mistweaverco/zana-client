@@ -3,6 +3,7 @@ package boot
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,6 +18,7 @@ type errMsg error
 
 type downloadStartedMsg struct{}
 type downloadFinishedMsg struct{}
+type cacheValidMsg struct{}
 type unzipStartedMsg struct{}
 type unzipFinishedMsg struct{}
 type syncLocalPackagesStartedMsg struct{}
@@ -30,9 +32,10 @@ type model struct {
 	downloading      bool
 	downloadFinished bool
 	registryURL      string
+	cacheMaxAge      time.Duration
 }
 
-func initialModel() model {
+func initialModel(cacheMaxAge time.Duration) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
@@ -41,7 +44,22 @@ func initialModel() model {
 	if override != "" {
 		registryURL = override
 	}
-	return model{spinner: s, message: "Getting latest info from the registry", registryURL: registryURL}
+	return model{
+		spinner:     s,
+		message:     "Checking registry cache...",
+		registryURL: registryURL,
+		cacheMaxAge: cacheMaxAge,
+	}
+}
+
+func (m model) checkCache() tea.Cmd {
+	return func() tea.Msg {
+		cachePath := files.GetRegistryCachePath()
+		if files.IsCacheValid(cachePath, m.cacheMaxAge) {
+			return cacheValidMsg{}
+		}
+		return downloadStartedMsg{}
+	}
 }
 
 func (m model) downloadRegistry() tea.Cmd {
@@ -52,7 +70,11 @@ func (m model) downloadRegistry() tea.Cmd {
 
 func (m model) performDownload() tea.Cmd {
 	return func() tea.Msg {
-		files.Download(m.registryURL, files.GetTempPath()+files.PS+"zana-registry.json.zip")
+		cachePath := files.GetRegistryCachePath()
+		err := files.DownloadWithCache(m.registryURL, cachePath, m.cacheMaxAge)
+		if err != nil {
+			return errMsg(err)
+		}
 		return downloadFinishedMsg{}
 	}
 }
@@ -65,7 +87,8 @@ func (m model) unzipRegistry() tea.Cmd {
 
 func (m model) performUnzip() tea.Cmd {
 	return func() tea.Msg {
-		files.Unzip(files.GetTempPath()+files.PS+"zana-registry.json.zip", files.GetAppDataPath())
+		cachePath := files.GetRegistryCachePath()
+		files.Unzip(cachePath, files.GetAppDataPath())
 		return unzipFinishedMsg{}
 	}
 }
@@ -84,7 +107,7 @@ func (m model) performSyncLocalPackages() tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.downloadRegistry())
+	return tea.Batch(m.spinner.Tick, m.checkCache())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -103,6 +126,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.err = msg
 		return m, nil
+
+	case cacheValidMsg:
+		m.message = "Using cached registry"
+		return m, m.unzipRegistry()
 
 	case downloadStartedMsg:
 		m.message = "Downloading registry"
@@ -148,8 +175,8 @@ func (m model) View() string {
 	return str
 }
 
-func Start() {
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+func Start(cacheMaxAge time.Duration) {
+	p := tea.NewProgram(initialModel(cacheMaxAge), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

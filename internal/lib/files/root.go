@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 var PS = string(os.PathSeparator)
@@ -27,6 +28,40 @@ func Download(url string, dest string) {
 // e.g. /home/user/.config/zana/zana-lock.json
 func GetAppLocalPackagesFilePath() string {
 	return GetAppDataPath() + PS + "zana-lock.json"
+}
+
+func FileExists(path string) bool {
+	_, err :=
+		os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return err == nil
+}
+
+func GenerateGitIgnoreAllFiles(dir string) bool {
+	if FileExists(dir + PS + ".gitignore") {
+		return true
+	}
+	EnsureDirExists(dir)
+	contents := `# Ignore all files
+*
+# Except directories
+!.gitignore
+`
+	filePath := dir + PS + ".gitignore"
+	file, err := os.Create(filePath)
+	if err != nil {
+		fmt.Println("Error creating .gitignore:", err)
+		return false
+	}
+	defer file.Close()
+	_, err = file.WriteString(contents)
+	if err != nil {
+		fmt.Println("Error writing to .gitignore:", err)
+		return false
+	}
+	return true
 }
 
 // GetAppDataPath returns the path to the app data directory
@@ -60,6 +95,14 @@ func GetAppRegistryFilePath() string {
 // e.g. /home/user/.config/zana/packages
 func GetAppPackagesPath() string {
 	return EnsureDirExists(GetAppDataPath() + PS + "packages")
+}
+
+// GetAppBinPath returns the path to the bin directory
+// e.g. /home/user/.config/zana/bin
+func GetAppBinPath() string {
+	path := GetAppDataPath() + PS + "bin"
+	GenerateGitIgnoreAllFiles(path)
+	return EnsureDirExists(path)
 }
 
 func EnsureDirExists(path string) string {
@@ -131,4 +174,47 @@ func Unzip(src, dest string) error {
 	}
 
 	return nil
+}
+
+// GetRegistryCachePath returns the path to the registry cache file
+// e.g. /home/user/.config/zana/registry-cache.json.zip
+func GetRegistryCachePath() string {
+	return GetAppDataPath() + PS + "registry-cache.json.zip"
+}
+
+// IsCacheValid checks if the cache file exists and is newer than the specified duration
+func IsCacheValid(cachePath string, maxAge time.Duration) bool {
+	fileInfo, err := os.Stat(cachePath)
+	if err != nil {
+		return false // Cache file doesn't exist
+	}
+
+	// Check if the file is older than maxAge
+	return time.Since(fileInfo.ModTime()) < maxAge
+}
+
+// DownloadWithCache downloads a file with caching support
+func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error {
+	// Check if cache is valid
+	if IsCacheValid(cachePath, maxAge) {
+		return nil // Cache is valid, no need to download
+	}
+
+	// Download the file
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Create the cache file
+	out, err := os.Create(cachePath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Copy the response to the cache file
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
