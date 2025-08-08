@@ -3,6 +3,7 @@ package zana
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/spf13/cobra"
@@ -25,6 +26,8 @@ var envCmd = &cobra.Command{
 		}
 		pathString := files.GetAppBinPath()
 		if shell == "pwsh" || shell == "powershell" {
+			// Convert path separators for Windows
+			pathString = strings.ReplaceAll(pathString, "/", "\\")
 			fmt.Println(`$env:PATH = "` + pathString + `;" + $env:PATH`)
 		} else {
 			fmt.Println(`#!/bin/sh

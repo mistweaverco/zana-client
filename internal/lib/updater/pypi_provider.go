@@ -130,6 +130,11 @@ func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error)
 func (p *PyPiProvider) findPythonScripts(packagePath string) ([]string, error) {
 	var scripts []string
 
+	// Check if we're on Windows
+	isWindows := strings.Contains(strings.ToLower(os.Getenv("OS")), "windows") || 
+		strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "msys") ||
+		strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "cygwin")
+
 	// When using --target, pip doesn't create a bin directory
 	// Instead, we need to look for the package's entry points
 	// For now, let's look for any executable files in the package root
@@ -143,7 +148,7 @@ func (p *PyPiProvider) findPythonScripts(packagePath string) ([]string, error) {
 			// Check if it's executable (on Unix) or has .exe extension (on Windows)
 			scriptPath := filepath.Join(packagePath, entry.Name())
 			if info, err := entry.Info(); err == nil {
-				if info.Mode()&0111 != 0 || strings.HasSuffix(entry.Name(), ".exe") {
+				if info.Mode()&0111 != 0 || (isWindows && strings.HasSuffix(entry.Name(), ".exe")) {
 					scripts = append(scripts, scriptPath)
 				}
 			}
@@ -166,7 +171,7 @@ func (p *PyPiProvider) findPythonScripts(packagePath string) ([]string, error) {
 					// Check if it's executable (on Unix) or has .exe extension (on Windows)
 					scriptPath := filepath.Join(binPath, entry.Name())
 					if info, err := entry.Info(); err == nil {
-						if info.Mode()&0111 != 0 || strings.HasSuffix(entry.Name(), ".exe") {
+						if info.Mode()&0111 != 0 || (isWindows && strings.HasSuffix(entry.Name(), ".exe")) {
 							scripts = append(scripts, scriptPath)
 						}
 					}
@@ -238,7 +243,21 @@ func (p *PyPiProvider) createPythonWrapper(originalScript, wrapperPath string) e
 		// Fallback to the main packages directory
 		sitePackagesDir = p.APP_PACKAGES_DIR
 	}
+	
+	// Check if we're on Windows
+	isWindows := strings.Contains(strings.ToLower(os.Getenv("OS")), "windows") || 
+		strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "msys") ||
+		strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "cygwin")
+	
+	if isWindows {
+		return p.createWindowsWrapper(originalScript, wrapperPath, sitePackagesDir)
+	} else {
+		return p.createUnixWrapper(originalScript, wrapperPath, sitePackagesDir)
+	}
+}
 
+// createUnixWrapper creates a Unix shell wrapper script
+func (p *PyPiProvider) createUnixWrapper(originalScript, wrapperPath, sitePackagesDir string) error {
 	// Create the wrapper script content
 	wrapperContent := fmt.Sprintf(`#!/bin/sh
 # Wrapper script for %s
@@ -253,6 +272,36 @@ exec "%s" "$@"
 
 	// Write the wrapper script
 	err := os.WriteFile(wrapperPath, []byte(wrapperContent), 0755)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// createWindowsWrapper creates a Windows batch file wrapper
+func (p *PyPiProvider) createWindowsWrapper(originalScript, wrapperPath, sitePackagesDir string) error {
+	// Convert to .bat extension for Windows
+	wrapperPath = strings.TrimSuffix(wrapperPath, ".exe") + ".bat"
+	
+	// Convert paths to Windows format
+	sitePackagesDir = strings.ReplaceAll(sitePackagesDir, "/", "\\")
+	originalScript = strings.ReplaceAll(originalScript, "/", "\\")
+	
+	// Create the wrapper script content
+	wrapperContent := fmt.Sprintf(`@echo off
+REM Wrapper script for %s
+REM Sets up Python path to include zana-installed packages
+
+REM Add the zana Python packages to PYTHONPATH
+set PYTHONPATH=%s;%%PYTHONPATH%%
+
+REM Execute the original script
+"%s" %%*
+`, filepath.Base(originalScript), sitePackagesDir, originalScript)
+
+	// Write the wrapper script
+	err := os.WriteFile(wrapperPath, []byte(wrapperContent), 0644)
 	if err != nil {
 		return err
 	}

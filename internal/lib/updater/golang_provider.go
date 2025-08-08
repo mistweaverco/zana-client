@@ -3,10 +3,12 @@ package updater
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
@@ -74,45 +76,71 @@ func (p *GolangProvider) generatePackageJSON() bool {
 func (p *GolangProvider) createSymlinks() error {
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	zanaBinDir := files.GetAppBinPath()
-
+	
 	// Check if golang bin directory exists
 	if _, err := os.Stat(golangBinDir); os.IsNotExist(err) {
 		return nil // No binaries installed
 	}
-
+	
 	// Read all files in the golang bin directory
 	entries, err := os.ReadDir(golangBinDir)
 	if err != nil {
 		return err
 	}
-
+	
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			binaryName := entry.Name()
 			binaryPath := filepath.Join(golangBinDir, binaryName)
 			symlinkPath := filepath.Join(zanaBinDir, binaryName)
-
+			
 			// Remove existing symlink if it exists
 			if _, err := os.Lstat(symlinkPath); err == nil {
 				os.Remove(symlinkPath)
 			}
-
+			
 			// Create the symlink
 			err := os.Symlink(binaryPath, symlinkPath)
 			if err != nil {
-				log.Printf("Error creating symlink for %s: %v", binaryName, err)
-				continue
+				// On Windows, symlinks might fail due to privileges
+				// Try creating a copy instead
+				if strings.Contains(err.Error(), "privilege") || strings.Contains(err.Error(), "access denied") {
+					log.Printf("Symlink failed, creating copy for %s: %v", binaryName, err)
+					err = p.createFileCopy(binaryPath, symlinkPath)
+				}
+				if err != nil {
+					log.Printf("Error creating symlink/copy for %s: %v", binaryName, err)
+					continue
+				}
 			}
-
-			// Make the symlink executable
+			
+			// Make the symlink/copy executable
 			err = os.Chmod(symlinkPath, 0755)
 			if err != nil {
 				log.Printf("Error setting executable permissions for %s: %v", binaryName, err)
 			}
 		}
 	}
-
+	
 	return nil
+}
+
+// createFileCopy creates a copy of a file (fallback for Windows when symlinks fail)
+func (p *GolangProvider) createFileCopy(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+	
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+	
+	_, err = io.Copy(destFile, sourceFile)
+	return err
 }
 
 // removeAllSymlinks removes all symlinks from the zana bin directory

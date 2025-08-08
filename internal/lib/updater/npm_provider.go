@@ -3,10 +3,12 @@ package updater
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
@@ -113,11 +115,19 @@ func (p *NPMProvider) createSymlinks(packageName string, packagePath string, pkg
 		// Create the symlink
 		err := os.Symlink(actualBinPath, symlinkPath)
 		if err != nil {
-			log.Printf("Error creating symlink for %s: %v", binName, err)
-			return err
+			// On Windows, symlinks might fail due to privileges
+			// Try creating a copy instead
+			if strings.Contains(err.Error(), "privilege") || strings.Contains(err.Error(), "access denied") {
+				log.Printf("Symlink failed, creating copy for %s: %v", binName, err)
+				err = p.createFileCopy(actualBinPath, symlinkPath)
+			}
+			if err != nil {
+				log.Printf("Error creating symlink/copy for %s: %v", binName, err)
+				return err
+			}
 		}
 
-		// Make the symlink executable
+		// Make the symlink/copy executable
 		err = os.Chmod(symlinkPath, 0755)
 		if err != nil {
 			log.Printf("Error setting executable permissions for %s: %v", binName, err)
@@ -125,6 +135,24 @@ func (p *NPMProvider) createSymlinks(packageName string, packagePath string, pkg
 	}
 
 	return nil
+}
+
+// createFileCopy creates a copy of a file (fallback for Windows when symlinks fail)
+func (p *NPMProvider) createFileCopy(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	return err
 }
 
 // createAllSymlinks creates symlinks for all installed npm packages
