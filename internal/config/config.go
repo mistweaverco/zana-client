@@ -1,7 +1,10 @@
 package config
 
+import "time"
+
 type ConfigFlags struct {
-	Version bool
+	Version     bool
+	CacheMaxAge time.Duration
 }
 
 type Config struct {

@@ -81,6 +81,24 @@ Zana will create it for you (when you install a package).
 
 It's advised to keep the `zana-lock.json` file in version control.
 
+If you want the installed packages to be available in your path,
+you can add the following to your shell configuration file:
+
+```sh
+# For bash/zsh (add to ~/.bashrc or ~/.zshrc)
+source <(zana env)
+```
+
+```sh
+# For PowerShell (add to profile)
+zana env powershell | Invoke-Expression
+```
+
+```sh
+# Manual setup
+eval "$(zana env)"
+```
+
 ### Where are the packages?
 
 Zana uses a basepath to install packages of different types.
