@@ -30,8 +30,13 @@ func GetAppLocalPackagesFilePath() string {
 }
 
 // GetAppDataPath returns the path to the app data directory
+// If the ZANA_HOME environment variable is set, it will use that path
+// otherwise it will use the user's config directory
 // e.g. /home/user/.config/zana
 func GetAppDataPath() string {
+	if zanaHome := os.Getenv("ZANA_HOME"); zanaHome != "" {
+		return EnsureDirExists(zanaHome)
+	}
 	userConfigDir, err := os.UserConfigDir()
 	if err != nil {
 		panic(err)
