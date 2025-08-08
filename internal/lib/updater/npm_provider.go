@@ -245,32 +245,48 @@ func (p *NPMProvider) Sync() bool {
 	}
 
 	packagesFound := p.generatePackageJSON()
-
 	if !packagesFound {
 		return true
 	}
-	pruneCode, err := shell_out.ShellOut("npm", []string{"prune"}, p.APP_PACKAGES_DIR, nil)
-	if err != nil || pruneCode != 0 {
-		fmt.Println("Error running npm prune:", err)
-		return false
-	}
 
-	installCode, err := shell_out.ShellOut("npm", []string{"install"}, p.APP_PACKAGES_DIR, nil)
-	if err != nil || installCode != 0 {
-		fmt.Println("Error running npm install:", err)
-		return false
-	}
+	// Get desired packages from local_packages_parser
+	desired := local_packages_parser.GetData(true).Packages
 
-	// Recreate symlinks for all managed packages after sync
-	if installCode == 0 {
-		err = p.createAllSymlinks()
-		if err != nil {
-			log.Printf("Error creating symlinks: %v", err)
-			// Don't fail the sync if symlink creation fails
+	// Get installed packages from package-lock.json
+	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")
+	installed := map[string]string{}
+	if data, err := os.ReadFile(lockFile); err == nil {
+		var lock struct {
+			Dependencies map[string]struct {
+				Version string `json:"version"`
+			} `json:"dependencies"`
+		}
+		if err := json.Unmarshal(data, &lock); err == nil {
+			for pkg, info := range lock.Dependencies {
+				installed[pkg] = info.Version
+			}
 		}
 	}
 
-	return installCode == 0
+	allOk := true
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+		if v, ok := installed[name]; !ok || v != pkg.Version {
+			// Only install if not installed or version mismatch
+			installCode, err := shell_out.ShellOut("npm", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, nil)
+			if err != nil || installCode != 0 {
+				fmt.Printf("Error installing %s@%s: %v\n", name, pkg.Version, err)
+				allOk = false
+			} else {
+				err = p.createPackageSymlinks(name)
+				if err != nil {
+					log.Printf("Error creating symlinks for %s: %v", name, err)
+				}
+			}
+		}
+	}
+
+	return allOk
 }
 
 // createPackageSymlinks creates symlinks for a specific package

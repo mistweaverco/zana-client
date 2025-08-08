@@ -333,46 +333,49 @@ func (p *PyPiProvider) Sync() bool {
 	}
 
 	packagesFound := p.generateRequirementsTxt()
-
 	if !packagesFound {
 		return true
 	}
 
-	// TODO: find a non-hacky way to prune the packages in python
+	// Get desired packages from local_packages_parser
+	desired := local_packages_parser.GetData(true).Packages
 
-	// Try pip3 first, then pip
-	pipCommands := []string{"pip3", "pip"}
-	var installCode int
-	var err error
-
-	for _, pipCmd := range pipCommands {
-		installCode, err = shell_out.ShellOut(pipCmd, []string{
-			"install",
-			"-r",
-			"requirements.txt",
-			"--prefix",
-			p.APP_PACKAGES_DIR,
-		}, p.APP_PACKAGES_DIR, nil)
-
-		if err == nil && installCode == 0 {
-			break
-		}
+	// Get installed packages using pip freeze
+	installed := map[string]string{}
+	pipCmd := "pip3"
+	freezeCode, freezeOut := shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
+	if freezeCode != 0 || freezeOut == "" {
+		pipCmd = "pip"
+		freezeCode, freezeOut = shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
 	}
-	if err != nil || installCode != 0 {
-		log.Println("Error running pip install:", err)
-		return false
-	}
-
-	// Create wrapper scripts for installed packages
-	if installCode == 0 {
-		err = p.createWrappers()
-		if err != nil {
-			log.Printf("Error creating wrapper scripts: %v", err)
-			// Don't fail the sync if wrapper creation fails
+	if freezeCode == 0 && freezeOut != "" {
+		lines := strings.Split(freezeOut, "\n")
+		for _, line := range lines {
+			parts := strings.Split(line, "==")
+			if len(parts) == 2 {
+				installed[parts[0]] = parts[1]
+			}
 		}
 	}
 
-	return installCode == 0
+	allOk := true
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+		if v, ok := installed[name]; !ok || v != pkg.Version {
+			installCode, err := shell_out.ShellOut(pipCmd, []string{"install", name + "==" + pkg.Version, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
+			if err != nil || installCode != 0 {
+				log.Printf("Error installing %s==%s: %v", name, pkg.Version, err)
+				allOk = false
+			} else {
+				err = p.createWrappers()
+				if err != nil {
+					log.Printf("Error creating wrapper scripts for %s: %v", name, err)
+				}
+			}
+		}
+	}
+
+	return allOk
 }
 
 func (p *PyPiProvider) Install(sourceID, version string) bool {
