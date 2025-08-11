@@ -17,12 +17,14 @@ import (
 type NPMProvider struct {
 	APP_PACKAGES_DIR string
 	PREFIX           string
+	PROVIDER_NAME    string
 }
 
 func NewProviderNPM() *NPMProvider {
 	p := &NPMProvider{}
-	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), "npm")
-	p.PREFIX = "pkg:npm/"
+	p.PROVIDER_NAME = "npm"
+	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
+	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
 	return p
 }
 
@@ -191,7 +193,7 @@ func (p *NPMProvider) Sync() bool {
 	}
 
 	// Get desired packages from local_packages_parser
-	desired := local_packages_parser.GetData(true).Packages
+	desired := local_packages_parser.GetDataForProvider("npm").Packages
 
 	// Check if we have a package-lock.json and if it's up to date
 	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")

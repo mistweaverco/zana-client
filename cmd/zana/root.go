@@ -8,11 +8,11 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/mistweaverco/zana-client/internal/boot"
 	"github.com/mistweaverco/zana-client/internal/config"
+	"github.com/mistweaverco/zana-client/internal/lib/version"
 	"github.com/mistweaverco/zana-client/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-var VERSION string
 var cfg = config.NewConfig(config.Config{
 	Flags: config.ConfigFlags{
 		CacheMaxAge: 24 * time.Hour, // Default to 24 hours
@@ -25,7 +25,7 @@ var rootCmd = &cobra.Command{
 	Long:  "A package manager for Neovim. Easily install and manage LSP servers, DAP servers, linters and formatters.",
 	Run: func(cmd *cobra.Command, files []string) {
 		if cfg.Flags.Version {
-			log.Info("Version", runtime.GOOS, VERSION)
+			log.Info("Version", runtime.GOOS, version.VERSION)
 			return
 		} else {
 			// Check requirements before starting the main application

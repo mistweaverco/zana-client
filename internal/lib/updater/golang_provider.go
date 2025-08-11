@@ -17,12 +17,14 @@ import (
 type GolangProvider struct {
 	APP_PACKAGES_DIR string
 	PREFIX           string
+	PROVIDER_NAME    string
 }
 
 func NewProviderGolang() *GolangProvider {
 	p := &GolangProvider{}
-	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), "golang")
-	p.PREFIX = "pkg:golang/"
+	p.PROVIDER_NAME = "golang"
+	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
+	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
 	return p
 }
 
@@ -43,7 +45,7 @@ func (p *GolangProvider) generatePackageJSON() bool {
 		Dependencies: make(map[string]string),
 	}
 
-	localPackages := local_packages_parser.GetData(true).Packages
+	localPackages := local_packages_parser.GetDataForProvider("golang").Packages
 	for _, pkg := range localPackages {
 		if detectProvider(pkg.SourceID) != ProviderGolang {
 			continue
@@ -227,7 +229,7 @@ func (p *GolangProvider) Sync() bool {
 	log.Printf("Golang Sync: Starting sync process")
 
 	// Get desired packages from local_packages_parser
-	desired := local_packages_parser.GetData(true).Packages
+	desired := local_packages_parser.GetDataForProvider("golang").Packages
 
 	// Initialize Go module if it doesn't exist
 	goModPath := filepath.Join(p.APP_PACKAGES_DIR, "go.mod")
@@ -278,7 +280,15 @@ func (p *GolangProvider) Sync() bool {
 }
 
 func (p *GolangProvider) Install(sourceID, version string) bool {
-	err := local_packages_parser.AddLocalPackage(sourceID, version)
+	var err error
+	if version == "latest" {
+		version, err = p.getLatestVersion(p.getRepo(sourceID))
+		if err != nil {
+			Logger.Error("Error getting latest version for package %s: %v", sourceID, err)
+			return false
+		}
+	}
+	err = local_packages_parser.AddLocalPackage(sourceID, version)
 	if err != nil {
 		return false
 	}
