@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
@@ -55,6 +56,21 @@ func GetData(force bool) LocalPackageRoot {
 	hasData = true
 	data = localPackageRoot
 	return data
+}
+
+// GetDataForProvider returns the local packages data
+// for a specific provider
+func GetDataForProvider(provider string) LocalPackageRoot {
+	localPackageRoot := GetData(false)
+	filteredPackages := []LocalPackageItem{}
+
+	for _, item := range localPackageRoot.Packages {
+		if strings.HasPrefix(item.SourceID, "pkg:"+provider+"/") {
+			filteredPackages = append(filteredPackages, item)
+		}
+	}
+
+	return LocalPackageRoot{Packages: filteredPackages}
 }
 
 func AddLocalPackage(sourceId string, version string) error {

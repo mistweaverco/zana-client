@@ -3,6 +3,7 @@ package updater
 import (
 	"strings"
 
+	"github.com/mistweaverco/zana-client/internal/lib/log"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
 )
 
@@ -14,6 +15,8 @@ const (
 	ProviderGolang
 	ProviderUnsupported
 )
+
+var Logger = log.NewLogger()
 
 var npmProvider NPMProvider = *NewProviderNPM()
 var pypiProvider PyPiProvider = *NewProviderPyPi()

@@ -2,7 +2,6 @@ package updater
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,12 +15,26 @@ import (
 type PyPiProvider struct {
 	APP_PACKAGES_DIR string
 	PREFIX           string
+	PROVIDER_NAME    string
 }
+
+var pipCmd = "pip"
 
 func NewProviderPyPi() *PyPiProvider {
 	p := &PyPiProvider{}
-	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), "pypi")
-	p.PREFIX = "pkg:pypi/"
+	p.PROVIDER_NAME = "pypi"
+	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
+	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
+	hasPip := shell_out.HasCommand("pip", []string{"--version"}, nil)
+	if !hasPip {
+		hasPip = shell_out.HasCommand("pip3", []string{"--version"}, nil)
+		if !hasPip {
+			Logger.Error("PyPI Provider: pip or pip3 command not found. Please install pip to use the PyPiProvider.")
+		} else {
+			pipCmd = "pip3"
+		}
+	}
+
 	return p
 }
 
@@ -50,21 +63,21 @@ func (p *PyPiProvider) generateRequirementsTxt() bool {
 	filePath := filepath.Join(p.APP_PACKAGES_DIR, "requirements.txt")
 	file, err := os.Create(filePath)
 	if err != nil {
-		log.Println("Error creating requirements.txt:", err)
+		Logger.Error(fmt.Sprintf("Error creating requirements.txt: %s", err))
 		return false
 	}
 
 	for _, line := range dependenciesTxt {
 		_, err := file.WriteString(line + "\n")
 		if err != nil {
-			log.Println("Error writing to requirements.txt:", err)
+			Logger.Error(fmt.Sprintf("Error writing to requirements.txt: %s", err))
 			return false
 		}
 	}
 
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close requirements.txt file: %v\n", closeErr)
+			fmt.Errorf(fmt.Sprintf("Warning: failed to close requirements.txt file: %v\n", closeErr))
 		}
 	}()
 
@@ -154,7 +167,7 @@ func (p *PyPiProvider) createWrappers() error {
 	// First, remove all existing wrapper scripts to ensure clean state
 	err = p.removeAllWrappers()
 	if err != nil {
-		log.Printf("Error removing existing wrapper scripts: %v", err)
+		Logger.Error(fmt.Sprintf("Error removing existing wrapper scripts: %v", err))
 	}
 
 	// Create wrapper scripts for all executable files in the bin directory
@@ -167,14 +180,14 @@ func (p *PyPiProvider) createWrappers() error {
 			// Create a wrapper script that sets up the Python path
 			err := p.createPythonWrapper(scriptPath, wrapperPath)
 			if err != nil {
-				log.Printf("Error creating wrapper for %s: %v", scriptName, err)
+				Logger.Error("Error creating wrapper for %s: %v", scriptName, err)
 				continue
 			}
 
 			// Make the wrapper executable
 			err = os.Chmod(wrapperPath, 0755)
 			if err != nil {
-				log.Printf("Error setting executable permissions for %s: %v", scriptName, err)
+				Logger.Error("Error setting executable permissions for %s: %v", scriptName, err)
 			}
 		}
 	}
@@ -253,7 +266,7 @@ func (p *PyPiProvider) removeAllWrappers() error {
 			wrapperPath := filepath.Join(zanaBinDir, entry.Name())
 			if _, err := os.Lstat(wrapperPath); err == nil {
 				if err := os.Remove(wrapperPath); err != nil {
-					log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+					Logger.Error("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
 				}
 			}
 		}
@@ -286,9 +299,9 @@ func (p *PyPiProvider) removePackageWrappers(packageName string) error {
 		for entryPoint := range pkgInfo.EntryPoints {
 			wrapperPath := filepath.Join(zanaBinDir, entryPoint)
 			if _, err := os.Lstat(wrapperPath); err == nil {
-				log.Printf("PyPI Remove: Removing wrapper script %s for package %s", entryPoint, packageName)
+				Logger.Error("PyPI Remove: Removing wrapper script %s for package %s", entryPoint, packageName)
 				if err := os.Remove(wrapperPath); err != nil {
-					log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+					Logger.Error("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
 				}
 			}
 		}
@@ -300,9 +313,9 @@ func (p *PyPiProvider) removePackageWrappers(packageName string) error {
 	for _, scriptName := range commonScriptNames {
 		wrapperPath := filepath.Join(zanaBinDir, scriptName)
 		if _, err := os.Lstat(wrapperPath); err == nil {
-			log.Printf("PyPI Remove: Removing wrapper script %s for package %s", scriptName, packageName)
+			Logger.Error("PyPI Remove: Removing wrapper script %s for package %s", scriptName, packageName)
 			if err := os.Remove(wrapperPath); err != nil {
-				log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+				Logger.Error("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
 			}
 		}
 	}
@@ -314,12 +327,12 @@ func (p *PyPiProvider) Clean() bool {
 	// Remove all wrapper scripts first
 	err := p.removeAllWrappers()
 	if err != nil {
-		log.Printf("Error removing wrapper scripts: %v", err)
+		Logger.Error("Error removing wrapper scripts: %v", err)
 	}
 
 	err = os.RemoveAll(p.APP_PACKAGES_DIR)
 	if err != nil {
-		log.Println("Error removing directory:", err)
+		Logger.Error("Error removing directory:", err)
 		return false
 	}
 	return p.Sync()
@@ -339,20 +352,20 @@ func (p *PyPiProvider) Sync() bool {
 		return true
 	}
 
-	log.Printf("PyPI Sync: Starting sync process")
+	Logger.Info("PyPI Sync: Starting sync process")
 
 	// Get desired packages from local_packages_parser
-	desired := local_packages_parser.GetData(true).Packages
+	desired := local_packages_parser.GetDataForProvider("pypi").Packages
 
 	// Check if we have a requirements.txt and if it's up to date
 	_ = filepath.Join(p.APP_PACKAGES_DIR, "requirements.txt")
 
 	// Early exit: check if all packages are already installed correctly
 	if p.areAllPackagesInstalled(desired) {
-		log.Printf("PyPI Sync: All packages already installed correctly, skipping installation")
+		Logger.Info("PyPI Sync: All packages already installed correctly, skipping installation")
 		err := p.createWrappers()
 		if err != nil {
-			log.Printf("Error creating wrapper scripts: %v", err)
+			Logger.Error(fmt.Sprintf("Error creating wrapper scripts: %v", err))
 		}
 		return true
 	}
@@ -367,16 +380,17 @@ func (p *PyPiProvider) Sync() bool {
 	for _, pkg := range desired {
 		name := p.getRepo(pkg.SourceID)
 		if v, ok := installed[name]; !ok || v != pkg.Version {
-			log.Printf("PyPI Sync: Installing package %s==%s", name, pkg.Version)
-			installCode, err := shell_out.ShellOut("pip", []string{"install", name + "==" + pkg.Version, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
+			pkgString := fmt.Sprintf("%s==%s", name, pkg.Version)
+			Logger.Info(fmt.Sprintf("PyPI Sync: Installing package %s", pkgString))
+			installCode, err := shell_out.ShellOut(pipCmd, []string{"install", pkgString, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
 			if err != nil || installCode != 0 {
-				log.Printf("Error installing %s==%s: %v", name, pkg.Version, err)
+				Logger.Error(fmt.Sprintf("Error installing %s==%s: %v", name, pkg.Version, err))
 				allOk = false
 			} else {
 				installedCount++
 			}
 		} else {
-			log.Printf("PyPI Sync: Package %s==%s already installed, skipping", name, pkg.Version)
+			Logger.Info("PyPI Sync: Package %s==%s already installed, skipping", name, pkg.Version)
 			skippedCount++
 		}
 	}
@@ -385,11 +399,11 @@ func (p *PyPiProvider) Sync() bool {
 	if allOk {
 		err := p.createWrappers()
 		if err != nil {
-			log.Printf("Error creating wrapper scripts: %v", err)
+			Logger.Error(fmt.Sprintf("Error creating wrapper scripts: %v", err))
 		}
 	}
 
-	log.Printf("PyPI Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount)
+	Logger.Info(fmt.Sprintf("PyPI Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount))
 
 	return allOk
 }
@@ -412,12 +426,7 @@ func (p *PyPiProvider) areAllPackagesInstalled(desired []local_packages_parser.L
 func (p *PyPiProvider) getInstalledPackages() map[string]string {
 	installed := map[string]string{}
 
-	pipCmd := "pip3"
 	freezeCode, freezeOut, _ := shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
-	if freezeCode != 0 || freezeOut == "" {
-		pipCmd = "pip"
-		freezeCode, freezeOut, _ = shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
-	}
 
 	if freezeCode == 0 && freezeOut != "" {
 		lines := strings.Split(freezeOut, "\n")
@@ -427,14 +436,25 @@ func (p *PyPiProvider) getInstalledPackages() map[string]string {
 				installed[parts[0]] = parts[1]
 			}
 		}
+	} else {
+		Logger.Error(fmt.Sprintf("Error getting installed packages with %s freeze: %s", pipCmd, freezeOut))
 	}
 
 	return installed
 }
 
 func (p *PyPiProvider) Install(sourceID, version string) bool {
-	err := local_packages_parser.AddLocalPackage(sourceID, version)
+	var err error
+	if version == "latest" {
+		version, err = p.getLatestVersion(p.getRepo(sourceID))
+		if err != nil {
+			Logger.Error("Error getting latest version for %s: %v", sourceID, err)
+			return false
+		}
+	}
+	err = local_packages_parser.AddLocalPackage(sourceID, version)
 	if err != nil {
+		Logger.Error("Error adding package %s to local packages: %v", sourceID, err)
 		return false
 	}
 	return p.Sync()
@@ -444,40 +464,40 @@ func (p *PyPiProvider) Remove(sourceID string) bool {
 	// Get the package name before removing it from local packages
 	packageName := p.getRepo(sourceID)
 
-	log.Printf("PyPI Remove: Removing package %s", packageName)
+	Logger.Info(fmt.Sprintf("PyPI Remove: Removing package %s", packageName))
 
 	// Remove wrapper scripts for this package first
 	err := p.removePackageWrappers(packageName)
 	if err != nil {
-		log.Printf("Error removing wrapper scripts for %s: %v", packageName, err)
+		Logger.Error(fmt.Sprintf("Error removing wrapper scripts for %s: %v", packageName, err))
 		// Don't fail the remove if wrapper removal fails
 	}
 
 	err = local_packages_parser.RemoveLocalPackage(sourceID)
 	if err != nil {
-		log.Printf("Error removing package %s from local packages: %v", packageName, err)
+		Logger.Error(fmt.Sprintf("Error removing package %s from local packages: %v", packageName, err))
 		return false
 	}
 
-	log.Printf("PyPI Remove: Package %s removed successfully", packageName)
+	Logger.Info(fmt.Sprintf("PyPI Remove: Package %s removed successfully", packageName))
 	return p.Sync()
 }
 
 func (p *PyPiProvider) Update(sourceID string) bool {
 	repo := p.getRepo(sourceID)
 	if repo == "" {
-		log.Printf("Invalid source ID format for PyPI provider")
+		Logger.Error("Invalid source ID format for PyPI provider")
 		return false
 	}
 
 	// Get the latest version from PyPI
 	latestVersion, err := p.getLatestVersion(repo)
 	if err != nil {
-		log.Printf("Error getting latest version for %s: %v", repo, err)
+		Logger.Error("Error getting latest version for %s: %v", repo, err)
 		return false
 	}
 
-	log.Printf("PyPI Update: Updating %s to version %s", repo, latestVersion)
+	Logger.Info(fmt.Sprintf("PyPI Update: Updating %s to version %s", repo, latestVersion))
 
 	// Install the latest version
 	return p.Install(sourceID, latestVersion)
@@ -485,13 +505,9 @@ func (p *PyPiProvider) Update(sourceID string) bool {
 
 func (p *PyPiProvider) getLatestVersion(packageName string) (string, error) {
 	// Use pip index to get the latest version
-	_, output, err := shell_out.ShellOutCapture("pip", []string{"index", "versions", packageName}, "", nil)
+	_, output, err := shell_out.ShellOutCapture(pipCmd, []string{"index", "versions", packageName}, "", nil)
 	if err != nil {
-		// Fallback to pip3
-		_, output, err = shell_out.ShellOutCapture("pip3", []string{"index", "versions", packageName}, "", nil)
-		if err != nil {
-			return "", err
-		}
+		return "", err
 	}
 
 	// Parse the output to get the latest version
