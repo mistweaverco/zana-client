@@ -28,8 +28,8 @@ var rootCmd = &cobra.Command{
 			log.Info("Version", runtime.GOOS, version.VERSION)
 			return
 		} else {
-            // Check health before starting the main application
-            if !ui.ShowHealthCheck() {
+			// Check health before starting the main application
+			if !ui.ShowHealthCheck() {
 				log.Info("User chose to quit due to missing requirements")
 				return
 			}
