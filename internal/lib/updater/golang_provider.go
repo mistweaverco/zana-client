@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
@@ -305,4 +306,42 @@ func (p *GolangProvider) Remove(sourceID string) bool {
 
 	log.Printf("Golang Remove: Package %s removed successfully", packageName)
 	return p.Sync()
+}
+
+func (p *GolangProvider) Update(sourceID string) bool {
+	repo := p.getRepo(sourceID)
+	if repo == "" {
+		log.Printf("Invalid source ID format for Golang provider")
+		return false
+	}
+
+	// Get the latest version from Go modules
+	latestVersion, err := p.getLatestVersion(repo)
+	if err != nil {
+		log.Printf("Error getting latest version for %s: %v", repo, err)
+		return false
+	}
+
+	log.Printf("Golang Update: Updating %s to version %s", repo, latestVersion)
+
+	// Install the latest version
+	return p.Install(sourceID, latestVersion)
+}
+
+func (p *GolangProvider) getLatestVersion(packageName string) (string, error) {
+	// Use go list to get the latest version
+	_, output, err := shell_out.ShellOutCapture("go", []string{"list", "-m", "-versions", packageName}, "", nil)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse the output to get the latest version
+	// Output format: "module version1 version2 version3 ..."
+	parts := strings.Fields(output)
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid output format from go list")
+	}
+
+	// Return the last version (latest)
+	return parts[len(parts)-1], nil
 }

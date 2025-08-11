@@ -78,3 +78,18 @@ func Remove(sourceId string) bool {
 	}
 	return false
 }
+
+func Update(sourceId string) bool {
+	provider := detectProvider(sourceId)
+	switch provider {
+	case ProviderNPM:
+		return npmProvider.Update(sourceId)
+	case ProviderPyPi:
+		return pypiProvider.Update(sourceId)
+	case ProviderGolang:
+		return golangProvider.Update(sourceId)
+	case ProviderUnsupported:
+		// Unsupported provider
+	}
+	return false
+}

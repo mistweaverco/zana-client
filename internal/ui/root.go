@@ -263,8 +263,6 @@ func getRegistryItemsData() []registryPackageItem {
 	return registryItems
 }
 
-
-
 func getLocalPackagesData() []localPackageItem {
 	localItems := []localPackageItem{}
 	localPackages := local_packages_parser.GetData(true).Packages
@@ -310,10 +308,6 @@ func getLocalPackagesData() []localPackageItem {
 
 	return localItems
 }
-
-
-
-
 
 func truncateString(s string, maxLen int) string {
 	if maxLen <= 0 {

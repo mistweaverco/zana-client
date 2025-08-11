@@ -130,8 +130,6 @@ func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error)
 	return info, nil
 }
 
-
-
 // createWrappers creates wrapper scripts for Python package scripts
 func (p *PyPiProvider) createWrappers() error {
 	zanaBinDir := files.GetAppBinPath()
@@ -253,11 +251,11 @@ func (p *PyPiProvider) removeAllWrappers() error {
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			wrapperPath := filepath.Join(zanaBinDir, entry.Name())
-					if _, err := os.Lstat(wrapperPath); err == nil {
-			if err := os.Remove(wrapperPath); err != nil {
-				log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+			if _, err := os.Lstat(wrapperPath); err == nil {
+				if err := os.Remove(wrapperPath); err != nil {
+					log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+				}
 			}
-		}
 		}
 	}
 
@@ -463,4 +461,54 @@ func (p *PyPiProvider) Remove(sourceID string) bool {
 
 	log.Printf("PyPI Remove: Package %s removed successfully", packageName)
 	return p.Sync()
+}
+
+func (p *PyPiProvider) Update(sourceID string) bool {
+	repo := p.getRepo(sourceID)
+	if repo == "" {
+		log.Printf("Invalid source ID format for PyPI provider")
+		return false
+	}
+
+	// Get the latest version from PyPI
+	latestVersion, err := p.getLatestVersion(repo)
+	if err != nil {
+		log.Printf("Error getting latest version for %s: %v", repo, err)
+		return false
+	}
+
+	log.Printf("PyPI Update: Updating %s to version %s", repo, latestVersion)
+
+	// Install the latest version
+	return p.Install(sourceID, latestVersion)
+}
+
+func (p *PyPiProvider) getLatestVersion(packageName string) (string, error) {
+	// Use pip index to get the latest version
+	_, output, err := shell_out.ShellOutCapture("pip", []string{"index", "versions", packageName}, "", nil)
+	if err != nil {
+		// Fallback to pip3
+		_, output, err = shell_out.ShellOutCapture("pip3", []string{"index", "versions", packageName}, "", nil)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// Parse the output to get the latest version
+	// Output format: "PackageName (version1, version2, version3, ...)"
+	// Extract the last version from the parentheses
+	start := strings.LastIndex(output, "(")
+	end := strings.LastIndex(output, ")")
+	if start == -1 || end == -1 {
+		return "", fmt.Errorf("invalid output format from pip index")
+	}
+
+	versionsStr := output[start+1 : end]
+	versions := strings.Split(versionsStr, ", ")
+	if len(versions) == 0 {
+		return "", fmt.Errorf("no versions found")
+	}
+
+	// Return the last version (latest)
+	return strings.TrimSpace(versions[len(versions)-1]), nil
 }

@@ -62,8 +62,6 @@ func (m model) checkCache() tea.Cmd {
 	}
 }
 
-
-
 func (m model) performDownload() tea.Cmd {
 	return func() tea.Msg {
 		cachePath := files.GetRegistryCachePath()

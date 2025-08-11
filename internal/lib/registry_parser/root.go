@@ -11,11 +11,7 @@ import (
 )
 
 type RegistryItemSource struct {
-	ID    string `json:"id"`
-	Asset struct {
-		Target string `json:"target"`
-		File   string `json:"file"`
-	} `json:"asset,omitempty"`
+	ID string `json:"id"`
 }
 
 type RegistryItem struct {
@@ -43,19 +39,24 @@ func GetData(force bool) RegistryRoot {
 	var registry RegistryRoot
 	jsonFile, err := os.Open(registryFile)
 	if err != nil {
-		panic(err)
+		// Return empty registry instead of panicking when file doesn't exist
+		data = RegistryRoot{}
+		hasData = true
+		return data
 	}
 	defer func() {
 		if closeErr := jsonFile.Close(); closeErr != nil {
-			panic(fmt.Sprintf("failed to close registry file: %v", closeErr))
+			fmt.Printf("Warning: failed to close registry file: %v\n", closeErr)
 		}
 	}()
 	byteValue, err := io.ReadAll(jsonFile)
 	if err != nil {
-		panic(fmt.Sprintf("failed to read registry file: %v", err))
+		fmt.Printf("Warning: failed to read registry file: %v\n", err)
+		return RegistryRoot{}
 	}
 	if err := json.Unmarshal(byteValue, &registry); err != nil {
-		panic(fmt.Sprintf("failed to parse registry file: %v", err))
+		fmt.Printf("Warning: failed to parse registry file: %v\n", err)
+		return RegistryRoot{}
 	}
 	// Sort the registry by name
 	hasData = true
