@@ -1,4 +1,4 @@
-package updater
+package providers
 
 import "github.com/mistweaverco/zana-client/internal/lib/shell_out"
 
@@ -7,25 +7,17 @@ type CheckRequirementsResult struct {
 	HasPython          bool `json:"hasPython"`
 	HasPythonDistutils bool `json:"hasPythonDistutils"`
 	HasGo              bool `json:"hasGo"`
+	HasCargo           bool `json:"hasCargo"`
 }
 
-// CheckRequirements checks if the system meets the requirements for running the updater.
-// It checks for:
-// - The presence of the `npm` command
-// - The presence of the `python` command
-// - The availability of `distutils` for Python packages (e.g. node-gyp needs this)
-// - The presence of the `go` command
-// If any of these requirements are not met,
-// it returns a `CheckRequirementsResult` with the respective fields set to false.
-
+// CheckRequirements checks if the system meets the requirements for running providers.
 func CheckRequirements() CheckRequirementsResult {
-
 	result := CheckRequirementsResult{
 		HasNPM:             shell_out.HasCommand("npm", []string{"--version"}, nil),
 		HasPython:          shell_out.HasCommand("python", []string{"--version"}, nil),
 		HasPythonDistutils: shell_out.HasCommand("python", []string{"-c", "import distutils"}, nil),
 		HasGo:              shell_out.HasCommand("go", []string{"version"}, nil),
+		HasCargo:           shell_out.HasCommand("cargo", []string{"--version"}, nil),
 	}
-
 	return result
 }

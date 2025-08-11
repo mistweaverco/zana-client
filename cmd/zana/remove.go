@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mistweaverco/zana-client/internal/lib/updater"
+	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -18,11 +18,13 @@ Supported package ID formats:
   pkg:npm/@prisma/language-server
   pkg:golang/golang.org/x/tools/gopls
   pkg:pypi/black
+  pkg:cargo/ripgrep
 
 Examples:
   zana remove pkg:npm/@prisma/language-server
   zana rm pkg:golang/golang.org/x/tools/gopls
-  zana delete pkg:pypi/black`,
+  zana delete pkg:pypi/black
+  zana remove pkg:cargo/ripgrep`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		pkgId := args[0]
@@ -41,15 +43,15 @@ Examples:
 		}
 
 		provider := parts[0]
-		if provider != "npm" && provider != "golang" && provider != "pypi" {
-			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: npm, golang, pypi\n", provider)
+		if !providers.IsSupportedProvider(provider) {
+			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(providers.AvailableProviders, ", "))
 			return
 		}
 
 		fmt.Printf("Removing %s...\n", pkgId)
 
 		// Remove the package
-		success := updater.Remove(pkgId)
+		success := providers.Remove(pkgId)
 		if success {
 			fmt.Printf("Successfully removed %s\n", pkgId)
 		} else {

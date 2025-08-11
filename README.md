@@ -151,9 +151,9 @@ The packages are installed in the following directories:
 - [x] Install `pkg:golang` packages
 - [x] Update `pkg:golang` packages
 - [x] Remove `pkg:golang` packages
-- [ ] Install `pkg:cargo` packages
-- [ ] Update `pkg:cargo` packages
-- [ ] Remove `pkg:cargo` packages
+- [x] Install `pkg:cargo` packages
+- [x] Update `pkg:cargo` packages
+- [x] Remove `pkg:cargo` packages
 
 
 [download-page]: https://getzana.net/#download

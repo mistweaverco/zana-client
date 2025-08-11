@@ -6,6 +6,7 @@ import (
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
+	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/spf13/cobra"
 )
@@ -56,7 +57,7 @@ func listInstalledPackages() {
 	}
 
 	// Display packages grouped by provider and count updates
-	providers := []string{"npm", "golang", "pypi"}
+	providers := []string{"npm", "golang", "pypi", "cargo"}
 	updateCount := 0
 	totalCount := 0
 
@@ -65,11 +66,11 @@ func listInstalledPackages() {
 			fmt.Printf("🔹 %s Packages:\n", strings.ToUpper(provider))
 			for _, pkg := range packages {
 				packageName := getPackageNameFromSourceID(pkg.SourceID)
-				updateInfo := checkUpdateAvailability(pkg.SourceID, pkg.Version)
+				updateInfo, hasUpdate := checkUpdateAvailability(pkg.SourceID, pkg.Version)
 				fmt.Printf("   %s %s (v%s) %s\n", getProviderIcon(provider), packageName, pkg.Version, updateInfo)
 
 				totalCount++
-				if strings.Contains(updateInfo, "🔄 Update available") {
+				if hasUpdate {
 					updateCount++
 				}
 			}
@@ -125,7 +126,7 @@ func listAllPackages() {
 	}
 
 	// Display packages grouped by provider
-	providers := []string{"npm", "golang", "pypi"}
+	providers := []string{"npm", "golang", "pypi", "cargo"}
 	for _, provider := range providers {
 		if packages, exists := packagesByProvider[provider]; exists {
 			fmt.Printf("🔹 %s Packages (%d):\n", strings.ToUpper(provider), len(packages))
@@ -148,6 +149,8 @@ func getProviderFromSourceID(sourceID string) string {
 		return "golang"
 	} else if strings.HasPrefix(sourceID, "pkg:pypi/") {
 		return "pypi"
+	} else if strings.HasPrefix(sourceID, "pkg:cargo/") {
+		return "cargo"
 	}
 	return "unknown"
 }
@@ -164,20 +167,20 @@ func getPackageNameFromSourceID(sourceID string) string {
 	return sourceID
 }
 
-func checkUpdateAvailability(sourceID, currentVersion string) string {
-	// Get the latest version from the registry
+func checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
 	latestVersion := registry_parser.GetLatestVersion(sourceID)
-
 	if latestVersion == "" {
-		return "" // No registry info available
+		return "", false // No registry info available
 	}
-
-	// Check if update is available
-	if latestVersion != currentVersion {
-		return fmt.Sprintf("🔄 Update available: v%s", latestVersion)
+	// If local version is unknown or set to "latest", always show update to the concrete remote version
+	if currentVersion == "" || currentVersion == "latest" {
+		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
 	}
-
-	return "✅ Up to date"
+	updateAvailable, _ := providers.CheckIfUpdateIsAvailable(currentVersion, latestVersion)
+	if updateAvailable {
+		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
+	}
+	return "✅ Up to date", false
 }
 
 func getProviderIcon(provider string) string {
@@ -188,6 +191,8 @@ func getProviderIcon(provider string) string {
 		return "🐹"
 	case "pypi":
 		return "🐍"
+	case "cargo":
+		return "🦀"
 	default:
 		return "📋"
 	}
