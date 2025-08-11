@@ -24,7 +24,7 @@ func Download(url string, dest string) error {
 			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
 		}
 	}()
-	
+
 	out, err := os.Create(dest)
 	if err != nil {
 		return err
@@ -35,7 +35,7 @@ func Download(url string, dest string) error {
 			fmt.Printf("Warning: failed to close output file: %v\n", closeErr)
 		}
 	}()
-	
+
 	_, err = io.Copy(out, resp.Body)
 	return err
 }

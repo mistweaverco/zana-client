@@ -147,11 +147,11 @@ func (p *NPMProvider) removeAllSymlinks() error {
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			symlinkPath := filepath.Join(binDir, entry.Name())
-					if _, err := os.Lstat(symlinkPath); err == nil {
-			if err := os.Remove(symlinkPath); err != nil {
-				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+			if _, err := os.Lstat(symlinkPath); err == nil {
+				if err := os.Remove(symlinkPath); err != nil {
+					log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+				}
 			}
-		}
 		}
 	}
 

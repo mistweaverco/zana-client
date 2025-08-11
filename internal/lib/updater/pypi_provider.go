@@ -130,8 +130,6 @@ func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error)
 	return info, nil
 }
 
-
-
 // createWrappers creates wrapper scripts for Python package scripts
 func (p *PyPiProvider) createWrappers() error {
 	zanaBinDir := files.GetAppBinPath()
@@ -253,11 +251,11 @@ func (p *PyPiProvider) removeAllWrappers() error {
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			wrapperPath := filepath.Join(zanaBinDir, entry.Name())
-					if _, err := os.Lstat(wrapperPath); err == nil {
-			if err := os.Remove(wrapperPath); err != nil {
-				log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+			if _, err := os.Lstat(wrapperPath); err == nil {
+				if err := os.Remove(wrapperPath); err != nil {
+					log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+				}
 			}
-		}
 		}
 	}
 
