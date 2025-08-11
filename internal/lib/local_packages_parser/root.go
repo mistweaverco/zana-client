@@ -61,7 +61,7 @@ func GetData(force bool) LocalPackageRoot {
 // GetDataForProvider returns the local packages data
 // for a specific provider
 func GetDataForProvider(provider string) LocalPackageRoot {
-	localPackageRoot := GetData(false)
+	localPackageRoot := GetData(true)
 	filteredPackages := []LocalPackageItem{}
 
 	for _, item := range localPackageRoot.Packages {
