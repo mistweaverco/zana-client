@@ -175,38 +175,17 @@ func (p *GolangProvider) Sync() bool {
 	}
 
 	packagesFound := p.generatePackageJSON()
-
 	if !packagesFound {
 		return true
 	}
 
-	returnResult := true
-
-	filePath := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
-	packageJSON, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Println("Error reading golang package.json:", err)
-		return false
-	}
-
-	pkgJSON := struct {
-		Dependencies map[string]string `json:"dependencies"`
-	}{
-		Dependencies: make(map[string]string),
-	}
-
-	err = json.Unmarshal(packageJSON, &pkgJSON)
-	if err != nil {
-		log.Println("Error unmarshalling golang package.json:", err)
-		return false
-	}
+	// Get desired packages from local_packages_parser
+	desired := local_packages_parser.GetData(true).Packages
 
 	// Initialize Go module if it doesn't exist
 	goModPath := filepath.Join(p.APP_PACKAGES_DIR, "go.mod")
 	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
-		initCode, err := shell_out.ShellOut("go", []string{
-			"mod", "init", "zana-golang-packages",
-		}, p.APP_PACKAGES_DIR, nil)
+		initCode, err := shell_out.ShellOut("go", []string{"mod", "init", "zana-golang-packages"}, p.APP_PACKAGES_DIR, nil)
 		if err != nil || initCode != 0 {
 			log.Println("Error initializing Go module:", err)
 			return false
@@ -214,61 +193,31 @@ func (p *GolangProvider) Sync() bool {
 	}
 
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
-
-	for pkg, version := range pkgJSON.Dependencies {
-		// Try different package paths for the main executable
-		packagePaths := []string{
-			pkg,                                // Try the package as-is
-			pkg + "/" + filepath.Base(pkg),     // Try package/package (common pattern)
-			pkg + "/cmd/" + filepath.Base(pkg), // Try package/cmd/package
-		}
-
+	allOk := true
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+		binPath := filepath.Join(gobin, filepath.Base(name))
 		installed := false
-		for _, packagePath := range packagePaths {
-			// Try go install with version
-			installCode, err := shell_out.ShellOut("go", []string{
-				"install",
-				packagePath + "@" + version,
-			}, p.APP_PACKAGES_DIR,
-				[]string{
-					"GOBIN=" + gobin,
-				})
-
-			// If that fails, try without version (latest)
-			if err != nil || installCode != 0 {
-				log.Printf("Failed to install %s@%s, trying latest version", packagePath, version)
-				installCode, err = shell_out.ShellOut("go", []string{
-					"install",
-					packagePath,
-				}, p.APP_PACKAGES_DIR,
-					[]string{
-						"GOBIN=" + gobin,
-					})
-			}
-
-			if err == nil && installCode == 0 {
-				log.Printf("Successfully installed %s", packagePath)
-				installed = true
-				break
-			}
+		if fi, err := os.Stat(binPath); err == nil && !fi.IsDir() {
+			// Optionally, check version by running the binary with --version if supported
+			// For now, assume installed if binary exists
+			installed = true
 		}
-
 		if !installed {
-			log.Printf("Failed to install package: %s", pkg)
-			returnResult = false
+			installCode, err := shell_out.ShellOut("go", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, []string{"GOBIN=" + gobin})
+			if err != nil || installCode != 0 {
+				log.Printf("Error installing %s@%s: %v", name, pkg.Version, err)
+				allOk = false
+			} else {
+				err = p.createSymlinks()
+				if err != nil {
+					log.Printf("Error creating symlinks for %s: %v", name, err)
+				}
+			}
 		}
 	}
 
-	// Create symlinks for installed binaries
-	if returnResult {
-		err = p.createSymlinks()
-		if err != nil {
-			log.Printf("Error creating symlinks: %v", err)
-			// Don't fail the sync if symlink creation fails
-		}
-	}
-
-	return returnResult
+	return allOk
 }
 
 func (p *GolangProvider) Install(sourceID, version string) bool {
