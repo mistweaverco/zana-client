@@ -14,7 +14,6 @@ import (
 type requirementsModel struct {
 	list            list.Model
 	results         updater.CheckRequirementsResult
-	selected        int
 	showingWarning  bool
 	warningSelected int
 }
@@ -256,89 +255,3 @@ func ShowRequirementsCheck() bool {
 	return true
 }
 
-type warningModel struct {
-	results        updater.CheckRequirementsResult
-	shouldContinue bool
-	selected       int
-}
-
-func (m warningModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m warningModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch keypress := msg.String(); keypress {
-		case "q", "ctrl+c":
-			os.Exit(0)
-		case "enter":
-			if m.selected == 0 {
-				// Continue anyway
-				m.shouldContinue = true
-				return m, tea.Quit
-			} else {
-				// Quit
-				os.Exit(0)
-			}
-		case "up", "k":
-			if m.selected > 0 {
-				m.selected--
-			}
-		case "down", "j":
-			if m.selected < 1 {
-				m.selected++
-			}
-		}
-	}
-
-	return m, nil
-}
-
-func (m warningModel) View() string {
-	title := "⚠️  Warning: Some Requirements Not Met. Press enter to continue or q to quit."
-
-	var missingReqs []string
-	if !m.results.HasNPM {
-		missingReqs = append(missingReqs, "NPM")
-	}
-	if !m.results.HasPython {
-		missingReqs = append(missingReqs, "Python")
-	}
-	if !m.results.HasPythonDistutils {
-		missingReqs = append(missingReqs, "Python Distutils")
-	}
-	if !m.results.HasGo {
-		missingReqs = append(missingReqs, "Go")
-	}
-
-	missingText := "Missing requirements: " + strings.Join(missingReqs, ", ")
-
-	options := []string{
-		"Continue anyway (some features may not work)",
-		"Quit and install missing requirements",
-	}
-
-	var optionTexts []string
-	for i, option := range options {
-		if i == m.selected {
-			optionTexts = append(optionTexts, "→ "+option)
-		} else {
-			optionTexts = append(optionTexts, "  "+option)
-		}
-	}
-
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#ffaa00")).Bold(true).Render(title),
-		"",
-		lipgloss.NewStyle().Foreground(lipgloss.Color("#ff6666")).Render(missingText),
-		"",
-		"Some package managers may not work without these requirements.",
-		"",
-		strings.Join(optionTexts, "\n"),
-		"",
-		"Use ↑/↓ to navigate, Enter to select, q to quit",
-	)
-
-	return docStyle.Render(content)
-}

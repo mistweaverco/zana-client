@@ -62,7 +62,11 @@ func (p *PyPiProvider) generateRequirementsTxt() bool {
 		}
 	}
 
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close requirements.txt file: %v\n", closeErr)
+		}
+	}()
 
 	return found
 }
@@ -126,57 +130,7 @@ func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error)
 	return info, nil
 }
 
-// findPythonScripts finds executable scripts in the installed package
-func (p *PyPiProvider) findPythonScripts(packagePath string) ([]string, error) {
-	var scripts []string
 
-	// When using --target, pip doesn't create a bin directory
-	// Instead, we need to look for the package's entry points
-	// For now, let's look for any executable files in the package root
-	entries, err := os.ReadDir(packagePath)
-	if err != nil {
-		return scripts, err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			// Check if it's executable (on Unix) or has .exe extension (on Windows)
-			scriptPath := filepath.Join(packagePath, entry.Name())
-			if info, err := entry.Info(); err == nil {
-				if info.Mode()&0111 != 0 || strings.HasSuffix(entry.Name(), ".exe") {
-					scripts = append(scripts, scriptPath)
-				}
-			}
-		}
-	}
-
-	// Also look for bin directory or Scripts directory (Windows) in case they exist
-	binDirs := []string{"bin", "Scripts"}
-
-	for _, binDir := range binDirs {
-		binPath := filepath.Join(packagePath, binDir)
-		if _, err := os.Stat(binPath); err == nil {
-			binEntries, err := os.ReadDir(binPath)
-			if err != nil {
-				continue
-			}
-
-			for _, entry := range binEntries {
-				if !entry.IsDir() {
-					// Check if it's executable (on Unix) or has .exe extension (on Windows)
-					scriptPath := filepath.Join(binPath, entry.Name())
-					if info, err := entry.Info(); err == nil {
-						if info.Mode()&0111 != 0 || strings.HasSuffix(entry.Name(), ".exe") {
-							scripts = append(scripts, scriptPath)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return scripts, nil
-}
 
 // createWrappers creates wrapper scripts for Python package scripts
 func (p *PyPiProvider) createWrappers() error {
@@ -299,8 +253,58 @@ func (p *PyPiProvider) removeAllWrappers() error {
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			wrapperPath := filepath.Join(zanaBinDir, entry.Name())
+					if _, err := os.Lstat(wrapperPath); err == nil {
+			if err := os.Remove(wrapperPath); err != nil {
+				log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+			}
+		}
+		}
+	}
+
+	return nil
+}
+
+// removePackageWrappers removes wrapper scripts for a specific package
+func (p *PyPiProvider) removePackageWrappers(packageName string) error {
+	zanaBinDir := files.GetAppBinPath()
+
+	// Get the package info to see what entry points it has
+	// We need to check the site-packages directory where the package was installed
+	sitePackagesDir := p.findSitePackagesDir()
+	if sitePackagesDir == "" {
+		// Fallback to the main packages directory
+		sitePackagesDir = p.APP_PACKAGES_DIR
+	}
+
+	packagePath := filepath.Join(sitePackagesDir, packageName)
+	pkgInfo, err := p.readPackageInfo(packagePath)
+	if err != nil {
+		// Package might not exist anymore, which is fine
+		return nil
+	}
+
+	// Remove wrapper scripts for each entry point
+	if pkgInfo.EntryPoints != nil {
+		for entryPoint := range pkgInfo.EntryPoints {
+			wrapperPath := filepath.Join(zanaBinDir, entryPoint)
 			if _, err := os.Lstat(wrapperPath); err == nil {
-				os.Remove(wrapperPath)
+				log.Printf("PyPI Remove: Removing wrapper script %s for package %s", entryPoint, packageName)
+				if err := os.Remove(wrapperPath); err != nil {
+					log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
+				}
+			}
+		}
+	}
+
+	// Also check for common script names that might have been created
+	// This is a fallback for packages that don't have explicit entry points
+	commonScriptNames := []string{packageName, "python-" + packageName}
+	for _, scriptName := range commonScriptNames {
+		wrapperPath := filepath.Join(zanaBinDir, scriptName)
+		if _, err := os.Lstat(wrapperPath); err == nil {
+			log.Printf("PyPI Remove: Removing wrapper script %s for package %s", scriptName, packageName)
+			if err := os.Remove(wrapperPath); err != nil {
+				log.Printf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err)
 			}
 		}
 	}
@@ -337,17 +341,86 @@ func (p *PyPiProvider) Sync() bool {
 		return true
 	}
 
+	log.Printf("PyPI Sync: Starting sync process")
+
 	// Get desired packages from local_packages_parser
 	desired := local_packages_parser.GetData(true).Packages
 
+	// Check if we have a requirements.txt and if it's up to date
+	_ = filepath.Join(p.APP_PACKAGES_DIR, "requirements.txt")
+
+	// Early exit: check if all packages are already installed correctly
+	if p.areAllPackagesInstalled(desired) {
+		log.Printf("PyPI Sync: All packages already installed correctly, skipping installation")
+		err := p.createWrappers()
+		if err != nil {
+			log.Printf("Error creating wrapper scripts: %v", err)
+		}
+		return true
+	}
+
 	// Get installed packages using pip freeze
+	installed := p.getInstalledPackages()
+
+	allOk := true
+	installedCount := 0
+	skippedCount := 0
+
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+		if v, ok := installed[name]; !ok || v != pkg.Version {
+			log.Printf("PyPI Sync: Installing package %s==%s", name, pkg.Version)
+			installCode, err := shell_out.ShellOut("pip", []string{"install", name + "==" + pkg.Version, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
+			if err != nil || installCode != 0 {
+				log.Printf("Error installing %s==%s: %v", name, pkg.Version, err)
+				allOk = false
+			} else {
+				installedCount++
+			}
+		} else {
+			log.Printf("PyPI Sync: Package %s==%s already installed, skipping", name, pkg.Version)
+			skippedCount++
+		}
+	}
+
+	// Create wrappers for all packages
+	if allOk {
+		err := p.createWrappers()
+		if err != nil {
+			log.Printf("Error creating wrapper scripts: %v", err)
+		}
+	}
+
+	log.Printf("PyPI Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount)
+
+	return allOk
+}
+
+// areAllPackagesInstalled checks if all desired packages are already installed with correct versions
+func (p *PyPiProvider) areAllPackagesInstalled(desired []local_packages_parser.LocalPackageItem) bool {
+	installed := p.getInstalledPackages()
+
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+		if v, ok := installed[name]; !ok || v != pkg.Version {
+			return false
+		}
+	}
+
+	return true
+}
+
+// getInstalledPackages gets the list of installed packages using pip freeze
+func (p *PyPiProvider) getInstalledPackages() map[string]string {
 	installed := map[string]string{}
+
 	pipCmd := "pip3"
 	freezeCode, freezeOut, _ := shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
 	if freezeCode != 0 || freezeOut == "" {
 		pipCmd = "pip"
 		freezeCode, freezeOut, _ = shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
 	}
+
 	if freezeCode == 0 && freezeOut != "" {
 		lines := strings.Split(freezeOut, "\n")
 		for _, line := range lines {
@@ -358,24 +431,7 @@ func (p *PyPiProvider) Sync() bool {
 		}
 	}
 
-	allOk := true
-	for _, pkg := range desired {
-		name := p.getRepo(pkg.SourceID)
-		if v, ok := installed[name]; !ok || v != pkg.Version {
-			installCode, err := shell_out.ShellOut(pipCmd, []string{"install", name + "==" + pkg.Version, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
-			if err != nil || installCode != 0 {
-				log.Printf("Error installing %s==%s: %v", name, pkg.Version, err)
-				allOk = false
-			} else {
-				err = p.createWrappers()
-				if err != nil {
-					log.Printf("Error creating wrapper scripts for %s: %v", name, err)
-				}
-			}
-		}
-	}
-
-	return allOk
+	return installed
 }
 
 func (p *PyPiProvider) Install(sourceID, version string) bool {
@@ -387,9 +443,24 @@ func (p *PyPiProvider) Install(sourceID, version string) bool {
 }
 
 func (p *PyPiProvider) Remove(sourceID string) bool {
-	err := local_packages_parser.RemoveLocalPackage(sourceID)
+	// Get the package name before removing it from local packages
+	packageName := p.getRepo(sourceID)
+
+	log.Printf("PyPI Remove: Removing package %s", packageName)
+
+	// Remove wrapper scripts for this package first
+	err := p.removePackageWrappers(packageName)
 	if err != nil {
+		log.Printf("Error removing wrapper scripts for %s: %v", packageName, err)
+		// Don't fail the remove if wrapper removal fails
+	}
+
+	err = local_packages_parser.RemoveLocalPackage(sourceID)
+	if err != nil {
+		log.Printf("Error removing package %s from local packages: %v", packageName, err)
 		return false
 	}
+
+	log.Printf("PyPI Remove: Package %s removed successfully", packageName)
 	return p.Sync()
 }

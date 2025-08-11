@@ -126,7 +126,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					selectedIndex := m.installedTable.Cursor()
 					data := getLocalPackagesData()
 					row := data[selectedIndex]
-					if updater.Remove(row.sourceId) == false {
+					if !updater.Remove(row.sourceId) {
 						log.Println("Error uninstalling package")
 						m.updateInstalledTableRows(getLocalPackagesData())
 						return m.showModal("Error removing package", "error")
@@ -137,7 +137,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "enter":
 					selectedIndex := m.installedTable.Cursor()
 					row := m.visibleInstalledData[selectedIndex]
-					if updater.Install(row.sourceId, row.remoteVersion) == false {
+					if !updater.Install(row.sourceId, row.remoteVersion) {
 						newModal := modal.New("Error installing package", "error")
 						m.modal = &newModal
 						log.Println("Error installing package")
@@ -161,7 +161,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "enter":
 					selectedIndex := m.registryTable.Cursor()
 					row := m.visibleRegistryData[selectedIndex]
-					if updater.Install(row.sourceId, row.version) == false {
+					if !updater.Install(row.sourceId, row.version) {
 						log.Println("Error installing package")
 						return m.showModal("Error installing package", "error")
 					}

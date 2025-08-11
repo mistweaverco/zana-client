@@ -62,11 +62,7 @@ func (m model) checkCache() tea.Cmd {
 	}
 }
 
-func (m model) downloadRegistry() tea.Cmd {
-	return func() tea.Msg {
-		return downloadStartedMsg{}
-	}
-}
+
 
 func (m model) performDownload() tea.Cmd {
 	return func() tea.Msg {
@@ -88,7 +84,9 @@ func (m model) unzipRegistry() tea.Cmd {
 func (m model) performUnzip() tea.Cmd {
 	return func() tea.Msg {
 		cachePath := files.GetRegistryCachePath()
-		files.Unzip(cachePath, files.GetAppDataPath())
+		if err := files.Unzip(cachePath, files.GetAppDataPath()); err != nil {
+			return errMsg(err)
+		}
 		return unzipFinishedMsg{}
 	}
 }

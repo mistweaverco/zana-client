@@ -13,15 +13,31 @@ import (
 
 var PS = string(os.PathSeparator)
 
-func Download(url string, dest string) {
+func Download(url string, dest string) error {
 	resp, err := http.Get(url)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	defer resp.Body.Close()
-	out, _ := os.Create(dest)
-	defer out.Close()
-	io.Copy(out, resp.Body)
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log the error but don't fail the function
+			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
+		}
+	}()
+	
+	out, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := out.Close(); closeErr != nil {
+			// Log the error but don't fail the function
+			fmt.Printf("Warning: failed to close output file: %v\n", closeErr)
+		}
+	}()
+	
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
 
 // GetAppLocalPackagesFilePath returns the path to the local packages file
@@ -55,7 +71,11 @@ func GenerateGitIgnoreAllFiles(dir string) bool {
 		fmt.Println("Error creating .gitignore:", err)
 		return false
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close .gitignore file: %v\n", closeErr)
+		}
+	}()
 	_, err = file.WriteString(contents)
 	if err != nil {
 		fmt.Println("Error writing to .gitignore:", err)
@@ -107,7 +127,10 @@ func GetAppBinPath() string {
 
 func EnsureDirExists(path string) string {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		os.MkdirAll(path, 0755)
+		if err := os.MkdirAll(path, 0755); err != nil {
+			// Log the error but don't fail the function
+			fmt.Printf("Warning: failed to create directory %s: %v\n", path, err)
+		}
 	}
 	return path
 }
@@ -123,7 +146,9 @@ func Unzip(src, dest string) error {
 		}
 	}()
 
-	os.MkdirAll(dest, 0755)
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
 
 	// Closure to address file descriptors issue with all the deferred .Close() methods
 	extractAndWriteFile := func(f *zip.File) error {
@@ -145,9 +170,13 @@ func Unzip(src, dest string) error {
 		}
 
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(path, f.Mode())
+			if err := os.MkdirAll(path, f.Mode()); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", path, err)
+			}
 		} else {
-			os.MkdirAll(filepath.Dir(path), f.Mode())
+			if err := os.MkdirAll(filepath.Dir(path), f.Mode()); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(path), err)
+			}
 			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 			if err != nil {
 				return err
@@ -205,14 +234,24 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log the error but don't fail the function
+			fmt.Printf("Warning: failed to close response body: %v\n", closeErr)
+		}
+	}()
 
 	// Create the cache file
 	out, err := os.Create(cachePath)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		if closeErr := out.Close(); closeErr != nil {
+			// Log the error but don't fail the function
+			fmt.Printf("Warning: failed to close cache file: %v\n", closeErr)
+		}
+	}()
 
 	// Copy the response to the cache file
 	_, err = io.Copy(out, resp.Body)

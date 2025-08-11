@@ -88,13 +88,16 @@ func (m Modal) view(screenWidth, screenHeight int) string {
 	content := lipgloss.NewStyle().Width(modalWidth - 4).Align(lipgloss.Center).Render(m.Message)
 	closeButton := lipgloss.NewStyle().Padding(0, 1).MarginTop(2).Render("[press enter to close]")
 
-	bordercolor := lipgloss.Color("#3ff")
-	if m.Type == "error" {
+	var bordercolor lipgloss.Color
+	switch m.Type {
+	case "error":
 		bordercolor = lipgloss.Color("#f33")
-	} else if m.Type == "success" {
+	case "success":
 		bordercolor = lipgloss.Color("#3f3")
-	} else if m.Type == "warning" {
+	case "warning":
 		bordercolor = lipgloss.Color("#ff3")
+	default:
+		bordercolor = lipgloss.Color("#3ff")
 	}
 
 	// Create the modal box

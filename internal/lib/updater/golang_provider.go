@@ -57,7 +57,11 @@ func (p *GolangProvider) generatePackageJSON() bool {
 		fmt.Println("Error creating package.json:", err)
 		return false
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close package.json file: %v\n", closeErr)
+		}
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
@@ -94,7 +98,9 @@ func (p *GolangProvider) createSymlinks() error {
 
 			// Remove existing symlink if it exists
 			if _, err := os.Lstat(symlinkPath); err == nil {
-				os.Remove(symlinkPath)
+				if err := os.Remove(symlinkPath); err != nil {
+					log.Printf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err)
+				}
 			}
 
 			// Create the symlink
@@ -130,7 +136,45 @@ func (p *GolangProvider) removeAllSymlinks() error {
 		if !entry.IsDir() {
 			symlinkPath := filepath.Join(zanaBinDir, entry.Name())
 			if _, err := os.Lstat(symlinkPath); err == nil {
-				os.Remove(symlinkPath)
+				if err := os.Remove(symlinkPath); err != nil {
+					log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// removePackageSymlinks removes symlinks for a specific package
+func (p *GolangProvider) removePackageSymlinks(packageName string) error {
+	zanaBinDir := files.GetAppBinPath()
+
+	// For Go packages, the binary name is typically the base name of the package
+	binaryName := filepath.Base(packageName)
+	symlinkPath := filepath.Join(zanaBinDir, binaryName)
+
+	if _, err := os.Lstat(symlinkPath); err == nil {
+		log.Printf("Golang Remove: Removing symlink %s for package %s", binaryName, packageName)
+		if err := os.Remove(symlinkPath); err != nil {
+			log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+		}
+	}
+
+	// Also check for common variations of the binary name
+	// Some Go packages might have different naming conventions
+	commonNames := []string{
+		binaryName,
+		"go-" + binaryName,
+		"golang-" + binaryName,
+	}
+
+	for _, name := range commonNames {
+		symlinkPath := filepath.Join(zanaBinDir, name)
+		if _, err := os.Lstat(symlinkPath); err == nil {
+			log.Printf("Golang Remove: Removing symlink %s for package %s", name, packageName)
+			if err := os.Remove(symlinkPath); err != nil {
+				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
 			}
 		}
 	}
@@ -179,6 +223,8 @@ func (p *GolangProvider) Sync() bool {
 		return true
 	}
 
+	log.Printf("Golang Sync: Starting sync process")
+
 	// Get desired packages from local_packages_parser
 	desired := local_packages_parser.GetData(true).Packages
 
@@ -194,6 +240,9 @@ func (p *GolangProvider) Sync() bool {
 
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	allOk := true
+	installedCount := 0
+	skippedCount := 0
+
 	for _, pkg := range desired {
 		name := p.getRepo(pkg.SourceID)
 		binPath := filepath.Join(gobin, filepath.Base(name))
@@ -204,18 +253,25 @@ func (p *GolangProvider) Sync() bool {
 			installed = true
 		}
 		if !installed {
+			log.Printf("Golang Sync: Installing package %s@%s", name, pkg.Version)
 			installCode, err := shell_out.ShellOut("go", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, []string{"GOBIN=" + gobin})
 			if err != nil || installCode != 0 {
 				log.Printf("Error installing %s@%s: %v", name, pkg.Version, err)
 				allOk = false
 			} else {
+				installedCount++
 				err = p.createSymlinks()
 				if err != nil {
 					log.Printf("Error creating symlinks for %s: %v", name, err)
 				}
 			}
+		} else {
+			log.Printf("Golang Sync: Package %s@%s already installed, skipping", name, pkg.Version)
+			skippedCount++
 		}
 	}
+
+	log.Printf("Golang Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount)
 
 	return allOk
 }
@@ -229,9 +285,24 @@ func (p *GolangProvider) Install(sourceID, version string) bool {
 }
 
 func (p *GolangProvider) Remove(sourceID string) bool {
-	err := local_packages_parser.RemoveLocalPackage(sourceID)
+	// Get the package name before removing it from local packages
+	packageName := p.getRepo(sourceID)
+
+	log.Printf("Golang Remove: Removing package %s", packageName)
+
+	// Remove symlinks for this package first
+	err := p.removePackageSymlinks(packageName)
 	if err != nil {
+		log.Printf("Error removing symlinks for %s: %v", packageName, err)
+		// Don't fail the remove if symlink removal fails
+	}
+
+	err = local_packages_parser.RemoveLocalPackage(sourceID)
+	if err != nil {
+		log.Printf("Error removing package %s from local packages: %v", packageName, err)
 		return false
 	}
+
+	log.Printf("Golang Remove: Package %s removed successfully", packageName)
 	return p.Sync()
 }
