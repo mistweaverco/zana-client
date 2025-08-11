@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mistweaverco/zana-client/internal/lib/files"
-	"github.com/mistweaverco/zana-client/internal/lib/updater"
+	"github.com/mistweaverco/zana-client/internal/lib/providers"
 )
 
 var DEFAULT_REGISTRY_URL = "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
@@ -97,7 +97,7 @@ func (m model) syncLocalPackages() tea.Cmd {
 
 func (m model) performSyncLocalPackages() tea.Cmd {
 	return func() tea.Msg {
-		updater.SyncAll()
+		providers.SyncAll()
 		return syncLocalPackagesFinishedMsg{}
 	}
 }

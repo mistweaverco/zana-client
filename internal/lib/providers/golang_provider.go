@@ -1,4 +1,4 @@
-package updater
+package providers
 
 import (
 	"encoding/json"
@@ -44,7 +44,6 @@ func (p *GolangProvider) generatePackageJSON() bool {
 	}{
 		Dependencies: make(map[string]string),
 	}
-
 	localPackages := local_packages_parser.GetDataForProvider("golang").Packages
 	for _, pkg := range localPackages {
 		if detectProvider(pkg.SourceID) != ProviderGolang {
@@ -53,7 +52,6 @@ func (p *GolangProvider) generatePackageJSON() bool {
 		packageJSON.Dependencies[p.getRepo(pkg.SourceID)] = pkg.Version
 		found = true
 	}
-
 	filePath := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
 	file, err := os.Create(filePath)
 	if err != nil {
@@ -65,114 +63,79 @@ func (p *GolangProvider) generatePackageJSON() bool {
 			fmt.Printf("Warning: failed to close package.json file: %v\n", closeErr)
 		}
 	}()
-
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	err = encoder.Encode(packageJSON)
-	if err != nil {
+	if err := encoder.Encode(packageJSON); err != nil {
 		fmt.Println("Error encoding package.json:", err)
 		return false
 	}
-
 	return found
 }
 
-// createSymlinks creates symlinks for Go binaries
 func (p *GolangProvider) createSymlinks() error {
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	zanaBinDir := files.GetAppBinPath()
-
-	// Check if golang bin directory exists
 	if _, err := os.Stat(golangBinDir); os.IsNotExist(err) {
-		return nil // No binaries installed
+		return nil
 	}
-
-	// Read all files in the golang bin directory
 	entries, err := os.ReadDir(golangBinDir)
 	if err != nil {
 		return err
 	}
-
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			binaryName := entry.Name()
-			binaryPath := filepath.Join(golangBinDir, binaryName)
-			symlinkPath := filepath.Join(zanaBinDir, binaryName)
-
-			// Remove existing symlink if it exists
-			if _, err := os.Lstat(symlinkPath); err == nil {
-				if err := os.Remove(symlinkPath); err != nil {
-					log.Printf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err)
-				}
-			}
-
-			// Create the symlink
-			err := os.Symlink(binaryPath, symlinkPath)
-			if err != nil {
-				log.Printf("Error creating symlink for %s: %v", binaryName, err)
-				continue
-			}
-
-			// Make the symlink executable
-			err = os.Chmod(symlinkPath, 0755)
-			if err != nil {
-				log.Printf("Error setting executable permissions for %s: %v", binaryName, err)
+		if entry.IsDir() {
+			continue
+		}
+		binaryName := entry.Name()
+		binaryPath := filepath.Join(golangBinDir, binaryName)
+		symlinkPath := filepath.Join(zanaBinDir, binaryName)
+		if _, err := os.Lstat(symlinkPath); err == nil {
+			if err := os.Remove(symlinkPath); err != nil {
+				log.Printf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err)
 			}
 		}
+		if err := os.Symlink(binaryPath, symlinkPath); err != nil {
+			log.Printf("Error creating symlink for %s: %v", binaryName, err)
+			continue
+		}
+		if err := os.Chmod(symlinkPath, 0755); err != nil {
+			log.Printf("Error setting executable permissions for %s: %v", binaryName, err)
+		}
 	}
-
 	return nil
 }
 
-// removeAllSymlinks removes all symlinks from the zana bin directory
 func (p *GolangProvider) removeAllSymlinks() error {
 	zanaBinDir := files.GetAppBinPath()
-
-	// Read all files in the zana bin directory
 	entries, err := os.ReadDir(zanaBinDir)
 	if err != nil {
 		return err
 	}
-
-	// Remove all symlinks
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			symlinkPath := filepath.Join(zanaBinDir, entry.Name())
-			if _, err := os.Lstat(symlinkPath); err == nil {
-				if err := os.Remove(symlinkPath); err != nil {
-					log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
-				}
+		if entry.IsDir() {
+			continue
+		}
+		symlinkPath := filepath.Join(zanaBinDir, entry.Name())
+		if _, err := os.Lstat(symlinkPath); err == nil {
+			if err := os.Remove(symlinkPath); err != nil {
+				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
 			}
 		}
 	}
-
 	return nil
 }
 
-// removePackageSymlinks removes symlinks for a specific package
 func (p *GolangProvider) removePackageSymlinks(packageName string) error {
 	zanaBinDir := files.GetAppBinPath()
-
-	// For Go packages, the binary name is typically the base name of the package
 	binaryName := filepath.Base(packageName)
 	symlinkPath := filepath.Join(zanaBinDir, binaryName)
-
 	if _, err := os.Lstat(symlinkPath); err == nil {
 		log.Printf("Golang Remove: Removing symlink %s for package %s", binaryName, packageName)
 		if err := os.Remove(symlinkPath); err != nil {
 			log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
 		}
 	}
-
-	// Also check for common variations of the binary name
-	// Some Go packages might have different naming conventions
-	commonNames := []string{
-		binaryName,
-		"go-" + binaryName,
-		"golang-" + binaryName,
-	}
-
-	for _, name := range commonNames {
+	for _, name := range []string{binaryName, "go-" + binaryName, "golang-" + binaryName} {
 		symlinkPath := filepath.Join(zanaBinDir, name)
 		if _, err := os.Lstat(symlinkPath); err == nil {
 			log.Printf("Golang Remove: Removing symlink %s for package %s", name, packageName)
@@ -181,26 +144,20 @@ func (p *GolangProvider) removePackageSymlinks(packageName string) error {
 			}
 		}
 	}
-
 	return nil
 }
 
 func (p *GolangProvider) Clean() bool {
-	// Remove all symlinks first
-	err := p.removeAllSymlinks()
-	if err != nil {
+	if err := p.removeAllSymlinks(); err != nil {
 		log.Printf("Error removing symlinks: %v", err)
 	}
-
-	err = os.RemoveAll(p.APP_PACKAGES_DIR)
-	if err != nil {
+	if err := os.RemoveAll(p.APP_PACKAGES_DIR); err != nil {
 		log.Println("Error removing directory:", err)
 		return false
 	}
 	return p.Sync()
 }
 
-// checkGoAvailable checks if the go command is available
 func (p *GolangProvider) checkGoAvailable() bool {
 	checkCode, err := shell_out.ShellOut("go", []string{"version"}, p.APP_PACKAGES_DIR, nil)
 	return err == nil && checkCode == 0
@@ -208,30 +165,21 @@ func (p *GolangProvider) checkGoAvailable() bool {
 
 func (p *GolangProvider) Sync() bool {
 	if _, err := os.Stat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
-		err := os.Mkdir(p.APP_PACKAGES_DIR, 0755)
-		if err != nil {
+		if err := os.Mkdir(p.APP_PACKAGES_DIR, 0755); err != nil {
 			fmt.Println("Error creating directory:", err)
 			return false
 		}
 	}
-
-	// Check if Go is available
 	if !p.checkGoAvailable() {
 		log.Println("Error: Go is not available. Please install Go and ensure it's in your PATH.")
 		return false
 	}
-
 	packagesFound := p.generatePackageJSON()
 	if !packagesFound {
 		return true
 	}
-
 	log.Printf("Golang Sync: Starting sync process")
-
-	// Get desired packages from local_packages_parser
 	desired := local_packages_parser.GetDataForProvider("golang").Packages
-
-	// Initialize Go module if it doesn't exist
 	goModPath := filepath.Join(p.APP_PACKAGES_DIR, "go.mod")
 	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
 		initCode, err := shell_out.ShellOut("go", []string{"mod", "init", "zana-golang-packages"}, p.APP_PACKAGES_DIR, nil)
@@ -240,19 +188,15 @@ func (p *GolangProvider) Sync() bool {
 			return false
 		}
 	}
-
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	allOk := true
 	installedCount := 0
 	skippedCount := 0
-
 	for _, pkg := range desired {
 		name := p.getRepo(pkg.SourceID)
 		binPath := filepath.Join(gobin, filepath.Base(name))
 		installed := false
 		if fi, err := os.Stat(binPath); err == nil && !fi.IsDir() {
-			// Optionally, check version by running the binary with --version if supported
-			// For now, assume installed if binary exists
 			installed = true
 		}
 		if !installed {
@@ -263,8 +207,7 @@ func (p *GolangProvider) Sync() bool {
 				allOk = false
 			} else {
 				installedCount++
-				err = p.createSymlinks()
-				if err != nil {
+				if err := p.createSymlinks(); err != nil {
 					log.Printf("Error creating symlinks for %s: %v", name, err)
 				}
 			}
@@ -273,9 +216,7 @@ func (p *GolangProvider) Sync() bool {
 			skippedCount++
 		}
 	}
-
 	log.Printf("Golang Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount)
-
 	return allOk
 }
 
@@ -288,32 +229,22 @@ func (p *GolangProvider) Install(sourceID, version string) bool {
 			return false
 		}
 	}
-	err = local_packages_parser.AddLocalPackage(sourceID, version)
-	if err != nil {
+	if err := local_packages_parser.AddLocalPackage(sourceID, version); err != nil {
 		return false
 	}
 	return p.Sync()
 }
 
 func (p *GolangProvider) Remove(sourceID string) bool {
-	// Get the package name before removing it from local packages
 	packageName := p.getRepo(sourceID)
-
 	log.Printf("Golang Remove: Removing package %s", packageName)
-
-	// Remove symlinks for this package first
-	err := p.removePackageSymlinks(packageName)
-	if err != nil {
+	if err := p.removePackageSymlinks(packageName); err != nil {
 		log.Printf("Error removing symlinks for %s: %v", packageName, err)
-		// Don't fail the remove if symlink removal fails
 	}
-
-	err = local_packages_parser.RemoveLocalPackage(sourceID)
-	if err != nil {
+	if err := local_packages_parser.RemoveLocalPackage(sourceID); err != nil {
 		log.Printf("Error removing package %s from local packages: %v", packageName, err)
 		return false
 	}
-
 	log.Printf("Golang Remove: Package %s removed successfully", packageName)
 	return p.Sync()
 }
@@ -324,34 +255,23 @@ func (p *GolangProvider) Update(sourceID string) bool {
 		log.Printf("Invalid source ID format for Golang provider")
 		return false
 	}
-
-	// Get the latest version from Go modules
 	latestVersion, err := p.getLatestVersion(repo)
 	if err != nil {
 		log.Printf("Error getting latest version for %s: %v", repo, err)
 		return false
 	}
-
 	log.Printf("Golang Update: Updating %s to version %s", repo, latestVersion)
-
-	// Install the latest version
 	return p.Install(sourceID, latestVersion)
 }
 
 func (p *GolangProvider) getLatestVersion(packageName string) (string, error) {
-	// Use go list to get the latest version
 	_, output, err := shell_out.ShellOutCapture("go", []string{"list", "-m", "-versions", packageName}, "", nil)
 	if err != nil {
 		return "", err
 	}
-
-	// Parse the output to get the latest version
-	// Output format: "module version1 version2 version3 ..."
 	parts := strings.Fields(output)
 	if len(parts) < 2 {
 		return "", fmt.Errorf("invalid output format from go list")
 	}
-
-	// Return the last version (latest)
 	return parts[len(parts)-1], nil
 }

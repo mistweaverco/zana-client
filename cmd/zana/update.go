@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
-	"github.com/mistweaverco/zana-client/internal/lib/updater"
+	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -19,11 +19,13 @@ Supported package ID formats:
   pkg:npm/@prisma/language-server
   pkg:golang/golang.org/x/tools/gopls
   pkg:pypi/black
+  pkg:cargo/ripgrep
 
 Examples:
   zana update pkg:npm/@prisma/language-server
   zana up pkg:golang/golang.org/x/tools/gopls
   zana update pkg:pypi/black
+  zana update pkg:cargo/ripgrep
   zana update --all (update all installed packages)`,
 	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -64,15 +66,15 @@ Examples:
 		}
 
 		provider := parts[0]
-		if provider != "npm" && provider != "golang" && provider != "pypi" {
-			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: npm, golang, pypi\n", provider)
+		if !providers.IsSupportedProvider(provider) {
+			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(providers.AvailableProviders, ", "))
 			return
 		}
 
 		fmt.Printf("Updating %s to latest version...\n", pkgId)
 
 		// Update the package
-		success := updater.Update(pkgId)
+		success := providers.Update(pkgId)
 		if success {
 			fmt.Printf("Successfully updated %s\n", pkgId)
 		} else {
@@ -103,7 +105,7 @@ func updateAllPackages() bool {
 	for _, pkg := range localPackages {
 		fmt.Printf("Updating %s...\n", pkg.SourceID)
 
-		success := updater.Update(pkg.SourceID)
+		success := providers.Update(pkg.SourceID)
 		if success {
 			successCount++
 			fmt.Printf("✓ Successfully updated %s\n", pkg.SourceID)

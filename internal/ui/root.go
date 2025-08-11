@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
+	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
-	"github.com/mistweaverco/zana-client/internal/lib/updater"
 	"github.com/mistweaverco/zana-client/internal/modal"
 )
 
@@ -219,7 +219,8 @@ func (m *model) updateInstalledTableRows(items []localPackageItem) {
 		versionWidth := m.installedTable.Columns()[1].Width
 		version := item.version
 		if item.updateAvailable {
-			version = "🔼 " + version
+			// Show local -> remote version when update is available
+			version = "" + version + " → " + item.remoteVersion
 		}
 		truncatedVersion := truncateString(version, versionWidth)
 
@@ -266,47 +267,63 @@ func getRegistryItemsData() []registryPackageItem {
 func getLocalPackagesData() []localPackageItem {
 	localItems := []localPackageItem{}
 	localPackages := local_packages_parser.GetData(true).Packages
-	registryPackages := registry_parser.GetData(true)
 
-	// Create a map for quick lookup of local package versions by sourceID
-	localPackageMap := make(map[string]string)
 	for _, localPkg := range localPackages {
-		localPackageMap[localPkg.SourceID] = localPkg.Version
-	}
+		// Enrich with registry info if present
+		reg := registry_parser.GetBySourceId(localPkg.SourceID)
+		hasRegistry := reg.Source.ID != ""
 
-	// Iterate over registry entries
-	for _, registryItem := range registryPackages {
-		// Check if this registry item is installed locally
-		if localVersion, isInstalled := localPackageMap[registryItem.Source.ID]; isInstalled {
-			updateAvailable, _ := updater.CheckIfUpdateIsAvailable(localVersion, registryItem.Version)
-			localItems = append(localItems, localPackageItem{
-				title:           registryItem.Name,
-				desc:            registryItem.Description,
-				sourceId:        registryItem.Source.ID,
-				version:         localVersion,
-				remoteVersion:   registryItem.Version,
-				updateAvailable: updateAvailable,
-			})
+		title := deriveNameFromSourceID(localPkg.SourceID)
+		desc := ""
+		remoteVersion := ""
+		updateAvailable := false
+
+		if hasRegistry {
+			if reg.Name != "" {
+				title = reg.Name
+			}
+			desc = reg.Description
+			remoteVersion = strings.TrimSpace(reg.Version)
+			if localPkg.Version == "" || localPkg.Version == "latest" {
+				updateAvailable = true
+			} else {
+				updateAvailable, _ = providers.CheckIfUpdateIsAvailable(localPkg.Version, remoteVersion)
+			}
 		}
+
+		localItems = append(localItems, localPackageItem{
+			title:           title,
+			desc:            desc,
+			sourceId:        localPkg.SourceID,
+			version:         localPkg.Version,
+			remoteVersion:   remoteVersion,
+			updateAvailable: updateAvailable,
+		})
 	}
 
-	// if an update is available sort the list by update available first
 	if len(localItems) > 0 {
 		sort.Slice(localItems, func(i, j int) bool {
-			// Primary sort: updateAvailable
 			if localItems[i].updateAvailable && !localItems[j].updateAvailable {
 				return true
 			}
 			if !localItems[i].updateAvailable && localItems[j].updateAvailable {
 				return false
 			}
-
-			// Secondary sort: Title (if updateAvailable is the same)
 			return localItems[i].title < localItems[j].title
 		})
 	}
 
 	return localItems
+}
+
+// deriveNameFromSourceID extracts the package name from a sourceId like "pkg:cargo/ripgrep"
+func deriveNameFromSourceID(sourceID string) string {
+	withoutPrefix := strings.TrimPrefix(sourceID, "pkg:")
+	parts := strings.SplitN(withoutPrefix, "/", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return sourceID
 }
 
 func truncateString(s string, maxLen int) string {

@@ -1,4 +1,4 @@
-package updater
+package providers
 
 import (
 	"strings"
@@ -13,6 +13,7 @@ const (
 	ProviderNPM Provider = iota
 	ProviderPyPi
 	ProviderGolang
+	ProviderCargo
 	ProviderUnsupported
 )
 
@@ -21,6 +22,25 @@ var Logger = log.NewLogger()
 var npmProvider NPMProvider = *NewProviderNPM()
 var pypiProvider PyPiProvider = *NewProviderPyPi()
 var golangProvider GolangProvider = *NewProviderGolang()
+var cargoProvider CargoProvider = *NewProviderCargo()
+
+// AvailableProviders lists all provider names supported by Zana
+var AvailableProviders = []string{
+	npmProvider.PROVIDER_NAME,
+	pypiProvider.PROVIDER_NAME,
+	golangProvider.PROVIDER_NAME,
+	cargoProvider.PROVIDER_NAME,
+}
+
+// IsSupportedProvider returns true if the given provider name is supported
+func IsSupportedProvider(name string) bool {
+	for _, p := range AvailableProviders {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
 
 func detectProvider(sourceId string) Provider {
 	var provider Provider
@@ -31,6 +51,8 @@ func detectProvider(sourceId string) Provider {
 		provider = ProviderPyPi
 	case strings.HasPrefix(sourceId, golangProvider.PREFIX):
 		provider = ProviderGolang
+	case strings.HasPrefix(sourceId, cargoProvider.PREFIX):
+		provider = ProviderCargo
 	default:
 		provider = ProviderUnsupported
 	}
@@ -50,6 +72,7 @@ func SyncAll() {
 	npmProvider.Sync()
 	pypiProvider.Sync()
 	golangProvider.Sync()
+	cargoProvider.Sync()
 }
 
 func Install(sourceId string, version string) bool {
@@ -61,6 +84,8 @@ func Install(sourceId string, version string) bool {
 		return pypiProvider.Install(sourceId, version)
 	case ProviderGolang:
 		return golangProvider.Install(sourceId, version)
+	case ProviderCargo:
+		return cargoProvider.Install(sourceId, version)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -76,6 +101,8 @@ func Remove(sourceId string) bool {
 		return pypiProvider.Remove(sourceId)
 	case ProviderGolang:
 		return golangProvider.Remove(sourceId)
+	case ProviderCargo:
+		return cargoProvider.Remove(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -91,6 +118,8 @@ func Update(sourceId string) bool {
 		return pypiProvider.Update(sourceId)
 	case ProviderGolang:
 		return golangProvider.Update(sourceId)
+	case ProviderCargo:
+		return cargoProvider.Update(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
