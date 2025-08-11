@@ -176,7 +176,7 @@ func (m model) View() string {
 }
 
 func Start(cacheMaxAge time.Duration) {
-	p := tea.NewProgram(initialModel(cacheMaxAge), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel(cacheMaxAge))
 	if _, err := p.Run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

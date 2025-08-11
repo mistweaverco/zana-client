@@ -127,53 +127,6 @@ func (p *NPMProvider) createSymlinks(packageName string, packagePath string, pkg
 	return nil
 }
 
-// createAllSymlinks creates symlinks for all installed npm packages
-func (p *NPMProvider) createAllSymlinks() error {
-	// First, remove all existing symlinks to ensure clean state
-	err := p.removeAllSymlinks()
-	if err != nil {
-		log.Printf("Error removing existing symlinks: %v", err)
-	}
-
-	nodeModulesPath := filepath.Join(p.APP_PACKAGES_DIR, "node_modules")
-
-	// Check if node_modules directory exists
-	if _, err := os.Stat(nodeModulesPath); os.IsNotExist(err) {
-		return nil // No packages installed
-	}
-
-	// Get the list of packages managed by zana
-	localPackages := local_packages_parser.GetData(true).Packages
-	managedPackages := make(map[string]bool)
-
-	for _, pkg := range localPackages {
-		if detectProvider(pkg.SourceID) == ProviderNPM {
-			packageName := p.getRepo(pkg.SourceID)
-			managedPackages[packageName] = true
-		}
-	}
-
-	// Only create symlinks for packages managed by zana
-	for packageName := range managedPackages {
-		packagePath := filepath.Join(nodeModulesPath, packageName)
-		pkg, err := p.readPackageJSON(packagePath)
-		if err != nil {
-			log.Printf("Error reading package.json for %s: %v", packageName, err)
-			continue
-		}
-
-		// Create symlinks if the package has bin entries
-		if len(pkg.Bin) > 0 {
-			err = p.createSymlinks(packageName, packagePath, pkg)
-			if err != nil {
-				log.Printf("Error creating symlinks for %s: %v", packageName, err)
-			}
-		}
-	}
-
-	return nil
-}
-
 // removeSymlinks removes symlinks for a specific package
 func (p *NPMProvider) removeSymlinks(packageName string) error {
 	binDir := files.GetAppBinPath()

@@ -343,10 +343,10 @@ func (p *PyPiProvider) Sync() bool {
 	// Get installed packages using pip freeze
 	installed := map[string]string{}
 	pipCmd := "pip3"
-	freezeCode, freezeOut := shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
+	freezeCode, freezeOut, _ := shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
 	if freezeCode != 0 || freezeOut == "" {
 		pipCmd = "pip"
-		freezeCode, freezeOut = shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
+		freezeCode, freezeOut, _ = shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
 	}
 	if freezeCode == 0 && freezeOut != "" {
 		lines := strings.Split(freezeOut, "\n")

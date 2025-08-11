@@ -69,7 +69,7 @@ func AddLocalPackage(sourceId string, version string) error {
 	}
 
 	localPackagesFile := files.GetAppLocalPackagesFilePath()
-	jsonData, err := json.Marshal(localPackageRoot)
+	jsonData, err := json.MarshalIndent(localPackageRoot, "", "  ")
 	if err != nil {
 		fmt.Println("Error marshaling JSON:", err)
 		return err

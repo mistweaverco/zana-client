@@ -28,6 +28,12 @@ var rootCmd = &cobra.Command{
 			log.Info("Version", runtime.GOOS, VERSION)
 			return
 		} else {
+			// Check requirements before starting the main application
+			if !ui.ShowRequirementsCheck() {
+				log.Info("User chose to quit due to missing requirements")
+				return
+			}
+			
 			boot.Start(cfg.Flags.CacheMaxAge)
 			ui.Show()
 		}
