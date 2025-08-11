@@ -55,18 +55,35 @@ func FileExists(path string) bool {
 	return err == nil
 }
 
-func GenerateGitIgnoreAllFiles(dir string) bool {
-	if FileExists(dir + PS + ".gitignore") {
+// GenerateZanaGitIgnore creates a .gitignore file at the top level of the zana config directory
+// if it doesn't exist. The .gitignore ignores *.zip files and the /bin directory.
+func GenerateZanaGitIgnore() bool {
+	configDir := GetAppDataPath()
+	gitignorePath := configDir + PS + ".gitignore"
+
+	if FileExists(gitignorePath) {
 		return true
 	}
-	EnsureDirExists(dir)
-	contents := `# Ignore all files
-*
-# Except directories
-!.gitignore
+
+	contents := `# Zana configuration directory .gitignore
+# Ignore zip files
+*.zip
+
+# Ignore zana-registry file
+zana-registry.json
+
+# Ignore bin directory
+/bin
+
+# Ignore packages directory
+/packages
+
+# Ignore other common temporary files
+*.tmp
+*.log
 `
-	filePath := dir + PS + ".gitignore"
-	file, err := os.Create(filePath)
+
+	file, err := os.Create(gitignorePath)
 	if err != nil {
 		fmt.Println("Error creating .gitignore:", err)
 		return false
@@ -76,11 +93,14 @@ func GenerateGitIgnoreAllFiles(dir string) bool {
 			fmt.Printf("Warning: failed to close .gitignore file: %v\n", closeErr)
 		}
 	}()
+
 	_, err = file.WriteString(contents)
 	if err != nil {
 		fmt.Println("Error writing to .gitignore:", err)
 		return false
 	}
+
+	fmt.Println("Created .gitignore in zana config directory")
 	return true
 }
 
@@ -121,7 +141,6 @@ func GetAppPackagesPath() string {
 // e.g. /home/user/.config/zana/bin
 func GetAppBinPath() string {
 	path := GetAppDataPath() + PS + "bin"
-	GenerateGitIgnoreAllFiles(path)
 	return EnsureDirExists(path)
 }
 
@@ -256,4 +275,27 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	// Copy the response to the cache file
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+// DownloadAndUnzipRegistry downloads the registry from the default URL and unzips it
+// This is used to ensure the registry is available for commands that need it
+func DownloadAndUnzipRegistry() error {
+	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
+	if override := os.Getenv("ZANA_REGISTRY_URL"); override != "" {
+		registryURL = override
+	}
+
+	cachePath := GetRegistryCachePath()
+
+	// Download the registry
+	if err := DownloadWithCache(registryURL, cachePath, 24*time.Hour); err != nil {
+		return fmt.Errorf("failed to download registry: %w", err)
+	}
+
+	// Unzip the registry
+	if err := Unzip(cachePath, GetAppDataPath()); err != nil {
+		return fmt.Errorf("failed to unzip registry: %w", err)
+	}
+
+	return nil
 }

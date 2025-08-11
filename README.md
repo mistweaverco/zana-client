@@ -99,6 +99,19 @@ zana env powershell | Invoke-Expression
 eval "$(zana env)"
 ```
 
+### CLI Options
+
+You can run `zana --help` to see the available CLI options.
+
+- install/add: Install a package (e.g., `zana install pkg:npm/@mistweavercokulala-ls`)
+- list/ls: Lists all installed packages (or with `--all`/`-A` flag all available packages.
+- update/up: Update a package (e.g., `zana update pkg:npm/@mistweaverco/kulala-ls`)
+- remove/rm/delete: Remove a package (e.g., `zana remove pkg:npm/@mistweaverco/kulala-ls`)
+
+The `update` command accepts the an optional `--all`/`-A` flag to update all packages.
+
+- health: Checks for requirements (for shelling out to install packages)
+
 ### Where are the packages?
 
 Zana uses a basepath to install packages of different types.

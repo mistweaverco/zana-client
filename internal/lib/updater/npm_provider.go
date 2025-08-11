@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
@@ -452,6 +453,35 @@ func (p *NPMProvider) Remove(sourceID string) bool {
 
 	log.Printf("NPM Remove: Package %s removed successfully", packageName)
 	return p.Sync()
+}
+
+func (p *NPMProvider) Update(sourceID string) bool {
+	repo := p.getRepo(sourceID)
+	if repo == "" {
+		log.Printf("Invalid source ID format for NPM provider")
+		return false
+	}
+
+	// Get the latest version from npm
+	latestVersion, err := p.getLatestVersion(repo)
+	if err != nil {
+		log.Printf("Error getting latest version for %s: %v", repo, err)
+		return false
+	}
+
+	log.Printf("NPM Update: Updating %s to version %s", repo, latestVersion)
+
+	// Install the latest version
+	return p.Install(sourceID, latestVersion)
+}
+
+func (p *NPMProvider) getLatestVersion(packageName string) (string, error) {
+	// Use npm view to get the latest version
+	_, output, err := shell_out.ShellOutCapture("npm", []string{"view", packageName, "version"}, "", nil)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(output), nil
 }
 
 // tryNpmCi attempts to install all packages using npm ci for better performance

@@ -6,9 +6,13 @@ import (
 	"os"
 
 	"github.com/mistweaverco/zana-client/cmd/zana"
+	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
 
 func main() {
+	// Initialize zana config directory and .gitignore before any command runs
+	files.GenerateZanaGitIgnore()
+
 	f, err := os.OpenFile("/tmp/zana.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
