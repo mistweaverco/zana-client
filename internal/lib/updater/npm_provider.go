@@ -57,7 +57,11 @@ func (p *NPMProvider) generatePackageJSON() bool {
 		fmt.Println("Error creating package.json:", err)
 		return false
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close package.json file: %v\n", closeErr)
+		}
+	}()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
@@ -95,7 +99,7 @@ func (p *NPMProvider) readPackageJSON(packagePath string) (*PackageJSON, error) 
 }
 
 // createSymlinks creates symlinks for the bin entries in a package
-func (p *NPMProvider) createSymlinks(packageName string, packagePath string, pkg *PackageJSON) error {
+func (p *NPMProvider) createSymlinks(packagePath string, pkg *PackageJSON) error {
 	binDir := files.GetAppBinPath()
 
 	for binName, binPath := range pkg.Bin {
@@ -107,7 +111,9 @@ func (p *NPMProvider) createSymlinks(packageName string, packagePath string, pkg
 
 		// Remove existing symlink if it exists
 		if _, err := os.Lstat(symlinkPath); err == nil {
-			os.Remove(symlinkPath)
+			if err := os.Remove(symlinkPath); err != nil {
+				log.Printf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err)
+			}
 		}
 
 		// Create the symlink
@@ -121,76 +127,6 @@ func (p *NPMProvider) createSymlinks(packageName string, packagePath string, pkg
 		err = os.Chmod(symlinkPath, 0755)
 		if err != nil {
 			log.Printf("Error setting executable permissions for %s: %v", binName, err)
-		}
-	}
-
-	return nil
-}
-
-// createAllSymlinks creates symlinks for all installed npm packages
-func (p *NPMProvider) createAllSymlinks() error {
-	// First, remove all existing symlinks to ensure clean state
-	err := p.removeAllSymlinks()
-	if err != nil {
-		log.Printf("Error removing existing symlinks: %v", err)
-	}
-
-	nodeModulesPath := filepath.Join(p.APP_PACKAGES_DIR, "node_modules")
-
-	// Check if node_modules directory exists
-	if _, err := os.Stat(nodeModulesPath); os.IsNotExist(err) {
-		return nil // No packages installed
-	}
-
-	// Get the list of packages managed by zana
-	localPackages := local_packages_parser.GetData(true).Packages
-	managedPackages := make(map[string]bool)
-
-	for _, pkg := range localPackages {
-		if detectProvider(pkg.SourceID) == ProviderNPM {
-			packageName := p.getRepo(pkg.SourceID)
-			managedPackages[packageName] = true
-		}
-	}
-
-	// Only create symlinks for packages managed by zana
-	for packageName := range managedPackages {
-		packagePath := filepath.Join(nodeModulesPath, packageName)
-		pkg, err := p.readPackageJSON(packagePath)
-		if err != nil {
-			log.Printf("Error reading package.json for %s: %v", packageName, err)
-			continue
-		}
-
-		// Create symlinks if the package has bin entries
-		if len(pkg.Bin) > 0 {
-			err = p.createSymlinks(packageName, packagePath, pkg)
-			if err != nil {
-				log.Printf("Error creating symlinks for %s: %v", packageName, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// removeSymlinks removes symlinks for a specific package
-func (p *NPMProvider) removeSymlinks(packageName string) error {
-	binDir := files.GetAppBinPath()
-
-	// Read the package.json to get bin entries
-	packagePath := filepath.Join(p.APP_PACKAGES_DIR, "node_modules", packageName)
-	pkg, err := p.readPackageJSON(packagePath)
-	if err != nil {
-		// Package might not exist anymore, which is fine
-		return nil
-	}
-
-	// Remove symlinks for each bin entry
-	for binName := range pkg.Bin {
-		symlinkPath := filepath.Join(binDir, binName)
-		if _, err := os.Lstat(symlinkPath); err == nil {
-			os.Remove(symlinkPath)
 		}
 	}
 
@@ -211,9 +147,11 @@ func (p *NPMProvider) removeAllSymlinks() error {
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			symlinkPath := filepath.Join(binDir, entry.Name())
-			if _, err := os.Lstat(symlinkPath); err == nil {
-				os.Remove(symlinkPath)
+					if _, err := os.Lstat(symlinkPath); err == nil {
+			if err := os.Remove(symlinkPath); err != nil {
+				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
 			}
+		}
 		}
 	}
 
@@ -244,33 +182,182 @@ func (p *NPMProvider) Sync() bool {
 		}
 	}
 
-	packagesFound := p.generatePackageJSON()
+	log.Printf("NPM Sync: Starting sync process")
 
+	packagesFound := p.generatePackageJSON()
 	if !packagesFound {
 		return true
 	}
-	pruneCode, err := shell_out.ShellOut("npm", []string{"prune"}, p.APP_PACKAGES_DIR, nil)
-	if err != nil || pruneCode != 0 {
-		fmt.Println("Error running npm prune:", err)
-		return false
-	}
 
-	installCode, err := shell_out.ShellOut("npm", []string{"install"}, p.APP_PACKAGES_DIR, nil)
-	if err != nil || installCode != 0 {
-		fmt.Println("Error running npm install:", err)
-		return false
-	}
+	// Get desired packages from local_packages_parser
+	desired := local_packages_parser.GetData(true).Packages
 
-	// Recreate symlinks for all managed packages after sync
-	if installCode == 0 {
-		err = p.createAllSymlinks()
-		if err != nil {
-			log.Printf("Error creating symlinks: %v", err)
-			// Don't fail the sync if symlink creation fails
+	// Check if we have a package-lock.json and if it's up to date
+	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")
+	packageJSONFile := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
+
+	// Check if package-lock.json exists and is newer than package.json
+	lockExists := false
+	lockNewer := false
+	if lockStat, err := os.Stat(lockFile); err == nil {
+		lockExists = true
+		if pkgStat, err := os.Stat(packageJSONFile); err == nil {
+			lockNewer = lockStat.ModTime().After(pkgStat.ModTime())
 		}
 	}
 
-	return installCode == 0
+	// Early exit: if package.json hasn't changed and we have a valid lock file,
+	// check if all packages are already installed correctly
+	if lockExists && lockNewer && !p.hasPackageJSONChanged() {
+		installed := p.getInstalledPackagesFromLock(lockFile)
+		allInstalled := true
+
+		for _, pkg := range desired {
+			name := p.getRepo(pkg.SourceID)
+			if v, ok := installed[name]; !ok || v != pkg.Version {
+				allInstalled = false
+				break
+			}
+		}
+
+		// If all packages are already installed correctly, just create symlinks and exit
+		if allInstalled {
+			log.Printf("NPM Sync: All packages already installed correctly, skipping installation")
+			for _, pkg := range desired {
+				name := p.getRepo(pkg.SourceID)
+				err := p.createPackageSymlinks(name)
+				if err != nil {
+					log.Printf("Error creating symlinks for %s: %v", name, err)
+				}
+			}
+			return true
+		}
+	}
+
+	// If we have a valid lock file, try to use npm ci for faster installation
+	if lockExists && lockNewer {
+		// Check if all desired packages are already installed with correct versions
+		installed := p.getInstalledPackagesFromLock(lockFile)
+		allInstalled := true
+		needsUpdate := false
+
+		for _, pkg := range desired {
+			name := p.getRepo(pkg.SourceID)
+			if v, ok := installed[name]; !ok || v != pkg.Version {
+				allInstalled = false
+				needsUpdate = true
+				break
+			}
+		}
+
+		// If all packages are already installed correctly, just create symlinks
+		if allInstalled {
+			for _, pkg := range desired {
+				name := p.getRepo(pkg.SourceID)
+				err := p.createPackageSymlinks(name)
+				if err != nil {
+					log.Printf("Error creating symlinks for %s: %v", name, err)
+				}
+			}
+			return true
+		}
+
+		// If we need updates but have a lock file, try npm ci first for faster installation
+		if needsUpdate {
+			log.Printf("NPM Sync: Attempting npm ci for faster bulk installation")
+			// Try to use npm ci for faster bulk installation
+			if p.tryNpmCi() {
+				log.Printf("NPM Sync: npm ci completed successfully")
+				return true
+			}
+			log.Printf("NPM Sync: npm ci failed, falling back to individual package installation")
+			// If npm ci fails, remove the lock file to force a fresh install
+			if err := os.Remove(lockFile); err != nil {
+				log.Printf("Warning: failed to remove lock file: %v", err)
+			}
+		}
+	}
+
+	// Fall back to individual package installation
+	log.Printf("NPM Sync: Installing packages individually")
+	allOk := true
+	installedCount := 0
+	skippedCount := 0
+
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+
+		// Check if package is already installed with correct version
+		if p.isPackageInstalled(name, pkg.Version) {
+			// Package is already installed, just create symlinks
+			log.Printf("NPM Sync: Package %s@%s already installed, skipping", name, pkg.Version)
+			skippedCount++
+			err := p.createPackageSymlinks(name)
+			if err != nil {
+				log.Printf("Error creating symlinks for %s: %v", name, err)
+			}
+			continue
+		}
+
+		// Install package if not installed or version mismatch
+		log.Printf("NPM Sync: Installing package %s@%s", name, pkg.Version)
+		installCode, err := shell_out.ShellOut("npm", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, nil)
+		if err != nil || installCode != 0 {
+			fmt.Printf("Error installing %s@%s: %v\n", name, pkg.Version, err)
+			allOk = false
+		} else {
+			installedCount++
+			err = p.createPackageSymlinks(name)
+			if err != nil {
+				log.Printf("Error creating symlinks for %s: %v", name, err)
+			}
+		}
+	}
+
+	log.Printf("NPM Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount)
+
+	return allOk
+}
+
+// getInstalledPackagesFromLock reads package-lock.json and returns a map of installed packages
+func (p *NPMProvider) getInstalledPackagesFromLock(lockFile string) map[string]string {
+	installed := map[string]string{}
+
+	data, err := os.ReadFile(lockFile)
+	if err != nil {
+		return installed
+	}
+
+	var lock struct {
+		Dependencies map[string]struct {
+			Version string `json:"version"`
+		} `json:"dependencies"`
+	}
+
+	if err := json.Unmarshal(data, &lock); err == nil {
+		for pkg, info := range lock.Dependencies {
+			installed[pkg] = info.Version
+		}
+	}
+
+	return installed
+}
+
+// isPackageInstalled checks if a specific package is installed with the correct version
+func (p *NPMProvider) isPackageInstalled(packageName, expectedVersion string) bool {
+	// Check if package directory exists
+	packagePath := filepath.Join(p.APP_PACKAGES_DIR, "node_modules", packageName)
+	if _, err := os.Stat(packagePath); os.IsNotExist(err) {
+		return false
+	}
+
+	// Read package.json to check version
+	pkg, err := p.readPackageJSON(packagePath)
+	if err != nil {
+		return false
+	}
+
+	return pkg.Version == expectedVersion
 }
 
 // createPackageSymlinks creates symlinks for a specific package
@@ -285,7 +372,7 @@ func (p *NPMProvider) createPackageSymlinks(packageName string) error {
 
 	// Create symlinks if the package has bin entries
 	if len(pkg.Bin) > 0 {
-		err = p.createSymlinks(packageName, packagePath, pkg)
+		err = p.createSymlinks(packagePath, pkg)
 		if err != nil {
 			return fmt.Errorf("error creating symlinks for %s: %v", packageName, err)
 		}
@@ -311,7 +398,9 @@ func (p *NPMProvider) removePackageSymlinks(packageName string) error {
 	for binName := range pkg.Bin {
 		symlinkPath := filepath.Join(binDir, binName)
 		if _, err := os.Lstat(symlinkPath); err == nil {
-			os.Remove(symlinkPath)
+			if err := os.Remove(symlinkPath); err != nil {
+				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+			}
 		}
 	}
 
@@ -346,6 +435,8 @@ func (p *NPMProvider) Remove(sourceID string) bool {
 	// Get the package name before removing it from local packages
 	packageName := p.getRepo(sourceID)
 
+	log.Printf("NPM Remove: Removing package %s", packageName)
+
 	// Remove symlinks for this package first
 	err := p.removePackageSymlinks(packageName)
 	if err != nil {
@@ -355,7 +446,70 @@ func (p *NPMProvider) Remove(sourceID string) bool {
 
 	err = local_packages_parser.RemoveLocalPackage(sourceID)
 	if err != nil {
+		log.Printf("Error removing package %s from local packages: %v", packageName, err)
 		return false
 	}
+
+	log.Printf("NPM Remove: Package %s removed successfully", packageName)
 	return p.Sync()
+}
+
+// tryNpmCi attempts to install all packages using npm ci for better performance
+func (p *NPMProvider) tryNpmCi() bool {
+	// Check if we have a valid package-lock.json
+	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")
+	if _, err := os.Stat(lockFile); os.IsNotExist(err) {
+		log.Printf("NPM Sync: No package-lock.json found, cannot use npm ci")
+		return false
+	}
+
+	log.Printf("NPM Sync: Using npm ci for faster bulk installation")
+	// Try to use npm ci for faster installation
+	installCode, err := shell_out.ShellOut("npm", []string{"ci"}, p.APP_PACKAGES_DIR, nil)
+	if err != nil || installCode != 0 {
+		log.Printf("NPM Sync: npm ci failed, falling back to individual package installation: %v", err)
+		return false
+	}
+
+	log.Printf("NPM Sync: npm ci completed successfully, creating symlinks")
+	// npm ci succeeded, create symlinks for all packages
+	desired := local_packages_parser.GetData(true).Packages
+	for _, pkg := range desired {
+		name := p.getRepo(pkg.SourceID)
+		err := p.createPackageSymlinks(name)
+		if err != nil {
+			log.Printf("Error creating symlinks for %s: %v", name, err)
+		}
+	}
+
+	return true
+}
+
+// hasPackageJSONChanged checks if package.json has been modified since the last sync
+func (p *NPMProvider) hasPackageJSONChanged() bool {
+	packageJSONFile := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
+	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")
+
+	// If package.json doesn't exist, consider it changed
+	if _, err := os.Stat(packageJSONFile); os.IsNotExist(err) {
+		return true
+	}
+
+	// If lock file doesn't exist, consider it changed
+	if _, err := os.Stat(lockFile); os.IsNotExist(err) {
+		return true
+	}
+
+	// Check if package.json is newer than package-lock.json
+	pkgStat, err := os.Stat(packageJSONFile)
+	if err != nil {
+		return true
+	}
+
+	lockStat, err := os.Stat(lockFile)
+	if err != nil {
+		return true
+	}
+
+	return pkgStat.ModTime().After(lockStat.ModTime())
 }

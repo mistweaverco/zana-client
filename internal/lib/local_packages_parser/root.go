@@ -38,9 +38,20 @@ func GetData(force bool) LocalPackageRoot {
 		}
 		return data
 	}
-	defer jsonFile.Close()
-	byteValue, _ := io.ReadAll(jsonFile)
-	json.Unmarshal(byteValue, &localPackageRoot)
+	defer func() {
+		if closeErr := jsonFile.Close(); closeErr != nil {
+			fmt.Printf("Warning: failed to close local packages file: %v\n", closeErr)
+		}
+	}()
+	byteValue, err := io.ReadAll(jsonFile)
+	if err != nil {
+		fmt.Printf("Warning: failed to read local packages file: %v\n", err)
+		return LocalPackageRoot{Packages: []LocalPackageItem{}}
+	}
+	if err := json.Unmarshal(byteValue, &localPackageRoot); err != nil {
+		fmt.Printf("Warning: failed to parse local packages file: %v\n", err)
+		return LocalPackageRoot{Packages: []LocalPackageItem{}}
+	}
 	hasData = true
 	data = localPackageRoot
 	return data
@@ -69,7 +80,7 @@ func AddLocalPackage(sourceId string, version string) error {
 	}
 
 	localPackagesFile := files.GetAppLocalPackagesFilePath()
-	jsonData, err := json.Marshal(localPackageRoot)
+	jsonData, err := json.MarshalIndent(localPackageRoot, "", "  ")
 	if err != nil {
 		fmt.Println("Error marshaling JSON:", err)
 		return err

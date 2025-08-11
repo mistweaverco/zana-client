@@ -13,7 +13,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close log file: %v", closeErr)
+		}
+	}()
 	wrt := io.Writer(f)
 	log.SetOutput(wrt)
 	log.Println("Zana client started")

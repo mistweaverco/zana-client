@@ -14,7 +14,7 @@ func Show() {
 
 	m.spinner.Spinner = spinner.Dot
 	m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m)
 
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error running program:", err)

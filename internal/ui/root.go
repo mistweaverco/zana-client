@@ -17,16 +17,9 @@ import (
 
 var (
 	// General styles
-	normal    = lipgloss.Color("#EEEEEE")
-	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
 	highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	special   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
-
-	base = lipgloss.NewStyle().Foreground(normal)
 
 	docStyle = lipgloss.NewStyle().Padding(1, 2, 1, 2)
-
-	updateAvailableStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00ff00"))
 )
 
 type TabType int
@@ -152,8 +145,6 @@ type model struct {
 	spinner        spinner.Model
 	spinnerVisible bool
 	spinnerMessage string
-	updating       bool
-	updated        bool
 	currentView    string
 	modal          *modal.Modal
 }
@@ -272,15 +263,7 @@ func getRegistryItemsData() []registryPackageItem {
 	return registryItems
 }
 
-// Message types
-type registryMsg struct{}
-type localPackagesMsg struct{}
 
-func (m model) handleRegistryMsg(msg registryMsg) (tea.Model, tea.Cmd) {
-	m.spinnerVisible = false
-	m.updateRegistryTableRows(getRegistryItemsData())
-	return m, nil
-}
 
 func getLocalPackagesData() []localPackageItem {
 	localItems := []localPackageItem{}
@@ -328,19 +311,9 @@ func getLocalPackagesData() []localPackageItem {
 	return localItems
 }
 
-func (m model) handleLocalPackagesMsg(msg localPackagesMsg) (tea.Model, tea.Cmd) {
-	// Update the installed table with the new data
-	m.updateInstalledTableRows(getLocalPackagesData())
-	return m, nil
-}
 
-func (m model) handleSpinnerTick() (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	if m.spinnerVisible {
-		m.spinner, cmd = m.spinner.Update(spinner.TickMsg{})
-	}
-	return m, cmd
-}
+
+
 
 func truncateString(s string, maxLen int) string {
 	if maxLen <= 0 {

@@ -2,6 +2,7 @@ package registry_parser
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -44,9 +45,18 @@ func GetData(force bool) RegistryRoot {
 	if err != nil {
 		panic(err)
 	}
-	defer jsonFile.Close()
-	byteValue, _ := io.ReadAll(jsonFile)
-	json.Unmarshal(byteValue, &registry)
+	defer func() {
+		if closeErr := jsonFile.Close(); closeErr != nil {
+			panic(fmt.Sprintf("failed to close registry file: %v", closeErr))
+		}
+	}()
+	byteValue, err := io.ReadAll(jsonFile)
+	if err != nil {
+		panic(fmt.Sprintf("failed to read registry file: %v", err))
+	}
+	if err := json.Unmarshal(byteValue, &registry); err != nil {
+		panic(fmt.Sprintf("failed to parse registry file: %v", err))
+	}
 	// Sort the registry by name
 	hasData = true
 	data = registry
