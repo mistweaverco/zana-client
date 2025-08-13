@@ -3,7 +3,6 @@ package providers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -78,9 +77,32 @@ func (p *NPMProvider) generatePackageJSON() bool {
 }
 
 type PackageJSON struct {
-	Name    string            `json:"name"`
-	Version string            `json:"version"`
-	Bin     map[string]string `json:"bin"`
+	Name    string         `json:"name"`
+	Version string         `json:"version"`
+	Bin     CustomBinField `json:"bin"`
+}
+
+type CustomBinField map[string]string
+
+func (cbf *CustomBinField) UnmarshalJSON(data []byte) error {
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err == nil {
+		*cbf = m
+		return nil
+	}
+
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		// If it's a string, we assume it's a single binary name
+		// and create a map with the binary name as the key and the string as the value.
+		// This is a common case for npm packages that have a single binary.
+		// Also remove the extension if present.
+		binName := strings.TrimSuffix(filepath.Base(s), filepath.Ext(s))
+		*cbf = map[string]string{binName: s}
+		return nil
+	}
+
+	return fmt.Errorf("bin field must be a string or a map")
 }
 
 func (p *NPMProvider) readPackageJSON(packagePath string) (*PackageJSON, error) {
@@ -96,27 +118,6 @@ func (p *NPMProvider) readPackageJSON(packagePath string) (*PackageJSON, error) 
 	return &pkg, nil
 }
 
-func (p *NPMProvider) createSymlinks(packagePath string, pkg *PackageJSON) error {
-	binDir := files.GetAppBinPath()
-	for binName, binPath := range pkg.Bin {
-		actualBinPath := filepath.Join(packagePath, binPath)
-		symlinkPath := filepath.Join(binDir, binName)
-		if _, err := os.Lstat(symlinkPath); err == nil {
-			if err := os.Remove(symlinkPath); err != nil {
-				log.Printf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err)
-			}
-		}
-		if err := os.Symlink(actualBinPath, symlinkPath); err != nil {
-			log.Printf("Error creating symlink for %s: %v", binName, err)
-			return err
-		}
-		if err := os.Chmod(symlinkPath, 0755); err != nil {
-			log.Printf("Error setting executable permissions for %s: %v", binName, err)
-		}
-	}
-	return nil
-}
-
 func (p *NPMProvider) removeAllSymlinks() error {
 	binDir := files.GetAppBinPath()
 	entries, err := os.ReadDir(binDir)
@@ -130,7 +131,7 @@ func (p *NPMProvider) removeAllSymlinks() error {
 		symlinkPath := filepath.Join(binDir, entry.Name())
 		if _, err := os.Lstat(symlinkPath); err == nil {
 			if err := os.Remove(symlinkPath); err != nil {
-				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+				Logger.Info(fmt.Sprintf("Warning: failed to remove symlink %s: %v", symlinkPath, err))
 			}
 		}
 	}
@@ -139,10 +140,10 @@ func (p *NPMProvider) removeAllSymlinks() error {
 
 func (p *NPMProvider) Clean() bool {
 	if err := p.removeAllSymlinks(); err != nil {
-		log.Printf("Error removing symlinks: %v", err)
+		Logger.Info(fmt.Sprintf("Error removing symlinks: %v", err))
 	}
 	if err := os.RemoveAll(p.APP_PACKAGES_DIR); err != nil {
-		log.Println("Error removing directory:", err)
+		Logger.Info(fmt.Sprintf("Error removing directory:", err))
 		return false
 	}
 	return p.Sync()
@@ -155,7 +156,7 @@ func (p *NPMProvider) Sync() bool {
 			return false
 		}
 	}
-	log.Printf("NPM Sync: Starting sync process")
+	Logger.Info(fmt.Sprintf("NPM Sync: Starting sync process"))
 	packagesFound := p.generatePackageJSON()
 	if !packagesFound {
 		return true
@@ -182,11 +183,11 @@ func (p *NPMProvider) Sync() bool {
 			}
 		}
 		if allInstalled {
-			log.Printf("NPM Sync: All packages already installed correctly, skipping installation")
+			Logger.Info(fmt.Sprintf("NPM Sync: All packages already installed correctly, skipping installation"))
 			for _, pkg := range desired {
 				name := p.getRepo(pkg.SourceID)
 				if err := p.createPackageSymlinks(name); err != nil {
-					log.Printf("Error creating symlinks for %s: %v", name, err)
+					Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", name, err))
 				}
 			}
 			return true
@@ -208,38 +209,38 @@ func (p *NPMProvider) Sync() bool {
 			for _, pkg := range desired {
 				name := p.getRepo(pkg.SourceID)
 				if err := p.createPackageSymlinks(name); err != nil {
-					log.Printf("Error creating symlinks for %s: %v", name, err)
+					Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", name, err))
 				}
 			}
 			return true
 		}
 		if needsUpdate {
-			log.Printf("NPM Sync: Attempting npm ci for faster bulk installation")
+			Logger.Info(fmt.Sprintf("NPM Sync: Attempting npm ci for faster bulk installation"))
 			if p.tryNpmCi() {
-				log.Printf("NPM Sync: npm ci completed successfully")
+				Logger.Info(fmt.Sprintf("NPM Sync: npm ci completed successfully"))
 				return true
 			}
-			log.Printf("NPM Sync: npm ci failed, falling back to individual package installation")
+			Logger.Info(fmt.Sprintf("NPM Sync: npm ci failed, falling back to individual package installation"))
 			if err := os.Remove(lockFile); err != nil {
-				log.Printf("Warning: failed to remove lock file: %v", err)
+				Logger.Info(fmt.Sprintf("Warning: failed to remove lock file: %v", err))
 			}
 		}
 	}
-	log.Printf("NPM Sync: Installing packages individually")
+	Logger.Info(fmt.Sprintf("NPM Sync: Installing packages individually"))
 	allOk := true
 	installedCount := 0
 	skippedCount := 0
 	for _, pkg := range desired {
 		name := p.getRepo(pkg.SourceID)
 		if p.isPackageInstalled(name, pkg.Version) {
-			log.Printf("NPM Sync: Package %s@%s already installed, skipping", name, pkg.Version)
+			Logger.Info(fmt.Sprintf("NPM Sync: Package %s@%s already installed, skipping", name, pkg.Version))
 			skippedCount++
 			if err := p.createPackageSymlinks(name); err != nil {
-				log.Printf("Error creating symlinks for %s: %v", name, err)
+				Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", name, err))
 			}
 			continue
 		}
-		log.Printf("NPM Sync: Installing package %s@%s", name, pkg.Version)
+		Logger.Info(fmt.Sprintf("NPM Sync: Installing package %s@%s", name, pkg.Version))
 		installCode, err := shell_out.ShellOut("npm", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, nil)
 		if err != nil || installCode != 0 {
 			fmt.Printf("Error installing %s@%s: %v\n", name, pkg.Version, err)
@@ -247,11 +248,11 @@ func (p *NPMProvider) Sync() bool {
 		} else {
 			installedCount++
 			if err := p.createPackageSymlinks(name); err != nil {
-				log.Printf("Error creating symlinks for %s: %v", name, err)
+				Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", name, err))
 			}
 		}
 	}
-	log.Printf("NPM Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount)
+	Logger.Info(fmt.Sprintf("NPM Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount))
 	return allOk
 }
 
@@ -294,8 +295,23 @@ func (p *NPMProvider) createPackageSymlinks(packageName string) error {
 		return fmt.Errorf("error reading package.json for %s: %v", packageName, err)
 	}
 	if len(pkg.Bin) > 0 {
-		if err := p.createSymlinks(packagePath, pkg); err != nil {
-			return fmt.Errorf("error creating symlinks for %s: %v", packageName, err)
+		binDir := files.GetAppBinPath()
+		for binPath := range pkg.Bin {
+			actualBinPath := filepath.Join(nodeModulesPath, ".bin", binPath)
+			symlinkPath := filepath.Join(binDir, binPath)
+			if _, err := os.Lstat(symlinkPath); err == nil {
+				if err := os.Remove(symlinkPath); err != nil {
+					Logger.Info(fmt.Sprintf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err))
+				}
+			}
+			fmt.Printf("Creating symlink for %s -> %s\n", symlinkPath, actualBinPath)
+			if err := os.Symlink(actualBinPath, symlinkPath); err != nil {
+				Logger.Info(fmt.Sprintf("Error creating symlink for %s: %v", binPath, err))
+				return err
+			}
+			if err := os.Chmod(symlinkPath, 0755); err != nil {
+				Logger.Info(fmt.Sprintf("Error setting executable permissions for %s: %v", binPath, err))
+			}
 		}
 	}
 	return nil
@@ -313,7 +329,7 @@ func (p *NPMProvider) removePackageSymlinks(packageName string) error {
 		symlinkPath := filepath.Join(binDir, binName)
 		if _, err := os.Lstat(symlinkPath); err == nil {
 			if err := os.Remove(symlinkPath); err != nil {
-				log.Printf("Warning: failed to remove symlink %s: %v", symlinkPath, err)
+				Logger.Info(fmt.Sprintf("Warning: failed to remove symlink %s: %v", symlinkPath, err))
 			}
 		}
 	}
@@ -322,13 +338,21 @@ func (p *NPMProvider) removePackageSymlinks(packageName string) error {
 
 func (p *NPMProvider) Install(sourceID, version string) bool {
 	packageName := p.getRepo(sourceID)
+	if version == "" || version == "latest" {
+		var err error
+		version, err = p.getLatestVersion(packageName)
+		if err != nil {
+			Logger.Info(fmt.Sprintf("Error getting latest version for %s: %v", packageName, err))
+			return false
+		}
+	}
 	if err := local_packages_parser.AddLocalPackage(sourceID, version); err != nil {
 		return false
 	}
 	success := p.Sync()
 	if success {
 		if err := p.createPackageSymlinks(packageName); err != nil {
-			log.Printf("Error creating symlinks for %s: %v", packageName, err)
+			Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", packageName, err))
 		}
 	}
 	return success
@@ -336,30 +360,30 @@ func (p *NPMProvider) Install(sourceID, version string) bool {
 
 func (p *NPMProvider) Remove(sourceID string) bool {
 	packageName := p.getRepo(sourceID)
-	log.Printf("NPM Remove: Removing package %s", packageName)
+	Logger.Info(fmt.Sprintf("NPM Remove: Removing package %s", packageName))
 	if err := p.removePackageSymlinks(packageName); err != nil {
-		log.Printf("Error removing symlinks for %s: %v", packageName, err)
+		Logger.Info(fmt.Sprintf("Error removing symlinks for %s: %v", packageName, err))
 	}
 	if err := local_packages_parser.RemoveLocalPackage(sourceID); err != nil {
-		log.Printf("Error removing package %s from local packages: %v", packageName, err)
+		Logger.Info(fmt.Sprintf("Error removing package %s from local packages: %v", packageName, err))
 		return false
 	}
-	log.Printf("NPM Remove: Package %s removed successfully", packageName)
+	Logger.Info(fmt.Sprintf("NPM Remove: Package %s removed successfully", packageName))
 	return p.Sync()
 }
 
 func (p *NPMProvider) Update(sourceID string) bool {
 	repo := p.getRepo(sourceID)
 	if repo == "" {
-		log.Printf("Invalid source ID format for NPM provider")
+		Logger.Info(fmt.Sprintf("Invalid source ID format for NPM provider"))
 		return false
 	}
 	latestVersion, err := p.getLatestVersion(repo)
 	if err != nil {
-		log.Printf("Error getting latest version for %s: %v", repo, err)
+		Logger.Info(fmt.Sprintf("Error getting latest version for %s: %v", repo, err))
 		return false
 	}
-	log.Printf("NPM Update: Updating %s to version %s", repo, latestVersion)
+	Logger.Info(fmt.Sprintf("NPM Update: Updating %s to version %s", repo, latestVersion))
 	return p.Install(sourceID, latestVersion)
 }
 
@@ -374,23 +398,16 @@ func (p *NPMProvider) getLatestVersion(packageName string) (string, error) {
 func (p *NPMProvider) tryNpmCi() bool {
 	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")
 	if _, err := os.Stat(lockFile); os.IsNotExist(err) {
-		log.Printf("NPM Sync: No package-lock.json found, cannot use npm ci")
+		Logger.Info(fmt.Sprintf("NPM Sync: No package-lock.json found, cannot use npm ci"))
 		return false
 	}
-	log.Printf("NPM Sync: Using npm ci for faster bulk installation")
+	Logger.Info(fmt.Sprintf("NPM Sync: Using npm ci for faster bulk installation"))
 	installCode, err := shell_out.ShellOut("npm", []string{"ci"}, p.APP_PACKAGES_DIR, nil)
 	if err != nil || installCode != 0 {
-		log.Printf("NPM Sync: npm ci failed, falling back to individual package installation: %v", err)
+		Logger.Info(fmt.Sprintf("NPM Sync: npm ci failed, falling back to individual package installation: %v", err))
 		return false
 	}
-	log.Printf("NPM Sync: npm ci completed successfully, creating symlinks")
-	desired := local_packages_parser.GetData(true).Packages
-	for _, pkg := range desired {
-		name := p.getRepo(pkg.SourceID)
-		if err := p.createPackageSymlinks(name); err != nil {
-			log.Printf("Error creating symlinks for %s: %v", name, err)
-		}
-	}
+	Logger.Info(fmt.Sprintf("NPM Sync: npm ci completed successfully, creating symlinks"))
 	return true
 }
 
