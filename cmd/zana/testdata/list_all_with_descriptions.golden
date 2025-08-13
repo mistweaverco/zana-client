@@ -1,0 +1,20 @@
+📚 All Available Packages
+
+Found 4 packages in the registry:
+
+🔹 NPM Packages (1):
+   📦 eslint (v1.0.0)
+      JavaScript linter
+
+🔹 GOLANG Packages (1):
+   🐹 gopls (v0.2.0)
+      Go language server
+
+🔹 PYPI Packages (1):
+   🐍 black (v2.0.0)
+      Python formatter
+
+🔹 CARGO Packages (1):
+   🦀 ripgrep (v1.0.0)
+      Rust grep tool
+

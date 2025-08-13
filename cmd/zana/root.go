@@ -29,13 +29,13 @@ var rootCmd = &cobra.Command{
 			return
 		} else {
 			// Check health before starting the main application
-			if !ui.ShowHealthCheck() {
+			if !showHealthCheckFn() {
 				log.Info("User chose to quit due to missing requirements")
 				return
 			}
 
-			boot.Start(cfg.Flags.CacheMaxAge)
-			ui.Show()
+			bootStartFn(cfg.Flags.CacheMaxAge)
+			uiShowFn()
 		}
 	},
 }
@@ -43,7 +43,7 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -57,3 +57,13 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&cfg.Flags.Version, "version", false, "version")
 	rootCmd.PersistentFlags().DurationVar(&cfg.Flags.CacheMaxAge, "cache-max-age", 24*time.Hour, "maximum age of registry cache (e.g., 1h, 24h, 7d)")
 }
+
+// osExit is a variable to allow overriding in tests
+var osExit = os.Exit
+
+// indirections for testability
+var (
+	showHealthCheckFn = ui.ShowHealthCheck
+	bootStartFn       = boot.Start
+	uiShowFn          = ui.Show
+)

@@ -13,8 +13,80 @@ import (
 
 var PS = string(os.PathSeparator)
 
+// HTTPClient interface for dependency injection in tests
+type HTTPClient interface {
+	Get(url string) (*http.Response, error)
+}
+
+// FileSystem interface for dependency injection in tests
+type FileSystem interface {
+	Create(name string) (*os.File, error)
+	MkdirAll(path string, perm os.FileMode) error
+	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
+	Stat(name string) (os.FileInfo, error)
+	UserConfigDir() (string, error)
+	TempDir() string
+	Getenv(key string) string
+}
+
+// Default implementations
+type defaultHTTPClient struct{}
+type defaultFileSystem struct{}
+
+func (d *defaultHTTPClient) Get(url string) (*http.Response, error) {
+	return http.Get(url)
+}
+
+func (d *defaultFileSystem) Create(name string) (*os.File, error) {
+	return os.Create(name)
+}
+
+func (d *defaultFileSystem) MkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+
+func (d *defaultFileSystem) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	return os.OpenFile(name, flag, perm)
+}
+
+func (d *defaultFileSystem) Stat(name string) (os.FileInfo, error) {
+	return os.Stat(name)
+}
+
+func (d *defaultFileSystem) UserConfigDir() (string, error) {
+	return os.UserConfigDir()
+}
+
+func (d *defaultFileSystem) TempDir() string {
+	return os.TempDir()
+}
+
+func (d *defaultFileSystem) Getenv(key string) string {
+	return os.Getenv(key)
+}
+
+// Global variables for dependency injection
+var httpClient HTTPClient = &defaultHTTPClient{}
+var fileSystem FileSystem = &defaultFileSystem{}
+
+// SetHTTPClient allows setting a custom HTTP client for testing
+func SetHTTPClient(client HTTPClient) {
+	httpClient = client
+}
+
+// SetFileSystem allows setting a custom file system for testing
+func SetFileSystem(fs FileSystem) {
+	fileSystem = fs
+}
+
+// ResetDependencies resets to default implementations
+func ResetDependencies() {
+	httpClient = &defaultHTTPClient{}
+	fileSystem = &defaultFileSystem{}
+}
+
 func Download(url string, dest string) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -25,7 +97,7 @@ func Download(url string, dest string) error {
 		}
 	}()
 
-	out, err := os.Create(dest)
+	out, err := fileSystem.Create(dest)
 	if err != nil {
 		return err
 	}
@@ -48,7 +120,7 @@ func GetAppLocalPackagesFilePath() string {
 
 func FileExists(path string) bool {
 	_, err :=
-		os.Stat(path)
+		fileSystem.Stat(path)
 	if os.IsNotExist(err) {
 		return false
 	}
@@ -83,7 +155,7 @@ zana-registry.json
 *.log
 `
 
-	file, err := os.Create(gitignorePath)
+	file, err := fileSystem.Create(gitignorePath)
 	if err != nil {
 		fmt.Println("Error creating .gitignore:", err)
 		return false
@@ -109,10 +181,10 @@ zana-registry.json
 // otherwise it will use the user's config directory
 // e.g. /home/user/.config/zana
 func GetAppDataPath() string {
-	if zanaHome := os.Getenv("ZANA_HOME"); zanaHome != "" {
+	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
 		return EnsureDirExists(zanaHome)
 	}
-	userConfigDir, err := os.UserConfigDir()
+	userConfigDir, err := fileSystem.UserConfigDir()
 	if err != nil {
 		panic(err)
 	}
@@ -122,7 +194,7 @@ func GetAppDataPath() string {
 // GetTempPath returns the path to the temp directory
 // e.g. /tmp
 func GetTempPath() string {
-	return os.TempDir()
+	return fileSystem.TempDir()
 }
 
 // GetAppRegistryFilePath returns the path to the registry file
@@ -145,8 +217,8 @@ func GetAppBinPath() string {
 }
 
 func EnsureDirExists(path string) string {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(path, 0755); err != nil {
+	if _, err := fileSystem.Stat(path); os.IsNotExist(err) {
+		if err := fileSystem.MkdirAll(path, 0755); err != nil {
 			// Log the error but don't fail the function
 			fmt.Printf("Warning: failed to create directory %s: %v\n", path, err)
 		}
@@ -165,7 +237,7 @@ func Unzip(src, dest string) error {
 		}
 	}()
 
-	if err := os.MkdirAll(dest, 0755); err != nil {
+	if err := fileSystem.MkdirAll(dest, 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
@@ -189,14 +261,14 @@ func Unzip(src, dest string) error {
 		}
 
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(path, f.Mode()); err != nil {
+			if err := fileSystem.MkdirAll(path, f.Mode()); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", path, err)
 			}
 		} else {
-			if err := os.MkdirAll(filepath.Dir(path), f.Mode()); err != nil {
+			if err := fileSystem.MkdirAll(filepath.Dir(path), f.Mode()); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(path), err)
 			}
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			f, err := fileSystem.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 			if err != nil {
 				return err
 			}
@@ -232,7 +304,7 @@ func GetRegistryCachePath() string {
 
 // IsCacheValid checks if the cache file exists and is newer than the specified duration
 func IsCacheValid(cachePath string, maxAge time.Duration) bool {
-	fileInfo, err := os.Stat(cachePath)
+	fileInfo, err := fileSystem.Stat(cachePath)
 	if err != nil {
 		return false // Cache file doesn't exist
 	}
@@ -249,7 +321,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	}
 
 	// Download the file
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -261,7 +333,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	}()
 
 	// Create the cache file
-	out, err := os.Create(cachePath)
+	out, err := fileSystem.Create(cachePath)
 	if err != nil {
 		return err
 	}
@@ -281,7 +353,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 // This is used to ensure the registry is available for commands that need it
 func DownloadAndUnzipRegistry() error {
 	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
-	if override := os.Getenv("ZANA_REGISTRY_URL"); override != "" {
+	if override := fileSystem.Getenv("ZANA_REGISTRY_URL"); override != "" {
 		registryURL = override
 	}
 

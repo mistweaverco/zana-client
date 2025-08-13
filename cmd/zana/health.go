@@ -24,7 +24,7 @@ This command verifies the presence of required tools and dependencies:
 		fmt.Println()
 
 		// Check requirements
-		results := providers.CheckRequirements()
+		results := checkRequirementsFn()
 
 		// Display results
 		displayRequirement("NPM", results.HasNPM, "Node.js package manager for JavaScript packages")
@@ -50,6 +50,9 @@ This command verifies the presence of required tools and dependencies:
 		}
 	},
 }
+
+// indirection for testability
+var checkRequirementsFn = providers.CheckRequirements
 
 func displayRequirement(name string, met bool, description string) {
 	var status, icon string

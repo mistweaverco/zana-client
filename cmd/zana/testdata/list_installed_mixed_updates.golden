@@ -1,0 +1,18 @@
+📦 Locally Installed Packages
+
+Found 4 installed packages:
+
+🔹 NPM Packages:
+   📦 eslint (v1.0.0) 🔄 Update available: v1.1.0
+
+🔹 GOLANG Packages:
+   🐹 gopls (v0.1.0) 🔄 Update available: v0.2.0
+
+🔹 PYPI Packages:
+   🐍 black (v2.0.0) ✅ Up to date
+
+🔹 CARGO Packages:
+   🦀 ripgrep (vlatest) 🔄 Update available: v1.0.0
+
+📊 Summary: 1 of 4 packages are up to date, 3 updates available
+💡 Use 'zana update --all' to update all packages

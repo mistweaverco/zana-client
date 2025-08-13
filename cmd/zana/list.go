@@ -11,6 +11,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ListService handles listing operations with dependency injection
+type ListService struct {
+	localPackages  LocalPackagesProvider
+	registry       RegistryProvider
+	updateChecker  UpdateChecker
+	fileDownloader FileDownloader
+}
+
+// NewListService creates a new ListService with default dependencies
+func NewListService() *ListService {
+	return &ListService{
+		localPackages:  &defaultLocalPackagesProvider{},
+		registry:       &defaultRegistryProvider{},
+		updateChecker:  &defaultUpdateChecker{},
+		fileDownloader: &defaultFileDownloader{},
+	}
+}
+
+// NewListServiceWithDependencies creates a new ListService with custom dependencies
+func NewListServiceWithDependencies(
+	localPackages LocalPackagesProvider,
+	registry RegistryProvider,
+	updateChecker UpdateChecker,
+	fileDownloader FileDownloader,
+) *ListService {
+	return &ListService{
+		localPackages:  localPackages,
+		registry:       registry,
+		updateChecker:  updateChecker,
+		fileDownloader: fileDownloader,
+	}
+}
+
 var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
@@ -22,11 +55,12 @@ Use --all to show all available packages from the registry.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		allFlag, _ := cmd.Flags().GetBool("all")
+		service := newListService()
 
 		if allFlag {
-			listAllPackages()
+			service.ListAllPackages()
 		} else {
-			listInstalledPackages()
+			service.ListInstalledPackages()
 		}
 	},
 }
@@ -35,11 +69,15 @@ func init() {
 	listCmd.Flags().BoolP("all", "A", false, "List all available packages from the registry")
 }
 
-func listInstalledPackages() {
+// newListService is a factory to allow test injection
+var newListService = NewListService
+
+// ListInstalledPackages lists locally installed packages
+func (ls *ListService) ListInstalledPackages() {
 	fmt.Println("📦 Locally Installed Packages")
 	fmt.Println()
 
-	localPackages := local_packages_parser.GetData(true).Packages
+	localPackages := ls.localPackages.GetData(true).Packages
 
 	if len(localPackages) == 0 {
 		fmt.Println("No packages are currently installed.")
@@ -66,7 +104,7 @@ func listInstalledPackages() {
 			fmt.Printf("🔹 %s Packages:\n", strings.ToUpper(provider))
 			for _, pkg := range packages {
 				packageName := getPackageNameFromSourceID(pkg.SourceID)
-				updateInfo, hasUpdate := checkUpdateAvailability(pkg.SourceID, pkg.Version)
+				updateInfo, hasUpdate := ls.checkUpdateAvailability(pkg.SourceID, pkg.Version)
 				fmt.Printf("   %s %s (v%s) %s\n", getProviderIcon(provider), packageName, pkg.Version, updateInfo)
 
 				totalCount++
@@ -87,18 +125,19 @@ func listInstalledPackages() {
 	fmt.Println()
 }
 
-func listAllPackages() {
+// ListAllPackages lists all available packages from the registry
+func (ls *ListService) ListAllPackages() {
 	fmt.Println("📚 All Available Packages")
 	fmt.Println()
 
-	registry := registry_parser.GetData(true)
+	registry := ls.registry.GetData(true)
 
 	if len(registry) == 0 {
 		fmt.Println("No packages found in the registry.")
 		fmt.Println("🔄 Downloading registry...")
 
 		// Try to download the registry
-		if err := files.DownloadAndUnzipRegistry(); err != nil {
+		if err := ls.fileDownloader.DownloadAndUnzipRegistry(); err != nil {
 			fmt.Printf("❌ Failed to download registry: %v\n", err)
 			fmt.Println("💡 Use 'zana' (without flags) to download the registry manually.")
 			return
@@ -108,7 +147,7 @@ func listAllPackages() {
 		fmt.Println()
 
 		// Try to get the registry data again
-		registry = registry_parser.GetData(true)
+		registry = ls.registry.GetData(true)
 
 		if len(registry) == 0 {
 			fmt.Println("❌ Still no packages found after downloading registry.")
@@ -142,6 +181,68 @@ func listAllPackages() {
 	}
 }
 
+// checkUpdateAvailability checks if an update is available for a package
+func (ls *ListService) checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
+	latestVersion := ls.registry.GetLatestVersion(sourceID)
+	if latestVersion == "" {
+		return "", false // No registry info available
+	}
+	// If local version is unknown or set to "latest", always show update to the concrete remote version
+	if currentVersion == "" || currentVersion == "latest" {
+		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
+	}
+	updateAvailable, _ := ls.updateChecker.CheckIfUpdateIsAvailable(currentVersion, latestVersion)
+	if updateAvailable {
+		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
+	}
+	return "✅ Up to date", false
+}
+
+// Default implementations for backward compatibility
+type defaultLocalPackagesProvider struct{}
+type defaultRegistryProvider struct{}
+type defaultUpdateChecker struct{}
+type defaultFileDownloader struct{}
+
+func (d *defaultLocalPackagesProvider) GetData(force bool) local_packages_parser.LocalPackageRoot {
+	return local_packages_parser.GetData(force)
+}
+
+func (d *defaultRegistryProvider) GetData(force bool) []registry_parser.RegistryItem {
+	return registry_parser.GetData(force)
+}
+
+func (d *defaultRegistryProvider) GetLatestVersion(sourceID string) string {
+	return registry_parser.GetLatestVersion(sourceID)
+}
+
+func (d *defaultUpdateChecker) CheckIfUpdateIsAvailable(currentVersion, latestVersion string) (bool, string) {
+	return providers.CheckIfUpdateIsAvailable(currentVersion, latestVersion)
+}
+
+// indirection for testability
+var downloadAndUnzipRegistryFn = files.DownloadAndUnzipRegistry
+
+func (d *defaultFileDownloader) DownloadAndUnzipRegistry() error {
+	return downloadAndUnzipRegistryFn()
+}
+
+// Legacy functions for backward compatibility
+func listInstalledPackages() {
+	service := NewListService()
+	service.ListInstalledPackages()
+}
+
+func listAllPackages() {
+	service := NewListService()
+	service.ListAllPackages()
+}
+
+func checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
+	service := NewListService()
+	return service.checkUpdateAvailability(sourceID, currentVersion)
+}
+
 func getProviderFromSourceID(sourceID string) string {
 	if strings.HasPrefix(sourceID, "pkg:npm/") {
 		return "npm"
@@ -165,22 +266,6 @@ func getPackageNameFromSourceID(sourceID string) string {
 		return parts[1] // Return everything after the first "/"
 	}
 	return sourceID
-}
-
-func checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
-	latestVersion := registry_parser.GetLatestVersion(sourceID)
-	if latestVersion == "" {
-		return "", false // No registry info available
-	}
-	// If local version is unknown or set to "latest", always show update to the concrete remote version
-	if currentVersion == "" || currentVersion == "latest" {
-		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
-	}
-	updateAvailable, _ := providers.CheckIfUpdateIsAvailable(currentVersion, latestVersion)
-	if updateAvailable {
-		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
-	}
-	return "✅ Up to date", false
 }
 
 func getProviderIcon(provider string) string {

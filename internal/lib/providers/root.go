@@ -19,17 +19,42 @@ const (
 
 var Logger = log.NewLogger()
 
-var npmProvider NPMProvider = *NewProviderNPM()
-var pypiProvider PyPiProvider = *NewProviderPyPi()
-var golangProvider GolangProvider = *NewProviderGolang()
-var cargoProvider CargoProvider = *NewProviderCargo()
+// Global factory instance - can be replaced for testing
+var globalFactory ProviderFactory = &DefaultProviderFactory{}
+
+// SetProviderFactory allows setting a custom factory for testing
+func SetProviderFactory(factory ProviderFactory) {
+	globalFactory = factory
+}
+
+// ResetProviderFactory resets to the default factory
+func ResetProviderFactory() {
+	globalFactory = &DefaultProviderFactory{}
+}
+
+// Get providers from factory
+func getNPMProvider() PackageManager {
+	return globalFactory.CreateNPMProvider()
+}
+
+func getPyPIProvider() PackageManager {
+	return globalFactory.CreatePyPIProvider()
+}
+
+func getGolangProvider() PackageManager {
+	return globalFactory.CreateGolangProvider()
+}
+
+func getCargoProvider() PackageManager {
+	return globalFactory.CreateCargoProvider()
+}
 
 // AvailableProviders lists all provider names supported by Zana
 var AvailableProviders = []string{
-	npmProvider.PROVIDER_NAME,
-	pypiProvider.PROVIDER_NAME,
-	golangProvider.PROVIDER_NAME,
-	cargoProvider.PROVIDER_NAME,
+	"npm",
+	"pypi",
+	"golang",
+	"cargo",
 }
 
 // IsSupportedProvider returns true if the given provider name is supported
@@ -43,20 +68,28 @@ func IsSupportedProvider(name string) bool {
 }
 
 func detectProvider(sourceId string) Provider {
-	var provider Provider
-	switch {
-	case strings.HasPrefix(sourceId, npmProvider.PREFIX):
-		provider = ProviderNPM
-	case strings.HasPrefix(sourceId, pypiProvider.PREFIX):
-		provider = ProviderPyPi
-	case strings.HasPrefix(sourceId, golangProvider.PREFIX):
-		provider = ProviderGolang
-	case strings.HasPrefix(sourceId, cargoProvider.PREFIX):
-		provider = ProviderCargo
-	default:
-		provider = ProviderUnsupported
+	if !strings.HasPrefix(sourceId, "pkg:") {
+		return ProviderUnsupported
 	}
-	return provider
+
+	parts := strings.SplitN(sourceId, "/", 2)
+	if len(parts) < 2 {
+		return ProviderUnsupported
+	}
+
+	providerName := strings.TrimPrefix(parts[0], "pkg:")
+	switch strings.ToLower(providerName) {
+	case "npm":
+		return ProviderNPM
+	case "pypi":
+		return ProviderPyPi
+	case "golang":
+		return ProviderGolang
+	case "cargo":
+		return ProviderCargo
+	default:
+		return ProviderUnsupported
+	}
 }
 
 // CheckIfUpdateIsAvailable checks if an update is available for a given package
@@ -69,23 +102,38 @@ func CheckIfUpdateIsAvailable(localVersion string, remoteVersion string) (bool, 
 }
 
 func SyncAll() {
-	npmProvider.Sync()
-	pypiProvider.Sync()
-	golangProvider.Sync()
-	cargoProvider.Sync()
+	npmProvider := getNPMProvider()
+	if npm, ok := npmProvider.(*NPMProvider); ok {
+		npm.Sync()
+	}
+
+	pypiProvider := getPyPIProvider()
+	if pypi, ok := pypiProvider.(*PyPiProvider); ok {
+		pypi.Sync()
+	}
+
+	golangProvider := getGolangProvider()
+	if golang, ok := golangProvider.(*GolangProvider); ok {
+		golang.Sync()
+	}
+
+	cargoProvider := getCargoProvider()
+	if cargo, ok := cargoProvider.(*CargoProvider); ok {
+		cargo.Sync()
+	}
 }
 
 func Install(sourceId string, version string) bool {
 	provider := detectProvider(sourceId)
 	switch provider {
 	case ProviderNPM:
-		return npmProvider.Install(sourceId, version)
+		return getNPMProvider().Install(sourceId, version)
 	case ProviderPyPi:
-		return pypiProvider.Install(sourceId, version)
+		return getPyPIProvider().Install(sourceId, version)
 	case ProviderGolang:
-		return golangProvider.Install(sourceId, version)
+		return getGolangProvider().Install(sourceId, version)
 	case ProviderCargo:
-		return cargoProvider.Install(sourceId, version)
+		return getCargoProvider().Install(sourceId, version)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -96,13 +144,13 @@ func Remove(sourceId string) bool {
 	provider := detectProvider(sourceId)
 	switch provider {
 	case ProviderNPM:
-		return npmProvider.Remove(sourceId)
+		return getNPMProvider().Remove(sourceId)
 	case ProviderPyPi:
-		return pypiProvider.Remove(sourceId)
+		return getPyPIProvider().Remove(sourceId)
 	case ProviderGolang:
-		return golangProvider.Remove(sourceId)
+		return getGolangProvider().Remove(sourceId)
 	case ProviderCargo:
-		return cargoProvider.Remove(sourceId)
+		return getCargoProvider().Remove(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -113,13 +161,13 @@ func Update(sourceId string) bool {
 	provider := detectProvider(sourceId)
 	switch provider {
 	case ProviderNPM:
-		return npmProvider.Update(sourceId)
+		return getNPMProvider().Update(sourceId)
 	case ProviderPyPi:
-		return pypiProvider.Update(sourceId)
+		return getPyPIProvider().Update(sourceId)
 	case ProviderGolang:
-		return golangProvider.Update(sourceId)
+		return getGolangProvider().Update(sourceId)
 	case ProviderCargo:
-		return cargoProvider.Update(sourceId)
+		return getCargoProvider().Update(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
