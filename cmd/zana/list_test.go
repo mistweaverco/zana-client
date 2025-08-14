@@ -114,6 +114,23 @@ func captureOutput(t *testing.T, fn func()) string {
 
 func TestListService(t *testing.T) {
 	t.Run("new list service creation", func(t *testing.T) {
+		// Mock the factory to avoid real dependencies
+		prevFactory := newListServiceFunc
+		newListServiceFunc = func() *ListService {
+			return NewListServiceWithDependencies(
+				&MockLocalPackagesProvider{},
+				&MockRegistryProvider{
+					GetDataFunc: func(force bool) []registry_parser.RegistryItem {
+						return []registry_parser.RegistryItem{}
+					},
+				},
+				&MockUpdateChecker{},
+				&MockFileDownloader{},
+			)
+		}
+		defer func() { newListServiceFunc = prevFactory }()
+
+		// Now call NewListService() which will use our mocked factory
 		service := NewListService()
 		assert.NotNil(t, service)
 		assert.NotNil(t, service.localPackages)
@@ -600,6 +617,28 @@ func TestGetProviderIcon(t *testing.T) {
 
 func TestLegacyFunctions(t *testing.T) {
 	t.Run("legacy functions still work", func(t *testing.T) {
+		// Mock the factory to avoid real dependencies
+		prevFactory := newListServiceFunc
+		newListServiceFunc = func() *ListService {
+			return NewListServiceWithDependencies(
+				&MockLocalPackagesProvider{},
+				&MockRegistryProvider{
+					GetDataFunc: func(force bool) []registry_parser.RegistryItem {
+						return []registry_parser.RegistryItem{
+							{
+								Source:      registry_parser.RegistryItemSource{ID: "pkg:npm/test-package"},
+								Version:     "1.0.0",
+								Description: "Test package for testing",
+							},
+						}
+					},
+				},
+				&MockUpdateChecker{},
+				&MockFileDownloader{},
+			)
+		}
+		defer func() { newListServiceFunc = prevFactory }()
+
 		// Test that the legacy functions still work for backward compatibility
 		assert.NotPanics(t, func() {
 			listInstalledPackages()

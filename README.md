@@ -103,10 +103,10 @@ eval "$(zana env)"
 
 You can run `zana --help` to see the available CLI options.
 
-- install/add: Install a package (e.g., `zana install pkg:npm/@mistweavercokulala-ls`)
+- install/add: Install packages (e.g., `zana install pkg:npm/@mistweavercokulala-ls@0.1.0 pkg:pypi/black pkg:golang/golangci-lint`)
 - list/ls: Lists all installed packages (or with `--all`/`-A` flag all available packages.
-- update/up: Update a package (e.g., `zana update pkg:npm/@mistweaverco/kulala-ls`)
-- remove/rm/delete: Remove a package (e.g., `zana remove pkg:npm/@mistweaverco/kulala-ls`)
+- update/up: Update packages (e.g., `zana update pkg:npm/@mistweaverco/kulala-ls pkg:pypi/black@latest`)
+- remove/rm/delete: Remove packages (e.g., `zana remove pkg:npm/@mistweaverco/kulala-ls pkg:pypi/black pkg:golang/golangci-lint`)
 
 The `update` command accepts the an optional `--all`/`-A` flag to update all packages.
 

@@ -19,14 +19,19 @@ type ListService struct {
 	fileDownloader FileDownloader
 }
 
-// NewListService creates a new ListService with default dependencies
-func NewListService() *ListService {
+// newListServiceFunc is a variable to allow test injection
+var newListServiceFunc = func() *ListService {
 	return &ListService{
 		localPackages:  &defaultLocalPackagesProvider{},
 		registry:       &defaultRegistryProvider{},
 		updateChecker:  &defaultUpdateChecker{},
 		fileDownloader: &defaultFileDownloader{},
 	}
+}
+
+// NewListService creates a new ListService with default dependencies
+func NewListService() *ListService {
+	return newListServiceFunc()
 }
 
 // NewListServiceWithDependencies creates a new ListService with custom dependencies
