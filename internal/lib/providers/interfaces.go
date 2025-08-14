@@ -56,17 +56,17 @@ type ProviderFactory interface {
 type DefaultProviderFactory struct{}
 
 func (f *DefaultProviderFactory) CreateNPMProvider() PackageManager {
-	return &NPMProvider{}
+	return NewProviderNPM()
 }
 
 func (f *DefaultProviderFactory) CreatePyPIProvider() PackageManager {
-	return &PyPiProvider{}
+	return NewProviderPyPi()
 }
 
 func (f *DefaultProviderFactory) CreateGolangProvider() PackageManager {
-	return &GolangProvider{}
+	return NewProviderGolang()
 }
 
 func (f *DefaultProviderFactory) CreateCargoProvider() PackageManager {
-	return &CargoProvider{}
+	return NewProviderCargo()
 }

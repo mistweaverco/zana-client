@@ -505,18 +505,22 @@ func (p *PyPiProvider) Update(sourceID string) bool {
 func (p *PyPiProvider) getLatestVersion(packageName string) (string, error) {
 	_, output, err := pipShellOutCapture(pipCmd, []string{"index", "versions", packageName}, "", nil)
 	if err != nil {
+		Logger.Error(fmt.Sprintf("PyPI getLatestVersion: Command failed for %s: %v, output: %s", packageName, err, output))
 		return "", err
 	}
-	start := strings.LastIndex(output, "(")
-	end := strings.LastIndex(output, ")")
-	if start == -1 || end == -1 {
-		return "", fmt.Errorf("invalid output format from pip index")
+
+	// Parse the output format: "Available versions: 25.1.0, 24.10.0, 24.8.0, ..."
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Available versions:") {
+			versionsPart := strings.TrimSpace(strings.TrimPrefix(line, "Available versions:"))
+			versions := strings.Split(versionsPart, ", ")
+			if len(versions) > 0 {
+				// Return the first (latest) version
+				return strings.TrimSpace(versions[0]), nil
+			}
+		}
 	}
-	versionsStr := output[start+1 : end]
-	versions := strings.Split(versionsStr, ", ")
-	// Guard against empty or whitespace-only entries as well
-	if len(versions) == 0 || strings.TrimSpace(versions[len(versions)-1]) == "" {
-		return "", fmt.Errorf("no versions found")
-	}
-	return strings.TrimSpace(versions[len(versions)-1]), nil
+
+	return "", fmt.Errorf("could not parse versions from pip output: %s", output)
 }

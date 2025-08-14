@@ -76,10 +76,6 @@ func TestDownloadBasic(t *testing.T) {
 	})
 }
 
-
-
-
-
 // TestDownloadEdgeCases tests edge cases in the Download function
 func TestDownloadEdgeCases(t *testing.T) {
 	t.Run("download with empty response body", func(t *testing.T) {

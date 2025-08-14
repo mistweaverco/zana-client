@@ -208,7 +208,7 @@ func TestPyPiProviderBasicFlows(t *testing.T) {
 
 	// getLatestVersion parses pip index output
 	pipShellOutCapture = func(cmd string, args []string, dir string, env []string) (int, string, error) {
-		return 0, "Available versions: (0.1, 1.0.0, 2.0.0)", nil
+		return 0, "Available versions: 2.0.0, 1.0.0, 0.1", nil
 	}
 	v, err := p.getLatestVersion("black")
 	assert.NoError(t, err)

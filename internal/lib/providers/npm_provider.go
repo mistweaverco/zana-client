@@ -392,6 +392,7 @@ func (p *NPMProvider) Update(sourceID string) bool {
 func (p *NPMProvider) getLatestVersion(packageName string) (string, error) {
 	_, output, err := npmShellOutCapture("npm", []string{"view", packageName, "version"}, "", nil)
 	if err != nil {
+		Logger.Error(fmt.Sprintf("NPM getLatestVersion: Command failed for %s: %v, output: %s", packageName, err, output))
 		return "", err
 	}
 	return strings.TrimSpace(output), nil
