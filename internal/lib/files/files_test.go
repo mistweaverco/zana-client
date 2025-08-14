@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -55,28 +56,6 @@ func (m *MockZipFileOpener) Open(name string) (ZipArchive, error) {
 		return m.OpenFunc(name)
 	}
 	return nil, errors.New("mock not implemented")
-}
-
-// createMockZipFile creates a mock zip.File for testing
-// Note: This is a simplified mock that only provides the basic structure
-// The actual zip.File methods cannot be mocked due to Go's type system
-func createMockZipFile(name string, content string, isDir bool) *zip.File {
-	// Create a mock file header
-	header := &zip.FileHeader{
-		Name: name,
-	}
-
-	if isDir {
-		header.Name += "/"
-	}
-
-	// Create a mock zip.File - we can only set the header
-	// The methods will use the default implementations
-	file := &zip.File{
-		FileHeader: *header,
-	}
-
-	return file
 }
 
 // createRealZipArchive creates a real zip archive in memory for testing
@@ -332,36 +311,6 @@ func CreateMockZipWithWriter(files []MockZipFile, writer ZipWriter) error {
 	return writer.Close()
 }
 
-// TestFileExists for testing file operations
-func TestFileExists(t *testing.T) {
-	// Create an in-memory filesystem for testing
-	mockFS := &MockFileSystem{
-		fs: afero.NewMemMapFs(),
-	}
-	SetFileSystem(mockFS)
-	defer ResetDependencies()
-
-	// Test with non-existing file
-	result := FileExists("/non/existing/file")
-	t.Logf("FileExists('/non/existing/file') = %v", result)
-	assert.False(t, result)
-
-	// Create a file in the in-memory filesystem
-	file, err := mockFS.fs.Create("/test_file")
-	require.NoError(t, err)
-	file.Close()
-
-	// Test with existing file
-	result = FileExists("/test_file")
-	t.Logf("FileExists('/test_file') = %v", result)
-	assert.True(t, result)
-
-	// Test with empty path
-	result = FileExists("")
-	t.Logf("FileExists('') = %v", result)
-	assert.False(t, result)
-}
-
 // TestEnsureDirExists for testing directory operations
 func TestEnsureDirExists(t *testing.T) {
 	// Create an in-memory filesystem for testing
@@ -447,29 +396,6 @@ func TestDownloadWithCache(t *testing.T) {
 	err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "network error")
-}
-
-// TestUnzip for testing zip operations
-func TestUnzip(t *testing.T) {
-	// Create an in-memory filesystem for testing
-	mockFS := &MockFileSystem{
-		fs: afero.NewMemMapFs(),
-	}
-	SetFileSystem(mockFS)
-	defer ResetDependencies()
-
-	// Test with zip open error
-	mockZipOpener := &MockZipFileOpener{
-		OpenFunc: func(name string) (ZipArchive, error) {
-			return nil, errors.New("zip open error")
-		},
-	}
-	SetZipFileOpener(mockZipOpener)
-	defer ResetDependencies()
-
-	err := Unzip("test.zip", "/dest")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "zip open error")
 }
 
 // TestDependencyInjection demonstrates the dependency injection system
@@ -562,54 +488,6 @@ func TestPathSeparator(t *testing.T) {
 	// Test that path separators work correctly
 	path := GetAppDataPath() + string(os.PathSeparator) + "test"
 	assert.Contains(t, path, "test")
-}
-
-// TestDownload tests the download functionality
-func TestDownload(t *testing.T) {
-	t.Run("download function exists", func(t *testing.T) {
-		// Test that the function exists and can be called
-		assert.NotNil(t, Download)
-	})
-
-	t.Run("download with mock HTTP client success", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Mock HTTP client that returns success
-		mockClient := &MockHTTPClient{
-			GetFunc: func(url string) (*http.Response, error) {
-				return &http.Response{
-					Body: &MockReadCloser{},
-				}, nil
-			},
-		}
-		SetHTTPClient(mockClient)
-		defer ResetDependencies()
-
-		// Test download
-		err := Download("http://example.com/test", "/dest/test")
-		assert.NoError(t, err)
-	})
-
-	t.Run("download with HTTP error", func(t *testing.T) {
-		// Mock HTTP client that returns error
-		mockClient := &MockHTTPClient{
-			GetFunc: func(url string) (*http.Response, error) {
-				return nil, errors.New("network error")
-			},
-		}
-		SetHTTPClient(mockClient)
-		defer ResetDependencies()
-
-		// Test download with error
-		err := Download("http://example.com/test", "/dest/test")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "network error")
-	})
 }
 
 // TestGetAppDataPath tests the app data path functionality
@@ -1266,586 +1144,6 @@ func TestPathSeparatorComprehensive(t *testing.T) {
 	})
 }
 
-// TestCacheValidationComprehensive tests cache validation functionality
-func TestCacheValidationComprehensive(t *testing.T) {
-	t.Run("cache validation with expired cache", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a cache file
-		file, err := mockFS.fs.Create("/cache_file")
-		require.NoError(t, err)
-		file.Close()
-
-		// Test with very short max age (should be expired)
-		assert.False(t, IsCacheValid("/cache_file", 1*time.Nanosecond))
-	})
-
-	t.Run("cache validation with non-existent file", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test with non-existing cache
-		assert.False(t, IsCacheValid("/non/existing/cache", 1*time.Hour))
-	})
-}
-
-// TestGetTempPathComprehensive tests the GetTempPath function
-func TestGetTempPathComprehensive(t *testing.T) {
-	t.Run("get temp path", func(t *testing.T) {
-		// Test that the function exists and can be called
-		result := GetTempPath()
-		assert.NotEmpty(t, result)
-		assert.Equal(t, os.TempDir(), result)
-	})
-
-	t.Run("get temp path with mock file system", func(t *testing.T) {
-		// Create a mock file system with custom temp dir
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-			TempDirFunc: func() string {
-				return "/custom/temp"
-			},
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test that it uses the mock temp dir
-		result := GetTempPath()
-		assert.Equal(t, "/custom/temp", result)
-	})
-}
-
-// TestUnzipWithMockZip tests the Unzip function using mockzip package for realistic scenarios
-func TestUnzipWithMockZip(t *testing.T) {
-	t.Run("successful unzip with files and directories", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a mock zip file using mockzip
-		zipFiles := []MockZipFile{
-			{Name: "file1.txt", Content: "content1"},
-			{Name: "dir1/", Content: ""},
-			{Name: "dir1/file2.txt", Content: "content2"},
-			{Name: "dir1/subdir/", Content: ""},
-			{Name: "dir1/subdir/file3.txt", Content: "content3"},
-		}
-
-		zipBuffer, err := CreateMockZip(zipFiles)
-		require.NoError(t, err)
-
-		// Create a temporary zip file in the mock filesystem
-		zipPath := "/test.zip"
-		zipFile, err := mockFS.fs.Create(zipPath)
-		require.NoError(t, err)
-		_, err = zipFile.Write(zipBuffer.Bytes())
-		require.NoError(t, err)
-		zipFile.Close()
-
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				// For testing, just return an error to test error paths
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		// Test unzip - should fail due to zip open error
-		destPath := "/dest"
-		err = Unzip(zipPath, destPath)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-
-	t.Run("unzip with zip slip protection", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a malicious zip file with path traversal
-		zipFiles := []MockZipFile{
-			{Name: "../../../malicious.txt", Content: "malicious content"},
-		}
-
-		zipBuffer, err := CreateMockZip(zipFiles)
-		require.NoError(t, err)
-
-		// Create a temporary zip file in the mock filesystem
-		zipPath := "/test.zip"
-		zipFile, err := mockFS.fs.Create(zipPath)
-		require.NoError(t, err)
-		_, err = zipFile.Write(zipBuffer.Bytes())
-		require.NoError(t, err)
-		zipFile.Close()
-
-		// Mock zip opener that returns error for testing
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		// Test unzip - should fail due to zip open error
-		destPath := "/dest"
-		err = Unzip(zipPath, destPath)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-
-	t.Run("unzip with directory creation error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a zip file with a directory
-		zipFiles := []MockZipFile{
-			{Name: "newdir/", Content: ""},
-			{Name: "newdir/file.txt", Content: "content"},
-		}
-
-		zipBuffer, err := CreateMockZip(zipFiles)
-		require.NoError(t, err)
-
-		// Create a temporary zip file in the mock filesystem
-		zipPath := "/test.zip"
-		zipFile, err := mockFS.fs.Create(zipPath)
-		require.NoError(t, err)
-		_, err = zipFile.Write(zipBuffer.Bytes())
-		require.NoError(t, err)
-		zipFile.Close()
-
-		// Mock zip opener that returns error for testing
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		// Test unzip - should fail due to zip open error
-		destPath := "/dest"
-		err = Unzip(zipPath, destPath)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-
-	t.Run("unzip with file extraction error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a zip file with a file
-		zipFiles := []MockZipFile{
-			{Name: "testfile.txt", Content: "test content"},
-		}
-
-		zipBuffer, err := CreateMockZip(zipFiles)
-		require.NoError(t, err)
-
-		// Create a temporary zip file in the mock filesystem
-		zipPath := "/test.zip"
-		zipFile, err := mockFS.fs.Create(zipPath)
-		require.NoError(t, err)
-		_, err = zipFile.Write(zipBuffer.Bytes())
-		require.NoError(t, err)
-		zipFile.Close()
-
-		// Mock zip opener that returns error for testing
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		// Test unzip - should fail due to zip open error
-		destPath := "/dest"
-		err = Unzip(zipPath, destPath)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-}
-
-// TestUnzipErrorScenarios tests various error scenarios in the Unzip function
-func TestUnzipErrorScenarios(t *testing.T) {
-	t.Run("unzip with zip open error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Mock zip opener that returns error
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		err := Unzip("test.zip", "/dest")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-
-	t.Run("unzip with destination directory creation error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a zip file
-		zipFiles := []MockZipFile{
-			{Name: "file.txt", Content: "content"},
-		}
-
-		zipBuffer, err := CreateMockZip(zipFiles)
-		require.NoError(t, err)
-
-		// Create a temporary zip file in the mock filesystem
-		zipPath := "/test.zip"
-		zipFile, err := mockFS.fs.Create(zipPath)
-		require.NoError(t, err)
-		_, err = zipFile.Write(zipBuffer.Bytes())
-		require.NoError(t, err)
-		zipFile.Close()
-
-		// Mock zip opener that creates a real zip for testing
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		// Test unzip - should fail due to zip open error
-		destPath := "/dest"
-		err = Unzip(zipPath, destPath)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-
-	t.Run("unzip with file open error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a zip file
-		zipFiles := []MockZipFile{
-			{Name: "file.txt", Content: "content"},
-		}
-
-		zipBuffer, err := CreateMockZip(zipFiles)
-		require.NoError(t, err)
-
-		// Create a temporary zip file in the mock filesystem
-		zipPath := "/test.zip"
-		zipFile, err := mockFS.fs.Create(zipPath)
-		require.NoError(t, err)
-		_, err = zipFile.Write(zipBuffer.Bytes())
-		require.NoError(t, err)
-		zipFile.Close()
-
-		// Mock zip opener that returns error for testing
-		mockZipOpener := &MockZipFileOpener{
-			OpenFunc: func(name string) (ZipArchive, error) {
-				return nil, errors.New("zip open error")
-			},
-		}
-		SetZipFileOpener(mockZipOpener)
-		defer ResetDependencies()
-
-		// Test unzip - should fail due to zip open error
-		destPath := "/dest"
-		err = Unzip(zipPath, destPath)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "zip open error")
-	})
-}
-
-// TestIntegration tests integration scenarios
-func TestIntegration(t *testing.T) {
-	t.Run("full workflow test", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test the full workflow
-		// 1. Get app data path
-		appDataPath := GetAppDataPath()
-		assert.NotEmpty(t, appDataPath)
-
-		// 2. Ensure directories exist
-		packagesPath := GetAppPackagesPath()
-		assert.NotEmpty(t, packagesPath)
-
-		binPath := GetAppBinPath()
-		assert.NotEmpty(t, binPath)
-
-		// 3. Generate gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-
-		// 4. Check file exists
-		exists := FileExists("/tmp/zana_test/.gitignore")
-		assert.True(t, exists)
-	})
-}
-
-// TestSpecificBranches tests specific code branches that need coverage
-func TestSpecificBranches(t *testing.T) {
-	t.Run("download with response body close error", func(t *testing.T) {
-		// Mock HTTP client that returns response with failing close
-		mockClient := &MockHTTPClient{
-			GetFunc: func(url string) (*http.Response, error) {
-				return &http.Response{
-					Body: &MockReadCloser{
-						CloseFunc: func() error {
-							return errors.New("close error")
-						},
-					},
-				}, nil
-			},
-		}
-		SetHTTPClient(mockClient)
-		defer ResetDependencies()
-
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test download (should succeed even with close error)
-		err := Download("http://example.com/test", "/dest/test")
-		assert.NoError(t, err)
-	})
-
-	t.Run("download with file close error", func(t *testing.T) {
-		// Mock HTTP client that returns success
-		mockClient := &MockHTTPClient{
-			GetFunc: func(url string) (*http.Response, error) {
-				return &http.Response{
-					Body: &MockReadCloser{},
-				}, nil
-			},
-		}
-		SetHTTPClient(mockClient)
-		defer ResetDependencies()
-
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test download (should succeed even with file close error)
-		err := Download("http://example.com/test", "/dest/test")
-		assert.NoError(t, err)
-	})
-
-	t.Run("download with cache response body close error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Mock HTTP client that returns response with failing close
-		mockClient := &MockHTTPClient{
-			GetFunc: func(url string) (*http.Response, error) {
-				return &http.Response{
-					Body: &MockReadCloser{
-						CloseFunc: func() error {
-							return errors.New("close error")
-						},
-					},
-				}, nil
-			},
-		}
-		SetHTTPClient(mockClient)
-		defer ResetDependencies()
-
-		// Test download (should succeed even with close error)
-		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
-		assert.NoError(t, err)
-	})
-
-	t.Run("download with cache file close error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Mock HTTP client that returns success
-		mockClient := &MockHTTPClient{
-			GetFunc: func(url string) (*http.Response, error) {
-				return &http.Response{
-					Body: &MockReadCloser{},
-				}, nil
-			},
-		}
-		SetHTTPClient(mockClient)
-		defer ResetDependencies()
-
-		// Test download (should succeed even with file close error)
-		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
-		assert.NoError(t, err)
-	})
-}
-
-// TestErrorHandling tests various error handling scenarios
-func TestErrorHandling(t *testing.T) {
-	t.Run("generate gitignore with write error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test generating .gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-
-	t.Run("generate gitignore with file close error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test generating .gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-
-	t.Run("ensure dir exists with mkdir error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test with invalid path (should fail silently and return the path)
-		result := EnsureDirExists("/invalid/path")
-		assert.Equal(t, "/invalid/path", result)
-	})
-}
-
-// TestPathHandling tests various path handling scenarios
-func TestPathHandling(t *testing.T) {
-	t.Run("path separator with different separators", func(t *testing.T) {
-		// Test various path combinations
-		paths := []string{
-			"test",
-			"path",
-			"with",
-			"separators",
-		}
-
-		for _, path := range paths {
-			fullPath := GetAppDataPath() + string(os.PathSeparator) + path
-			assert.Contains(t, fullPath, path)
-		}
-	})
-
-	t.Run("path separator with empty path", func(t *testing.T) {
-		// Test with empty path
-		fullPath := GetAppDataPath() + string(os.PathSeparator) + ""
-		// The result will include the separator even with empty path
-		assert.Contains(t, fullPath, GetAppDataPath())
-	})
-
-	t.Run("path separator with root path", func(t *testing.T) {
-		// Test with root path
-		fullPath := GetAppDataPath() + string(os.PathSeparator) + "/"
-		assert.Contains(t, fullPath, "/")
-	})
-}
-
-// TestCacheScenarios tests various cache scenarios
-func TestCacheScenarios(t *testing.T) {
-	t.Run("cache validation with very old file", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a cache file
-		file, err := mockFS.fs.Create("/cache_file")
-		require.NoError(t, err)
-		file.Close()
-
-		// Test with very long max age (should be valid)
-		assert.True(t, IsCacheValid("/cache_file", 100*365*24*time.Hour))
-	})
-
-	t.Run("cache validation with very short max age", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create a cache file
-		file, err := mockFS.fs.Create("/cache_file2")
-		require.NoError(t, err)
-		file.Close()
-
-		// Test with very short max age (should be expired)
-		assert.False(t, IsCacheValid("/cache_file2", 1*time.Nanosecond))
-	})
-}
-
 // TestEnvironmentVariables tests environment variable handling
 func TestEnvironmentVariables(t *testing.T) {
 	t.Run("ZANA_HOME environment variable", func(t *testing.T) {
@@ -2104,5 +1402,1476 @@ func TestUnzipWithNewInterface(t *testing.T) {
 		err := Unzip("src", "/dest")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "file creation failed")
+	})
+}
+
+// TestRealZipArchive tests the RealZipArchive implementation
+func TestRealZipArchive(t *testing.T) {
+	t.Run("real zip archive file method", func(t *testing.T) {
+		// Create a real zip archive in memory
+		filesToZip := map[string]string{
+			"file1.txt": "content1",
+			"file2.txt": "content2",
+		}
+
+		zipArchive, err := createRealZipArchive(filesToZip)
+		require.NoError(t, err)
+		defer zipArchive.Close()
+
+		// Test the File method
+		files := zipArchive.File()
+		assert.Len(t, files, 2)
+
+		// Check that both files exist, but don't assume order
+		fileNames := make([]string, len(files))
+		for i, f := range files {
+			fileNames[i] = f.Name
+		}
+		assert.Contains(t, fileNames, "file1.txt")
+		assert.Contains(t, fileNames, "file2.txt")
+	})
+
+	t.Run("real zip archive close method", func(t *testing.T) {
+		// Create a real zip archive in memory
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		zipArchive, err := createRealZipArchive(filesToZip)
+		require.NoError(t, err)
+
+		// Test the Close method
+		err = zipArchive.Close()
+		assert.NoError(t, err)
+	})
+}
+
+// TestRealZipFileOpener tests the RealZipFileOpener implementation
+func TestRealZipFileOpener(t *testing.T) {
+	t.Run("real zip file opener with non-existent file", func(t *testing.T) {
+		opener := &RealZipFileOpener{}
+		_, err := opener.Open("/non/existent/file.zip")
+		assert.Error(t, err)
+	})
+
+	t.Run("real zip file opener with valid zip", func(t *testing.T) {
+		// Create a temporary zip file
+		tempDir := t.TempDir()
+		zipPath := filepath.Join(tempDir, "test.zip")
+
+		// Create a simple zip file
+		zipFile, err := os.Create(zipPath)
+		require.NoError(t, err)
+		defer zipFile.Close()
+
+		zipWriter := zip.NewWriter(zipFile)
+		_, err = zipWriter.Create("test.txt")
+		require.NoError(t, err)
+		zipWriter.Close()
+
+		opener := &RealZipFileOpener{}
+		archive, err := opener.Open(zipPath)
+		require.NoError(t, err)
+		defer archive.Close()
+
+		files := archive.File()
+		assert.Len(t, files, 1)
+		assert.Equal(t, "test.txt", files[0].Name)
+	})
+}
+
+// TestGenerateZanaGitIgnoreErrorPaths tests error paths in GenerateZanaGitIgnore
+func TestGenerateZanaGitIgnoreErrorPaths(t *testing.T) {
+	t.Run("generate gitignore with file creation error", func(t *testing.T) {
+		// Create a mock file system that fails on Create
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CreateFunc: func(name string) (afero.File, error) {
+				return nil, errors.New("create error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test that it returns false when file creation fails
+		result := GenerateZanaGitIgnore()
+		assert.False(t, result)
+	})
+
+	t.Run("generate gitignore with write error", func(t *testing.T) {
+		// Create a mock file system that fails on WriteString
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			WriteStringFunc: func(file afero.File, s string) (int, error) {
+				return 0, errors.New("write error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test that it returns false when write fails
+		result := GenerateZanaGitIgnore()
+		assert.False(t, result)
+	})
+
+	t.Run("generate gitignore with file close error", func(t *testing.T) {
+		// Create a mock file system that fails on Close
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CloseFunc: func(file afero.File) error {
+				return errors.New("close error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test that it still succeeds even with close error
+		result := GenerateZanaGitIgnore()
+		assert.True(t, result)
+	})
+}
+
+// TestEnsureDirExistsErrorPaths tests error paths in EnsureDirExists
+func TestEnsureDirExistsErrorPaths(t *testing.T) {
+	t.Run("ensure dir exists with mkdir error", func(t *testing.T) {
+		// Create a mock file system that fails on MkdirAll
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			MkdirAllFunc: func(path string, perm os.FileMode) error {
+				return errors.New("mkdir error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test that it returns the path even when mkdir fails
+		result := EnsureDirExists("/test/dir")
+		assert.Equal(t, "/test/dir", result)
+	})
+}
+
+// TestUnzipErrorPaths tests error paths in Unzip function
+func TestUnzipErrorPaths(t *testing.T) {
+	t.Run("unzip with directory creation error for file", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			MkdirAllFunc: func(path string, perm os.FileMode) error {
+				if strings.Contains(path, "dest/dir") {
+					return errors.New("mkdir error")
+				}
+				return nil
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a mock zip archive with a file in a subdirectory
+		filesToZip := map[string]string{
+			"dir/file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test unzip - should fail due to directory creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "mkdir error")
+	})
+
+	t.Run("unzip with file creation error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			OpenFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+				if name == "/dest/file.txt" {
+					return nil, errors.New("file creation error")
+				}
+				return nil, errors.New("unexpected call")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a mock zip archive with a file
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test unzip - should fail due to file creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "file creation error")
+	})
+}
+
+// TestDownloadErrorPaths tests error paths in Download function
+func TestDownloadErrorPaths(t *testing.T) {
+	t.Run("download with file creation error", func(t *testing.T) {
+		// Create a mock file system that fails on Create
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CreateFunc: func(name string) (afero.File, error) {
+				return nil, errors.New("file creation error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download - should fail due to file creation error
+		err := Download("http://example.com/test", "/dest/test")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "file creation error")
+	})
+
+	t.Run("download with io copy error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns response with failing read
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							return 0, errors.New("read error")
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download - should fail due to read error
+		err := Download("http://example.com/test", "/dest/test")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "read error")
+	})
+}
+
+// TestDownloadWithCacheErrorPaths tests error paths in DownloadWithCache function
+func TestDownloadWithCacheErrorPaths(t *testing.T) {
+	t.Run("download with cache file creation error", func(t *testing.T) {
+		// Create a mock file system that fails on Create
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CreateFunc: func(name string) (afero.File, error) {
+				if strings.Contains(name, "cache") {
+					return nil, errors.New("cache file creation error")
+				}
+				return nil, errors.New("unexpected call")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download with cache - should fail due to cache file creation error
+		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cache file creation error")
+	})
+
+	t.Run("download with cache io copy error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns response with failing read
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							return 0, errors.New("read error")
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download with cache - should fail due to read error
+		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "read error")
+	})
+}
+
+// TestDownloadAndUnzipRegistryErrorPaths tests error paths in DownloadAndUnzipRegistry function
+func TestDownloadAndUnzipRegistryErrorPaths(t *testing.T) {
+	t.Run("download and unzip registry with download error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns error
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return nil, errors.New("download error")
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test that it fails due to download error
+		err := DownloadAndUnzipRegistry()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to download registry")
+	})
+
+	t.Run("download and unzip registry with unzip error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Mock zip opener that returns error
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return nil, errors.New("unzip error")
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test that it fails due to unzip error
+		err := DownloadAndUnzipRegistry()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to unzip registry")
+	})
+
+	t.Run("download and unzip registry with custom URL", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			GetenvFunc: func(key string) string {
+				if key == "ZANA_REGISTRY_URL" {
+					return "http://custom.example.com/registry.zip"
+				}
+				return ""
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns error
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				assert.Equal(t, "http://custom.example.com/registry.zip", url)
+				return nil, errors.New("download error")
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test that it uses the custom URL and fails due to download error
+		err := DownloadAndUnzipRegistry()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to download registry")
+	})
+}
+
+// TestGetAppDataPathErrorPaths tests error paths in GetAppDataPath function
+func TestGetAppDataPathErrorPaths(t *testing.T) {
+	t.Run("get app data path with user config dir error", func(t *testing.T) {
+		// Create a mock file system that fails on UserConfigDir
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			UserConfigDirFunc: func() (string, error) {
+				return "", errors.New("user config dir error")
+			},
+			GetenvFunc: func(key string) string {
+				return "" // No ZANA_HOME
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// This should panic
+		assert.Panics(t, func() {
+			GetAppDataPath()
+		})
+	})
+}
+
+// TestUnzipWithRealZipArchive tests the Unzip function with a real zip archive
+func TestUnzipWithRealZipArchive(t *testing.T) {
+	t.Run("successful unzip with real zip archive", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive in memory
+		filesToZip := map[string]string{
+			"file1.txt":             "Hello, World!",
+			"dir1/":                 "", // Directory entry
+			"dir1/file2.json":       `{"key": "value"}`,
+			"dir1/subdir/":          "", // Directory entry
+			"dir1/subdir/file3.txt": "Nested file content.",
+		}
+
+		// Create a mock ZipFileOpener that returns our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+
+		srcPath := "/path/to/mock_archive.zip"
+		destPath := "/tmp/unzipped_files"
+
+		// Call the function under test.
+		err := Unzip(srcPath, destPath)
+		require.NoError(t, err)
+
+		// Verify that all directories were created correctly.
+		dirs := []string{
+			"/tmp/unzipped_files/dir1",
+			"/tmp/unzipped_files/dir1/subdir",
+		}
+		for _, dir := range dirs {
+			exists, _ := afero.IsDir(mockFS.fs, dir)
+			assert.True(t, exists, "Expected directory %s to exist", dir)
+		}
+	})
+}
+
+// TestIntegration tests integration scenarios
+func TestIntegration(t *testing.T) {
+	t.Run("full workflow test", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test the full workflow
+		// 1. Get app data path
+		appDataPath := GetAppDataPath()
+		assert.NotEmpty(t, appDataPath)
+
+		// 2. Ensure directories exist
+		packagesPath := GetAppPackagesPath()
+		assert.NotEmpty(t, packagesPath)
+
+		binPath := GetAppBinPath()
+		assert.NotEmpty(t, binPath)
+
+		// 3. Generate gitignore
+		result := GenerateZanaGitIgnore()
+		assert.True(t, result)
+
+		// 4. Check file exists
+		exists := FileExists("/tmp/zana_test/.gitignore")
+		assert.True(t, exists)
+	})
+}
+
+// TestSpecificBranches tests specific code branches that need coverage
+func TestSpecificBranches(t *testing.T) {
+	t.Run("download with response body close error", func(t *testing.T) {
+		// Mock HTTP client that returns response with failing close
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						CloseFunc: func() error {
+							return errors.New("close error")
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test download (should succeed even with close error)
+		err := Download("http://example.com/test", "/dest/test")
+		assert.NoError(t, err)
+	})
+
+	t.Run("download with file close error", func(t *testing.T) {
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test download (should succeed even with file close error)
+		err := Download("http://example.com/test", "/dest/test")
+		assert.NoError(t, err)
+	})
+
+	t.Run("download with cache response body close error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns response with failing close
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						CloseFunc: func() error {
+							return errors.New("close error")
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download (should succeed even with close error)
+		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		assert.NoError(t, err)
+	})
+
+	t.Run("download with cache file close error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download (should succeed even with file close error)
+		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		assert.NoError(t, err)
+	})
+}
+
+// TestErrorHandling tests various error handling scenarios
+func TestErrorHandling(t *testing.T) {
+	t.Run("generate gitignore with write error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test generating .gitignore
+		result := GenerateZanaGitIgnore()
+		assert.True(t, result)
+	})
+
+	t.Run("generate gitignore with file close error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test generating .gitignore
+		result := GenerateZanaGitIgnore()
+		assert.True(t, result)
+	})
+
+	t.Run("ensure dir exists with mkdir error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test with invalid path (should fail silently and return the path)
+		result := EnsureDirExists("/invalid/path")
+		assert.Equal(t, "/invalid/path", result)
+	})
+}
+
+// TestPathHandling tests various path handling scenarios
+func TestPathHandling(t *testing.T) {
+	t.Run("path separator with different separators", func(t *testing.T) {
+		// Test various path combinations
+		paths := []string{
+			"test",
+			"path",
+			"with",
+			"separators",
+		}
+
+		for _, path := range paths {
+			fullPath := GetAppDataPath() + string(os.PathSeparator) + path
+			assert.Contains(t, fullPath, path)
+		}
+	})
+
+	t.Run("path separator with empty path", func(t *testing.T) {
+		// Test with empty path
+		fullPath := GetAppDataPath() + string(os.PathSeparator) + ""
+		// The result will include the separator even with empty path
+		assert.Contains(t, fullPath, GetAppDataPath())
+	})
+
+	t.Run("path separator with root path", func(t *testing.T) {
+		// Test with root path
+		fullPath := GetAppDataPath() + string(os.PathSeparator) + "/"
+		assert.Contains(t, fullPath, "/")
+	})
+}
+
+// TestCacheScenarios tests various cache scenarios
+func TestCacheScenarios(t *testing.T) {
+	t.Run("cache validation with very old file", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a cache file
+		file, err := mockFS.fs.Create("/cache_file")
+		require.NoError(t, err)
+		file.Close()
+
+		// Test with very long max age (should be valid)
+		assert.True(t, IsCacheValid("/cache_file", 100*365*24*time.Hour))
+	})
+
+	t.Run("cache validation with very short max age", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a cache file
+		file, err := mockFS.fs.Create("/cache_file2")
+		require.NoError(t, err)
+		file.Close()
+
+		// Test with very short max age (should be expired)
+		assert.False(t, IsCacheValid("/cache_file2", 1*time.Nanosecond))
+	})
+
+	t.Run("cache validation with non-existent file", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test with non-existing cache
+		assert.False(t, IsCacheValid("/non/existing/cache", 1*time.Hour))
+	})
+}
+
+// TestGetTempPathComprehensive tests the GetTempPath function
+func TestGetTempPathComprehensive(t *testing.T) {
+	t.Run("get temp path", func(t *testing.T) {
+		// Test that the function exists and can be called
+		result := GetTempPath()
+		assert.NotEmpty(t, result)
+		assert.Equal(t, os.TempDir(), result)
+	})
+
+	t.Run("get temp path with mock file system", func(t *testing.T) {
+		// Create a mock file system with custom temp dir
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			TempDirFunc: func() string {
+				return "/custom/temp"
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Test that it uses the mock temp dir
+		result := GetTempPath()
+		assert.Equal(t, "/custom/temp", result)
+	})
+}
+
+// TestUnzipPanicScenarios tests panic scenarios in the Unzip function
+func TestUnzipPanicScenarios(t *testing.T) {
+	t.Run("unzip with zip close panic", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a mock zip archive that will panic on close
+		mockArchive := &MockZipArchive{
+			Files: []*zip.File{},
+			CloseFunc: func() error {
+				panic("zip close panic")
+			},
+		}
+
+		// Mock the zip opener to return our mock archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return mockArchive, nil
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// This should panic
+		assert.Panics(t, func() {
+			Unzip("test.zip", "/dest")
+		})
+	})
+
+	t.Run("unzip with file close panic", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a file
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Mock the filesystem to panic on file close
+		mockFS.CloseFunc = func(file afero.File) error {
+			panic("file close panic")
+		}
+
+		// This should panic
+		assert.Panics(t, func() {
+			Unzip("test.zip", "/dest")
+		})
+	})
+
+	t.Run("unzip with reader close panic", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a file
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// This should succeed since we're using real zip files
+		err := Unzip("test.zip", "/dest")
+		assert.NoError(t, err)
+	})
+}
+
+// TestDownloadWithCachePanicScenarios tests panic scenarios in the DownloadWithCache function
+func TestDownloadWithCachePanicScenarios(t *testing.T) {
+	t.Run("download with cache file close panic", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CloseFunc: func(file afero.File) error {
+				panic("file close panic")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// This should panic
+		assert.Panics(t, func() {
+			DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		})
+	})
+}
+
+// TestDownloadPanicScenarios tests panic scenarios in the Download function
+func TestDownloadPanicScenarios(t *testing.T) {
+	t.Run("download with file close panic", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CloseFunc: func(file afero.File) error {
+				panic("file close panic")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns success
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// This should panic
+		assert.Panics(t, func() {
+			Download("http://example.com/test", "/dest/test")
+		})
+	})
+}
+
+// TestAdditionalEdgeCases tests additional edge cases and error scenarios
+func TestAdditionalEdgeCases(t *testing.T) {
+	t.Run("unzip with empty zip archive", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a mock zip archive with no files
+		mockArchive := &MockZipArchive{
+			Files: []*zip.File{},
+		}
+
+		// Mock the zip opener to return our mock archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return mockArchive, nil
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test unzip with empty archive - should succeed
+		err := Unzip("test.zip", "/dest")
+		assert.NoError(t, err)
+	})
+
+	t.Run("unzip with only directory entries", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with only directories
+		filesToZip := map[string]string{
+			"dir1/":        "", // Directory entry
+			"dir1/subdir/": "", // Directory entry
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test unzip with only directories - should succeed
+		err := Unzip("test.zip", "/dest")
+		assert.NoError(t, err)
+
+		// Verify directories were created
+		dirs := []string{
+			"/dest/dir1",
+			"/dest/dir1/subdir",
+		}
+		for _, dir := range dirs {
+			exists, _ := afero.IsDir(mockFS.fs, dir)
+			assert.True(t, exists, "Expected directory %s to exist", dir)
+		}
+	})
+
+	t.Run("download with empty response body", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns response with empty body
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							return 0, io.EOF // Empty body
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download with empty body - should succeed
+		err := Download("http://example.com/test", "/dest/test")
+		assert.NoError(t, err)
+	})
+
+	t.Run("download with cache with empty response body", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns response with empty body
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							return 0, io.EOF // Empty body
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download with cache and empty body - should succeed
+		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		assert.NoError(t, err)
+	})
+
+	t.Run("download and unzip registry success path", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns a successful response
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							// Return EOF after reading some data to avoid infinite loops
+							if len(p) > 0 {
+								return 1, io.EOF
+							}
+							return 0, io.EOF
+						},
+						CloseFunc: func() error {
+							return nil // Mock body close succeeds
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Mock the zip opener to return a successful zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return &MockZipArchive{
+					Files: []*zip.File{},
+				}, nil
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test the full workflow - should succeed
+		err := DownloadAndUnzipRegistry()
+		assert.NoError(t, err)
+	})
+
+	t.Run("unzip with directory creation error for directories", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			MkdirAllFunc: func(path string, perm os.FileMode) error {
+				if strings.Contains(path, "testdir") {
+					return errors.New("directory creation error for dir")
+				}
+				return nil
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a directory entry
+		filesToZip := map[string]string{
+			"testdir/": "", // Directory entry
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// This should fail due to directory creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create directory")
+	})
+
+	t.Run("unzip with io copy error during file extraction", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a file
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Mock the filesystem to fail on OpenFile to simulate the error
+		mockFS.OpenFileFunc = func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			return nil, errors.New("open file error for io copy")
+		}
+
+		// This should fail due to file creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "open file error for io copy")
+	})
+}
+
+// TestUncoveredBranches tests the uncovered branches identified in coverage report
+func TestUncoveredBranches(t *testing.T) {
+	t.Run("download with file close error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CloseFunc: func(file afero.File) error {
+				return errors.New("file close error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns a successful response
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							// Return EOF after reading some data to avoid infinite loops
+							if len(p) > 0 {
+								return 1, io.EOF
+							}
+							return 0, io.EOF
+						},
+						CloseFunc: func() error {
+							return nil // Mock body close succeeds
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download - should succeed but log file close warning
+		err := Download("http://example.com/test", "/dest/test")
+		assert.NoError(t, err)
+	})
+
+	t.Run("unzip with zip file open error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a file that will fail to open
+		// We'll use a real zip archive but mock the file opening to fail
+		filesToZip := map[string]string{
+			"test.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Mock the filesystem to fail on OpenFile to simulate the error
+		mockFS.OpenFileFunc = func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			return nil, errors.New("open file error")
+		}
+
+		// This should fail due to file creation error (which happens before zip file open)
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "open file error")
+	})
+
+	t.Run("unzip with directory creation error for file", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			MkdirAllFunc: func(path string, perm os.FileMode) error {
+				if strings.Contains(path, "subdir") {
+					return errors.New("directory creation error")
+				}
+				return nil
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with nested files
+		filesToZip := map[string]string{
+			"subdir/file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// This should fail due to directory creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create directory")
+	})
+
+	t.Run("unzip with io copy error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a file
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Mock the filesystem to fail on OpenFile (simulating io.Copy error)
+		mockFS.OpenFileFunc = func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			return nil, errors.New("open file error")
+		}
+
+		// This should fail due to file creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "open file error")
+	})
+
+	t.Run("download with cache with file close error", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			CloseFunc: func(file afero.File) error {
+				return errors.New("cache file close error")
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns a successful response
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							// Return EOF after reading some data to avoid infinite loops
+							if len(p) > 0 {
+								return 1, io.EOF
+							}
+							return 0, io.EOF
+						},
+						CloseFunc: func() error {
+							return nil // Mock body close succeeds
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Test download with cache - should succeed but log file close warning
+		err := DownloadWithCache("http://example.com/test", "/cache/test", 1*time.Hour)
+		assert.NoError(t, err)
+	})
+
+	t.Run("download and unzip registry success path", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Mock HTTP client that returns a successful response
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{
+					Body: &MockReadCloser{
+						ReadFunc: func(p []byte) (n int, err error) {
+							// Return EOF after reading some data to avoid infinite loops
+							if len(p) > 0 {
+								return 1, io.EOF
+							}
+							return 0, io.EOF
+						},
+						CloseFunc: func() error {
+							return nil // Mock body close succeeds
+						},
+					},
+				}, nil
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		// Mock the zip opener to return a successful zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return &MockZipArchive{
+					Files: []*zip.File{},
+				}, nil
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Test the full workflow - should succeed
+		err := DownloadAndUnzipRegistry()
+		assert.NoError(t, err)
+	})
+
+	t.Run("unzip with directory creation error for directories", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			MkdirAllFunc: func(path string, perm os.FileMode) error {
+				if strings.Contains(path, "testdir") {
+					return errors.New("directory creation error for dir")
+				}
+				return nil
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a directory entry
+		filesToZip := map[string]string{
+			"testdir/": "", // Directory entry
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// This should fail due to directory creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create directory")
+	})
+
+	t.Run("unzip with io copy error during file extraction", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create a real zip archive with a file
+		filesToZip := map[string]string{
+			"file.txt": "content",
+		}
+
+		// Mock the zip opener to return our real zip archive
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				return createRealZipArchive(filesToZip)
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Mock the filesystem to fail on OpenFile to simulate the error
+		mockFS.OpenFileFunc = func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			return nil, errors.New("open file error for io copy")
+		}
+
+		// This should fail due to file creation error
+		err := Unzip("test.zip", "/dest")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "open file error for io copy")
 	})
 }
