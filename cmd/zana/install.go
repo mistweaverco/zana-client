@@ -47,15 +47,15 @@ Examples:
 		}
 
 		provider := parts[0]
-		if !providers.IsSupportedProvider(provider) {
-			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(providers.AvailableProviders, ", "))
+		if !isSupportedProviderFn(provider) {
+			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(availableProvidersFn(), ", "))
 			return
 		}
 
 		fmt.Printf("Installing %s (version: %s)...\n", pkgId, version)
 
 		// Install the package
-		success := providers.Install(pkgId, version)
+		success := installPackageFn(pkgId, version)
 		if success {
 			fmt.Printf("Successfully installed %s\n", pkgId)
 		} else {
@@ -63,3 +63,10 @@ Examples:
 		}
 	},
 }
+
+// indirections for testability
+var (
+	isSupportedProviderFn = providers.IsSupportedProvider
+	availableProvidersFn  = func() []string { return providers.AvailableProviders }
+	installPackageFn      = providers.Install
+)

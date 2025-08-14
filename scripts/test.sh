@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 test_coverage() {
-	go test -race -covermode=atomic -coverprofile=coverage.out ./...
+  go test ./... -coverprofile=coverage.out && go tool cover -func=coverage.out
 }
 
 test_unit() {

@@ -43,15 +43,15 @@ Examples:
 		}
 
 		provider := parts[0]
-		if !providers.IsSupportedProvider(provider) {
-			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(providers.AvailableProviders, ", "))
+		if !isSupportedProviderFn(provider) {
+			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(availableProvidersFn(), ", "))
 			return
 		}
 
 		fmt.Printf("Removing %s...\n", pkgId)
 
 		// Remove the package
-		success := providers.Remove(pkgId)
+		success := removePackageFn(pkgId)
 		if success {
 			fmt.Printf("Successfully removed %s\n", pkgId)
 		} else {
@@ -59,3 +59,8 @@ Examples:
 		}
 	},
 }
+
+// indirections for testability
+var (
+	removePackageFn = providers.Remove
+)

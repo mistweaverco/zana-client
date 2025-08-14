@@ -11,7 +11,13 @@ func trimVersion(version string) string {
 }
 
 // IsGreater compares two semver version strings and
-// returns true if the second version is greater than the first.
+// returns true if the second argument is greater than the first.
+// So given versions v1 and v2, it returns true if v2 > v1.
+// With acutal values that would be:
+// IsGreater("1.2.3", "1.2.4") returns true
+// IsGreater("1.2.3", "1.2.3") returns false
+// IsGreater("1.2.3", "1.2.2") returns false
+// IsGreater("1.2.3", "1.3.0") returns true
 func IsGreater(v1, v2 string) bool {
 	v1 = trimVersion(v1)
 	v2 = trimVersion(v2)

@@ -20,6 +20,22 @@ type GolangProvider struct {
 	PROVIDER_NAME    string
 }
 
+// Injectable shell and OS helpers for tests
+var goShellOut = shell_out.ShellOut
+var goShellOutCapture = shell_out.ShellOutCapture
+var goCreate = os.Create
+var goStat = os.Stat
+var goMkdir = os.Mkdir
+var goLstat = os.Lstat
+var goRemove = os.Remove
+var goSymlink = os.Symlink
+var goClose = func(f *os.File) error { return f.Close() }
+
+// Injectable local packages helpers for tests
+var lppGoAdd = local_packages_parser.AddLocalPackage
+var lppGoRemove = local_packages_parser.RemoveLocalPackage
+var lppGoGetDataForProvider = local_packages_parser.GetDataForProvider
+
 func NewProviderGolang() *GolangProvider {
 	p := &GolangProvider{}
 	p.PROVIDER_NAME = "golang"
@@ -46,53 +62,51 @@ func (p *GolangProvider) generatePackageJSON() bool {
 	}
 	localPackages := local_packages_parser.GetDataForProvider("golang").Packages
 	for _, pkg := range localPackages {
-		if detectProvider(pkg.SourceID) != ProviderGolang {
-			continue
-		}
 		packageJSON.Dependencies[p.getRepo(pkg.SourceID)] = pkg.Version
 		found = true
 	}
 	filePath := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
-	file, err := os.Create(filePath)
+	file, err := goCreate(filePath)
 	if err != nil {
 		fmt.Println("Error creating package.json:", err)
 		return false
 	}
 	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
+		if closeErr := goClose(file); closeErr != nil {
 			fmt.Printf("Warning: failed to close package.json file: %v\n", closeErr)
 		}
 	}()
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(packageJSON); err != nil {
-		fmt.Println("Error encoding package.json:", err)
+		fmt.Println("error encoding package.json:", err)
 		return false
 	}
 	return found
 }
 
 func (p *GolangProvider) createSymlink(sourceID string) error {
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	zanaBinDir := files.GetAppBinPath()
 
 	if len(registryItem.Bin) == 0 {
-		return fmt.Errorf("Error: no binary name found for package %s", sourceID)
+		return fmt.Errorf("error: no binary name found for package %s", sourceID)
 	}
 
 	for binName := range registryItem.Bin {
 		symlink := filepath.Join(zanaBinDir, binName)
 		// Remove any existing symlink with the same name to avoid conflicts
-		if _, err := os.Lstat(symlink); err == nil {
-			_ = os.Remove(symlink)
+		if _, err := goLstat(symlink); err == nil {
+			_ = goRemove(symlink)
 		}
 		binaryPath := filepath.Join(golangBinDir, binName)
-		if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-			return fmt.Errorf("Error: binary %s does not exist in %s", binName, golangBinDir)
+		if _, err := goStat(binaryPath); os.IsNotExist(err) {
+			return fmt.Errorf("error: binary %s does not exist in %s", binName, golangBinDir)
 		}
-		if err := os.Symlink(binaryPath, symlink); err != nil {
-			return fmt.Errorf("Error creating symlink %s -> %s: %v", symlink, binaryPath, err)
+		if err := goSymlink(binaryPath, symlink); err != nil {
+			return fmt.Errorf("error creating symlink %s -> %s: %v", symlink, binaryPath, err)
 		}
 	}
 
@@ -100,18 +114,19 @@ func (p *GolangProvider) createSymlink(sourceID string) error {
 }
 
 func (p *GolangProvider) removeBin(sourceID string) error {
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 
 	if len(registryItem.Bin) == 0 {
-		return fmt.Errorf("Error: no binary name found for package %s", sourceID)
+		return fmt.Errorf("error: no binary name found for package %s", sourceID)
 	}
 
 	for binName := range registryItem.Bin {
 		binPath := filepath.Join(golangBinDir, binName)
-		if fi, err := os.Stat(binPath); err == nil && !fi.IsDir() {
-			if err := os.Remove(binPath); err != nil {
-				return fmt.Errorf("Error removing binary %s: %v", binPath, err)
+		if fi, err := goStat(binPath); err == nil && !fi.IsDir() {
+			if err := goRemove(binPath); err != nil {
+				return fmt.Errorf("error removing binary %s: %v", binPath, err)
 			}
 		}
 	}
@@ -119,18 +134,19 @@ func (p *GolangProvider) removeBin(sourceID string) error {
 }
 
 func (p *GolangProvider) removeSymlink(sourceID string) error {
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	zanaBinDir := files.GetAppBinPath()
 
 	if len(registryItem.Bin) == 0 {
-		return fmt.Errorf("Error: no binary name found for package %s", sourceID)
+		return fmt.Errorf("error: no binary name found for package %s", sourceID)
 	}
 
 	for binName := range registryItem.Bin {
 		symlink := filepath.Join(zanaBinDir, binName)
-		if _, err := os.Lstat(symlink); err == nil {
-			if err := os.Remove(symlink); err != nil {
-				return fmt.Errorf("Error removing symlink %s: %v", symlink, err)
+		if _, err := goLstat(symlink); err == nil {
+			if err := goRemove(symlink); err != nil {
+				return fmt.Errorf("error removing symlink %s: %v", symlink, err)
 			}
 		}
 	}
@@ -138,7 +154,7 @@ func (p *GolangProvider) removeSymlink(sourceID string) error {
 }
 
 func (p *GolangProvider) Clean() bool {
-	data := local_packages_parser.GetDataForProvider("golang")
+	data := lppGoGetDataForProvider("golang")
 	if len(data.Packages) == 0 {
 		Logger.Debug("Golang Clean: No packages to clean")
 		return true
@@ -150,15 +166,16 @@ func (p *GolangProvider) Clean() bool {
 		if err := p.removeSymlink(pkg.SourceID); err != nil {
 			Logger.Error(fmt.Sprintf("Error removing symlink for package %s: %v", name, err))
 		}
-		for bin := range registry_parser.GetBySourceId(pkg.SourceID).Bin {
+		parser := registry_parser.NewDefaultRegistryParser()
+		for bin := range parser.GetBySourceId(pkg.SourceID).Bin {
 			binPath := filepath.Join(p.APP_PACKAGES_DIR, "bin", bin)
-			if fi, err := os.Stat(binPath); err == nil && !fi.IsDir() {
-				if err := os.Remove(binPath); err != nil {
+			if fi, err := goStat(binPath); err == nil && !fi.IsDir() {
+				if err := goRemove(binPath); err != nil {
 					Logger.Error(fmt.Sprintf("Error removing binary %s: %v", binPath, err))
 				}
 			}
 		}
-		if err := local_packages_parser.RemoveLocalPackage(pkg.SourceID); err != nil {
+		if err := lppGoRemove(pkg.SourceID); err != nil {
 			Logger.Error(fmt.Sprintf("Error removing package %s from local packages: %v", name, err))
 			return false
 		}
@@ -168,13 +185,13 @@ func (p *GolangProvider) Clean() bool {
 }
 
 func (p *GolangProvider) checkGoAvailable() bool {
-	checkCode, err := shell_out.ShellOut("go", []string{"version"}, p.APP_PACKAGES_DIR, nil)
+	checkCode, err := goShellOut("go", []string{"version"}, p.APP_PACKAGES_DIR, nil)
 	return err == nil && checkCode == 0
 }
 
 func (p *GolangProvider) Sync() bool {
-	if _, err := os.Stat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
-		if err := os.Mkdir(p.APP_PACKAGES_DIR, 0755); err != nil {
+	if _, err := goStat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
+		if err := goMkdir(p.APP_PACKAGES_DIR, 0755); err != nil {
 			fmt.Println("Error creating directory:", err)
 			return false
 		}
@@ -190,8 +207,8 @@ func (p *GolangProvider) Sync() bool {
 	Logger.Info("Golang Sync: Generating package.json")
 	desired := local_packages_parser.GetDataForProvider("golang").Packages
 	goModPath := filepath.Join(p.APP_PACKAGES_DIR, "go.mod")
-	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
-		initCode, err := shell_out.ShellOut("go", []string{"mod", "init", "zana-golang-packages"}, p.APP_PACKAGES_DIR, nil)
+	if _, err := goStat(goModPath); os.IsNotExist(err) {
+		initCode, err := goShellOut("go", []string{"mod", "init", "zana-golang-packages"}, p.APP_PACKAGES_DIR, nil)
 		if err != nil || initCode != 0 {
 			Logger.Error(fmt.Sprintf("Error initializing Go module: %v", err))
 			return false
@@ -205,12 +222,12 @@ func (p *GolangProvider) Sync() bool {
 		name := p.getRepo(pkg.SourceID)
 		binPath := filepath.Join(gobin, filepath.Base(name))
 		installed := false
-		if fi, err := os.Stat(binPath); err == nil && !fi.IsDir() {
+		if fi, err := goStat(binPath); err == nil && !fi.IsDir() {
 			installed = true
 		}
 		if !installed {
 			Logger.Info(fmt.Sprintf("Golang Sync: Package %s@%s not installed, installing...", name, pkg.Version))
-			installCode, err := shell_out.ShellOut("go", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, []string{"GOBIN=" + gobin})
+			installCode, err := goShellOut("go", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, []string{"GOBIN=" + gobin})
 			if err != nil || installCode != 0 {
 				Logger.Error(fmt.Sprintf("Error installing %s@%s: %v", name, pkg.Version, err))
 				allOk = false
@@ -238,7 +255,7 @@ func (p *GolangProvider) Install(sourceID, version string) bool {
 			return false
 		}
 	}
-	if err := local_packages_parser.AddLocalPackage(sourceID, version); err != nil {
+	if err := lppGoAdd(sourceID, version); err != nil {
 		return false
 	}
 	return p.Sync()
@@ -253,7 +270,7 @@ func (p *GolangProvider) Remove(sourceID string) bool {
 	if err := p.removeBin(sourceID); err != nil {
 		Logger.Error(fmt.Sprintf("Error removing binaries for package %s: %v", packageName, err))
 	}
-	if err := local_packages_parser.RemoveLocalPackage(sourceID); err != nil {
+	if err := lppGoRemove(sourceID); err != nil {
 		Logger.Error(fmt.Sprintf("Error removing package %s from local packages: %v", packageName, err))
 		return false
 	}
@@ -277,7 +294,7 @@ func (p *GolangProvider) Update(sourceID string) bool {
 }
 
 func (p *GolangProvider) getLatestVersion(packageName string) (string, error) {
-	_, output, err := shell_out.ShellOutCapture("go", []string{"list", "-m", "-versions", packageName}, "", nil)
+	_, output, err := goShellOutCapture("go", []string{"list", "-m", "-versions", packageName}, "", nil)
 	if err != nil {
 		return "", err
 	}

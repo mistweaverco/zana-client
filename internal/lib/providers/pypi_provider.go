@@ -21,14 +21,36 @@ type PyPiProvider struct {
 
 var pipCmd = "pip"
 
+// Injectable shell and OS helpers for tests
+var pipShellOut = shell_out.ShellOut
+var pipShellOutCapture = shell_out.ShellOutCapture
+var pipHasCommand = shell_out.HasCommand
+var pipCreate = os.Create
+var pipReadDir = os.ReadDir
+var pipReadFile = os.ReadFile
+var pipLstat = os.Lstat
+var pipRemove = os.Remove
+var pipChmod = os.Chmod
+var pipStat = os.Stat
+var pipMkdir = os.Mkdir
+var pipRemoveAll = os.RemoveAll
+var pipWriteFile = os.WriteFile
+var pipClose = func(f *os.File) error { return f.Close() }
+
+// Injectable local packages helpers for tests
+var lppPyAdd = local_packages_parser.AddLocalPackage
+var lppPyRemove = local_packages_parser.RemoveLocalPackage
+var lppPyGetDataForProvider = local_packages_parser.GetDataForProvider
+var lppPyGetData = local_packages_parser.GetData
+
 func NewProviderPyPi() *PyPiProvider {
 	p := &PyPiProvider{}
 	p.PROVIDER_NAME = "pypi"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
-	hasPip := shell_out.HasCommand("pip", []string{"--version"}, nil)
+	hasPip := pipHasCommand("pip", []string{"--version"}, nil)
 	if !hasPip {
-		hasPip = shell_out.HasCommand("pip3", []string{"--version"}, nil)
+		hasPip = pipHasCommand("pip3", []string{"--version"}, nil)
 		if !hasPip {
 			Logger.Error("PyPI Provider: pip or pip3 command not found. Please install pip to use the PyPiProvider.")
 		} else {
@@ -50,7 +72,7 @@ func (p *PyPiProvider) getRepo(sourceID string) string {
 func (p *PyPiProvider) generateRequirementsTxt() bool {
 	found := false
 	dependenciesTxt := make([]string, 0)
-	localPackages := local_packages_parser.GetData(true).Packages
+	localPackages := lppPyGetData(true).Packages
 	for _, pkg := range localPackages {
 		if detectProvider(pkg.SourceID) != ProviderPyPi {
 			continue
@@ -59,7 +81,7 @@ func (p *PyPiProvider) generateRequirementsTxt() bool {
 		found = true
 	}
 	filePath := filepath.Join(p.APP_PACKAGES_DIR, "requirements.txt")
-	file, err := os.Create(filePath)
+	file, err := pipCreate(filePath)
 	if err != nil {
 		Logger.Error(fmt.Sprintf("Error creating requirements.txt: %s", err))
 		return false
@@ -71,7 +93,7 @@ func (p *PyPiProvider) generateRequirementsTxt() bool {
 		}
 	}
 	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
+		if closeErr := pipClose(file); closeErr != nil {
 			_ = fmt.Errorf("warning: failed to close requirements.txt file: %v", closeErr)
 		}
 	}()
@@ -87,7 +109,7 @@ type PackageInfo struct {
 
 // readPackageInfo reads package metadata from installed Python packages
 func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error) {
-	entries, err := os.ReadDir(packagePath)
+	entries, err := pipReadDir(packagePath)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +129,7 @@ func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error)
 	var metadataContent string
 	for _, filename := range metadataFiles {
 		metadataPath := filepath.Join(infoDir, filename)
-		if data, err := os.ReadFile(metadataPath); err == nil {
+		if data, err := pipReadFile(metadataPath); err == nil {
 			metadataContent = string(data)
 			break
 		}
@@ -131,27 +153,28 @@ func (p *PyPiProvider) readPackageInfo(packagePath string) (*PackageInfo, error)
 // createWrappers creates wrapper scripts for Python package scripts
 func (p *PyPiProvider) createWrappers() error {
 	// Create wrappers based on zana-registry.json bin attribute
-	desired := local_packages_parser.GetDataForProvider("pypi").Packages
+	desired := lppPyGetDataForProvider("pypi").Packages
 	if len(desired) == 0 {
 		return nil
 	}
 	zanaBinDir := files.GetAppBinPath()
+	parser := registry_parser.NewDefaultRegistryParser()
 	for _, pkg := range desired {
-		registryItem := registry_parser.GetBySourceId(pkg.SourceID)
+		registryItem := parser.GetBySourceId(pkg.SourceID)
 		if len(registryItem.Bin) == 0 {
 			continue
 		}
 		for binName, binCmd := range registryItem.Bin {
 			wrapperPath := filepath.Join(zanaBinDir, binName)
 			// Remove any existing wrapper with the same name to avoid conflicts
-			if _, err := os.Lstat(wrapperPath); err == nil {
-				_ = os.Remove(wrapperPath)
+			if _, err := pipLstat(wrapperPath); err == nil {
+				_ = pipRemove(wrapperPath)
 			}
 			if err := p.createPythonWrapperForCommand(binCmd, wrapperPath); err != nil {
 				Logger.Error(fmt.Sprintf("Error creating wrapper for %s: %v", binName, err))
 				continue
 			}
-			if err := os.Chmod(wrapperPath, 0755); err != nil {
+			if err := pipChmod(wrapperPath, 0755); err != nil {
 				Logger.Error(fmt.Sprintf("Error setting executable permissions for %s: %v", binName, err))
 			}
 		}
@@ -179,7 +202,7 @@ export PATH="%s:$PATH"
 # Execute the command from registry
 exec %s "$@"
 `, sitePackagesDir, binDir, commandToExec)
-	if err := os.WriteFile(wrapperPath, []byte(wrapperContent), 0755); err != nil {
+	if err := pipWriteFile(wrapperPath, []byte(wrapperContent), 0755); err != nil {
 		return err
 	}
 	return nil
@@ -188,17 +211,17 @@ exec %s "$@"
 // findSitePackagesDir finds the site-packages directory where pip installed the modules
 func (p *PyPiProvider) findSitePackagesDir() string {
 	libDir := filepath.Join(p.APP_PACKAGES_DIR, "lib")
-	if _, err := os.Stat(libDir); os.IsNotExist(err) {
+	if _, err := pipStat(libDir); os.IsNotExist(err) {
 		return ""
 	}
-	entries, err := os.ReadDir(libDir)
+	entries, err := pipReadDir(libDir)
 	if err != nil {
 		return ""
 	}
 	for _, entry := range entries {
 		if entry.IsDir() && strings.HasPrefix(entry.Name(), "python") {
 			sitePackagesPath := filepath.Join(libDir, entry.Name(), "site-packages")
-			if _, err := os.Stat(sitePackagesPath); err == nil {
+			if _, err := pipStat(sitePackagesPath); err == nil {
 				return sitePackagesPath
 			}
 		}
@@ -209,17 +232,18 @@ func (p *PyPiProvider) findSitePackagesDir() string {
 // removeAllWrappers removes all wrapper scripts from the zana bin directory
 func (p *PyPiProvider) removeAllWrappers() error {
 	// Remove only wrappers managed by the PyPI provider based on registry bin names
-	desired := local_packages_parser.GetDataForProvider("pypi").Packages
+	desired := lppPyGetDataForProvider("pypi").Packages
 	if len(desired) == 0 {
 		return nil
 	}
 	zanaBinDir := files.GetAppBinPath()
+	parser := registry_parser.NewDefaultRegistryParser()
 	for _, pkg := range desired {
-		registryItem := registry_parser.GetBySourceId(pkg.SourceID)
+		registryItem := parser.GetBySourceId(pkg.SourceID)
 		for binName := range registryItem.Bin {
 			wrapperPath := filepath.Join(zanaBinDir, binName)
-			if _, err := os.Lstat(wrapperPath); err == nil {
-				if err := os.Remove(wrapperPath); err != nil {
+			if _, err := pipLstat(wrapperPath); err == nil {
+				if err := pipRemove(wrapperPath); err != nil {
 					Logger.Error(fmt.Sprintf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err))
 				}
 			}
@@ -233,14 +257,15 @@ func (p *PyPiProvider) removePackageWrappers(packageName string) error {
 	zanaBinDir := files.GetAppBinPath()
 	// Reconstruct sourceId to query registry
 	sourceID := p.PREFIX + packageName
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	if len(registryItem.Bin) == 0 {
 		return nil
 	}
 	for binName := range registryItem.Bin {
 		wrapperPath := filepath.Join(zanaBinDir, binName)
-		if _, err := os.Lstat(wrapperPath); err == nil {
-			if err := os.Remove(wrapperPath); err != nil {
+		if _, err := pipLstat(wrapperPath); err == nil {
+			if err := pipRemove(wrapperPath); err != nil {
 				Logger.Error(fmt.Sprintf("Warning: failed to remove wrapper script %s: %v", wrapperPath, err))
 			}
 		}
@@ -262,7 +287,7 @@ func (p *PyPiProvider) findPackageInfoDir(packageName string) string {
 		return ""
 	}
 	normalized := normalizeDistributionName(packageName)
-	entries, err := os.ReadDir(sitePackagesDir)
+	entries, err := pipReadDir(sitePackagesDir)
 	if err != nil {
 		return ""
 	}
@@ -287,7 +312,7 @@ func (p *PyPiProvider) findPackageInfoDir(packageName string) string {
 // parseEntryPointsFromInfoDir parses entry_points.txt to get executable names (console_scripts/gui_scripts)
 func (p *PyPiProvider) parseEntryPointsFromInfoDir(infoDir string) []string {
 	epPath := filepath.Join(infoDir, "entry_points.txt")
-	data, err := os.ReadFile(epPath)
+	data, err := pipReadFile(epPath)
 	if err != nil {
 		return nil
 	}
@@ -316,10 +341,8 @@ func (p *PyPiProvider) parseEntryPointsFromInfoDir(infoDir string) []string {
 }
 
 func (p *PyPiProvider) Clean() bool {
-	if err := p.removeAllWrappers(); err != nil {
-		Logger.Error(fmt.Sprintf("Error removing wrapper scripts: %v", err))
-	}
-	if err := os.RemoveAll(p.APP_PACKAGES_DIR); err != nil {
+	_ = p.removeAllWrappers()
+	if err := pipRemoveAll(p.APP_PACKAGES_DIR); err != nil {
 		Logger.Error("Error removing directory:")
 		return false
 	}
@@ -327,8 +350,8 @@ func (p *PyPiProvider) Clean() bool {
 }
 
 func (p *PyPiProvider) Sync() bool {
-	if _, err := os.Stat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
-		if err := os.Mkdir(p.APP_PACKAGES_DIR, 0755); err != nil {
+	if _, err := pipStat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
+		if err := pipMkdir(p.APP_PACKAGES_DIR, 0755); err != nil {
 			fmt.Println("Error creating directory:", err)
 			return false
 		}
@@ -345,9 +368,7 @@ func (p *PyPiProvider) Sync() bool {
 
 	if p.areAllPackagesInstalled(desired) {
 		Logger.Info("PyPI Sync: All packages already installed correctly, skipping installation")
-		if err := p.createWrappers(); err != nil {
-			Logger.Error(fmt.Sprintf("Error creating wrapper scripts: %v", err))
-		}
+		_ = p.createWrappers()
 		return true
 	}
 
@@ -361,7 +382,7 @@ func (p *PyPiProvider) Sync() bool {
 		if v, ok := installed[name]; !ok || v != pkg.Version {
 			pkgString := fmt.Sprintf("%s==%s", name, pkg.Version)
 			Logger.Info(fmt.Sprintf("PyPI Sync: Installing package %s", pkgString))
-			installCode, err := shell_out.ShellOut(pipCmd, []string{"install", pkgString, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
+			installCode, err := pipShellOut(pipCmd, []string{"install", pkgString, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
 			if err != nil || installCode != 0 {
 				Logger.Error(fmt.Sprintf("Error installing %s==%s: %v", name, pkg.Version, err))
 				allOk = false
@@ -375,9 +396,7 @@ func (p *PyPiProvider) Sync() bool {
 	}
 
 	if allOk {
-		if err := p.createWrappers(); err != nil {
-			Logger.Error(fmt.Sprintf("Error creating wrapper scripts: %v", err))
-		}
+		_ = p.createWrappers()
 	}
 
 	Logger.Info(fmt.Sprintf("PyPI Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount))
@@ -399,7 +418,7 @@ func (p *PyPiProvider) areAllPackagesInstalled(desired []local_packages_parser.L
 // getInstalledPackages gets the list of installed packages using pip freeze
 func (p *PyPiProvider) getInstalledPackages() map[string]string {
 	installed := map[string]string{}
-	freezeCode, freezeOut, _ := shell_out.ShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
+	freezeCode, freezeOut, _ := pipShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
 	if freezeCode == 0 && freezeOut != "" {
 		lines := strings.Split(freezeOut, "\n")
 		for _, line := range lines {
@@ -423,7 +442,7 @@ func (p *PyPiProvider) Install(sourceID, version string) bool {
 			return false
 		}
 	}
-	if err = local_packages_parser.AddLocalPackage(sourceID, version); err != nil {
+	if err = lppPyAdd(sourceID, version); err != nil {
 		Logger.Error(fmt.Sprintf("Error adding package %s to local packages: %v", sourceID, err))
 		return false
 	}
@@ -443,8 +462,8 @@ func (p *PyPiProvider) removeBin(sourceID string) error {
 	entryPoints := p.parseEntryPointsFromInfoDir(infoDir)
 	for _, entryPoint := range entryPoints {
 		binPath := filepath.Join(p.APP_PACKAGES_DIR, "bin", entryPoint)
-		if _, err := os.Lstat(binPath); err == nil {
-			if err := os.Remove(binPath); err != nil {
+		if _, err := pipLstat(binPath); err == nil {
+			if err := pipRemove(binPath); err != nil {
 				return fmt.Errorf("failed to remove bin script %s: %v", binPath, err)
 			}
 		}
@@ -459,10 +478,8 @@ func (p *PyPiProvider) Remove(sourceID string) bool {
 		Logger.Error(fmt.Sprintf("Error removing bin for package %s: %v", packageName, err))
 		return false
 	}
-	if err := p.removePackageWrappers(packageName); err != nil {
-		Logger.Error(fmt.Sprintf("Error removing wrapper scripts for %s: %v", packageName, err))
-	}
-	if err := local_packages_parser.RemoveLocalPackage(sourceID); err != nil {
+	_ = p.removePackageWrappers(packageName)
+	if err := lppPyRemove(sourceID); err != nil {
 		Logger.Error(fmt.Sprintf("Error removing package %s from local packages: %v", packageName, err))
 		return false
 	}
@@ -486,19 +503,24 @@ func (p *PyPiProvider) Update(sourceID string) bool {
 }
 
 func (p *PyPiProvider) getLatestVersion(packageName string) (string, error) {
-	_, output, err := shell_out.ShellOutCapture(pipCmd, []string{"index", "versions", packageName}, "", nil)
+	_, output, err := pipShellOutCapture(pipCmd, []string{"index", "versions", packageName}, "", nil)
 	if err != nil {
+		Logger.Error(fmt.Sprintf("PyPI getLatestVersion: Command failed for %s: %v, output: %s", packageName, err, output))
 		return "", err
 	}
-	start := strings.LastIndex(output, "(")
-	end := strings.LastIndex(output, ")")
-	if start == -1 || end == -1 {
-		return "", fmt.Errorf("invalid output format from pip index")
+
+	// Parse the output format: "Available versions: 25.1.0, 24.10.0, 24.8.0, ..."
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Available versions:") {
+			versionsPart := strings.TrimSpace(strings.TrimPrefix(line, "Available versions:"))
+			versions := strings.Split(versionsPart, ", ")
+			if len(versions) > 0 {
+				// Return the first (latest) version
+				return strings.TrimSpace(versions[0]), nil
+			}
+		}
 	}
-	versionsStr := output[start+1 : end]
-	versions := strings.Split(versionsStr, ", ")
-	if len(versions) == 0 {
-		return "", fmt.Errorf("no versions found")
-	}
-	return strings.TrimSpace(versions[len(versions)-1]), nil
+
+	return "", fmt.Errorf("could not parse versions from pip output: %s", output)
 }

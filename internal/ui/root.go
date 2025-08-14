@@ -193,7 +193,8 @@ func (m *model) filterRegistryTable(query string) {
 }
 
 func (m *model) getRegistryPackages() []registryPackageItem {
-	data := registry_parser.GetData(false)
+	parser := registry_parser.NewDefaultRegistryParser()
+	data := parser.GetData(false)
 	regItems := []registryPackageItem{}
 
 	for _, item := range data {
@@ -250,9 +251,10 @@ func (m *model) updateRegistryTableRows(items []registryPackageItem) {
 }
 
 func getRegistryItemsData() []registryPackageItem {
+	parser := registry_parser.NewDefaultRegistryParser()
 	registryItems := []registryPackageItem{}
 
-	for _, item := range registry_parser.GetData(true) {
+	for _, item := range parser.GetData(true) {
 		registryItems = append(registryItems, registryPackageItem{
 			title:     item.Name,
 			desc:      item.Description,
@@ -270,7 +272,8 @@ func getLocalPackagesData() []localPackageItem {
 
 	for _, localPkg := range localPackages {
 		// Enrich with registry info if present
-		reg := registry_parser.GetBySourceId(localPkg.SourceID)
+		parser := registry_parser.NewDefaultRegistryParser()
+		reg := parser.GetBySourceId(localPkg.SourceID)
 		hasRegistry := reg.Source.ID != ""
 
 		title := deriveNameFromSourceID(localPkg.SourceID)

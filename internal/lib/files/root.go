@@ -9,12 +9,145 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spf13/afero"
 )
 
-var PS = string(os.PathSeparator)
+// FileSystem interface for filesystem operations
+type FileSystem interface {
+	Create(name string) (afero.File, error)
+	MkdirAll(path string, perm os.FileMode) error
+	OpenFile(name string, flag int, perm os.FileMode) (afero.File, error)
+	Stat(name string) (os.FileInfo, error)
+	UserConfigDir() (string, error)
+	TempDir() string
+	Getenv(key string) string
+	WriteString(file afero.File, s string) (int, error)
+	Close(file afero.File) error
+}
+
+// HTTPClient interface for HTTP operations
+type HTTPClient interface {
+	Get(url string) (*http.Response, error)
+}
+
+// ZipArchive is an interface that abstracts the functionality
+// of a *zip.ReadCloser.
+type ZipArchive interface {
+	File() []*zip.File
+	Close() error
+}
+
+// ZipFileOpener is the interface for opening a zip file.
+type ZipFileOpener interface {
+	Open(name string) (ZipArchive, error)
+}
+
+// defaultFileSystem implements FileSystem using Afero
+type defaultFileSystem struct {
+	fs afero.Fs
+}
+
+func (d *defaultFileSystem) Create(name string) (afero.File, error) {
+	return d.fs.Create(name)
+}
+
+func (d *defaultFileSystem) MkdirAll(path string, perm os.FileMode) error {
+	return d.fs.MkdirAll(path, perm)
+}
+
+func (d *defaultFileSystem) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
+	return d.fs.OpenFile(name, flag, perm)
+}
+
+func (d *defaultFileSystem) Stat(name string) (os.FileInfo, error) {
+	return d.fs.Stat(name)
+}
+
+func (d *defaultFileSystem) UserConfigDir() (string, error) {
+	return os.UserConfigDir()
+}
+
+func (d *defaultFileSystem) TempDir() string {
+	return os.TempDir()
+}
+
+func (d *defaultFileSystem) Getenv(key string) string {
+	return os.Getenv(key)
+}
+
+func (d *defaultFileSystem) WriteString(file afero.File, s string) (int, error) {
+	return file.WriteString(s)
+}
+
+func (d *defaultFileSystem) Close(file afero.File) error {
+	return file.Close()
+}
+
+// defaultHTTPClient implements HTTPClient
+type defaultHTTPClient struct{}
+
+func (d *defaultHTTPClient) Get(url string) (*http.Response, error) {
+	return http.Get(url)
+}
+
+// RealZipArchive is a wrapper for a real *zip.ReadCloser
+type RealZipArchive struct {
+	*zip.ReadCloser
+}
+
+// File provides access to the embedded zip.ReadCloser's File field
+func (r *RealZipArchive) File() []*zip.File {
+	return r.ReadCloser.File
+}
+
+// Close closes the underlying zip.ReadCloser
+func (r *RealZipArchive) Close() error {
+	return r.ReadCloser.Close()
+}
+
+// RealZipFileOpener implements the ZipFileOpener interface using the real zip package.
+type RealZipFileOpener struct{}
+
+func (o *RealZipFileOpener) Open(name string) (ZipArchive, error) {
+	rc, err := zip.OpenReader(name)
+	if err != nil {
+		return nil, err
+	}
+	return &RealZipArchive{rc}, nil
+}
+
+// Global variables for dependency injection
+var (
+	fileSystem    FileSystem    = &defaultFileSystem{fs: afero.NewOsFs()}
+	httpClient    HTTPClient    = &defaultHTTPClient{}
+	zipFileOpener ZipFileOpener = &RealZipFileOpener{}
+)
+
+// SetFileSystem sets the file system implementation
+func SetFileSystem(fs FileSystem) {
+	fileSystem = fs
+}
+
+// SetHTTPClient sets the HTTP client implementation
+func SetHTTPClient(client HTTPClient) {
+	httpClient = client
+}
+
+// SetZipFileOpener sets the zip file opener implementation
+func SetZipFileOpener(zfo ZipFileOpener) {
+	zipFileOpener = zfo
+}
+
+// ResetDependencies resets all dependencies to their default implementations
+func ResetDependencies() {
+	fileSystem = &defaultFileSystem{fs: afero.NewOsFs()}
+	httpClient = &defaultHTTPClient{}
+	zipFileOpener = &RealZipFileOpener{}
+}
 
 func Download(url string, dest string) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -25,12 +158,12 @@ func Download(url string, dest string) error {
 		}
 	}()
 
-	out, err := os.Create(dest)
+	out, err := fileSystem.Create(dest)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if closeErr := out.Close(); closeErr != nil {
+		if closeErr := fileSystem.Close(out); closeErr != nil {
 			// Log the error but don't fail the function
 			fmt.Printf("Warning: failed to close output file: %v\n", closeErr)
 		}
@@ -43,12 +176,15 @@ func Download(url string, dest string) error {
 // GetAppLocalPackagesFilePath returns the path to the local packages file
 // e.g. /home/user/.config/zana/zana-lock.json
 func GetAppLocalPackagesFilePath() string {
-	return GetAppDataPath() + PS + "zana-lock.json"
+	return GetAppDataPath() + string(os.PathSeparator) + "zana-lock.json"
 }
 
 func FileExists(path string) bool {
+	if path == "" {
+		return false
+	}
 	_, err :=
-		os.Stat(path)
+		fileSystem.Stat(path)
 	if os.IsNotExist(err) {
 		return false
 	}
@@ -59,7 +195,7 @@ func FileExists(path string) bool {
 // if it doesn't exist. The .gitignore ignores *.zip files and the /bin directory.
 func GenerateZanaGitIgnore() bool {
 	configDir := GetAppDataPath()
-	gitignorePath := configDir + PS + ".gitignore"
+	gitignorePath := configDir + string(os.PathSeparator) + ".gitignore"
 
 	if FileExists(gitignorePath) {
 		return true
@@ -83,18 +219,18 @@ zana-registry.json
 *.log
 `
 
-	file, err := os.Create(gitignorePath)
+	file, err := fileSystem.Create(gitignorePath)
 	if err != nil {
 		fmt.Println("Error creating .gitignore:", err)
 		return false
 	}
 	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
+		if closeErr := fileSystem.Close(file); closeErr != nil {
 			fmt.Printf("Warning: failed to close .gitignore file: %v\n", closeErr)
 		}
 	}()
 
-	_, err = file.WriteString(contents)
+	_, err = fileSystem.WriteString(file, contents)
 	if err != nil {
 		fmt.Println("Error writing to .gitignore:", err)
 		return false
@@ -109,44 +245,44 @@ zana-registry.json
 // otherwise it will use the user's config directory
 // e.g. /home/user/.config/zana
 func GetAppDataPath() string {
-	if zanaHome := os.Getenv("ZANA_HOME"); zanaHome != "" {
+	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
 		return EnsureDirExists(zanaHome)
 	}
-	userConfigDir, err := os.UserConfigDir()
+	userConfigDir, err := fileSystem.UserConfigDir()
 	if err != nil {
 		panic(err)
 	}
-	return EnsureDirExists(userConfigDir + PS + "zana")
+	return EnsureDirExists(userConfigDir + string(os.PathSeparator) + "zana")
 }
 
 // GetTempPath returns the path to the temp directory
 // e.g. /tmp
 func GetTempPath() string {
-	return os.TempDir()
+	return fileSystem.TempDir()
 }
 
 // GetAppRegistryFilePath returns the path to the registry file
 // e.g. /home/user/.config/zana/zana-registry.json
 func GetAppRegistryFilePath() string {
-	return GetAppDataPath() + PS + "zana-registry.json"
+	return GetAppDataPath() + string(os.PathSeparator) + "zana-registry.json"
 }
 
 // GetAppPackagesPath returns the path to the packages directory
 // e.g. /home/user/.config/zana/packages
 func GetAppPackagesPath() string {
-	return EnsureDirExists(GetAppDataPath() + PS + "packages")
+	return EnsureDirExists(GetAppDataPath() + string(os.PathSeparator) + "packages")
 }
 
 // GetAppBinPath returns the path to the bin directory
 // e.g. /home/user/.config/zana/bin
 func GetAppBinPath() string {
-	path := GetAppDataPath() + PS + "bin"
+	path := GetAppDataPath() + string(os.PathSeparator) + "bin"
 	return EnsureDirExists(path)
 }
 
 func EnsureDirExists(path string) string {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(path, 0755); err != nil {
+	if _, err := fileSystem.Stat(path); os.IsNotExist(err) {
+		if err := fileSystem.MkdirAll(path, 0755); err != nil {
 			// Log the error but don't fail the function
 			fmt.Printf("Warning: failed to create directory %s: %v\n", path, err)
 		}
@@ -155,7 +291,7 @@ func EnsureDirExists(path string) string {
 }
 
 func Unzip(src, dest string) error {
-	r, err := zip.OpenReader(src)
+	r, err := zipFileOpener.Open(src)
 	if err != nil {
 		return err
 	}
@@ -165,7 +301,7 @@ func Unzip(src, dest string) error {
 		}
 	}()
 
-	if err := os.MkdirAll(dest, 0755); err != nil {
+	if err := fileSystem.MkdirAll(dest, 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
@@ -184,24 +320,24 @@ func Unzip(src, dest string) error {
 		path := filepath.Join(dest, f.Name)
 
 		// Check for ZipSlip (Directory traversal)
-		if !strings.HasPrefix(path, filepath.Clean(dest)+PS) {
+		if !strings.HasPrefix(path, filepath.Clean(dest)+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal file path: %s", path)
 		}
 
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(path, f.Mode()); err != nil {
+			if err := fileSystem.MkdirAll(path, f.Mode()); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", path, err)
 			}
 		} else {
-			if err := os.MkdirAll(filepath.Dir(path), f.Mode()); err != nil {
+			if err := fileSystem.MkdirAll(filepath.Dir(path), f.Mode()); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(path), err)
 			}
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			f, err := fileSystem.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 			if err != nil {
 				return err
 			}
 			defer func() {
-				if err := f.Close(); err != nil {
+				if err := fileSystem.Close(f); err != nil {
 					panic(err)
 				}
 			}()
@@ -214,7 +350,7 @@ func Unzip(src, dest string) error {
 		return nil
 	}
 
-	for _, f := range r.File {
+	for _, f := range r.File() {
 		err := extractAndWriteFile(f)
 		if err != nil {
 			return err
@@ -227,12 +363,12 @@ func Unzip(src, dest string) error {
 // GetRegistryCachePath returns the path to the registry cache file
 // e.g. /home/user/.config/zana/registry-cache.json.zip
 func GetRegistryCachePath() string {
-	return GetAppDataPath() + PS + "registry-cache.json.zip"
+	return GetAppDataPath() + string(os.PathSeparator) + "registry-cache.json.zip"
 }
 
 // IsCacheValid checks if the cache file exists and is newer than the specified duration
 func IsCacheValid(cachePath string, maxAge time.Duration) bool {
-	fileInfo, err := os.Stat(cachePath)
+	fileInfo, err := fileSystem.Stat(cachePath)
 	if err != nil {
 		return false // Cache file doesn't exist
 	}
@@ -249,7 +385,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	}
 
 	// Download the file
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -261,12 +397,12 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	}()
 
 	// Create the cache file
-	out, err := os.Create(cachePath)
+	out, err := fileSystem.Create(cachePath)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if closeErr := out.Close(); closeErr != nil {
+		if closeErr := fileSystem.Close(out); closeErr != nil {
 			// Log the error but don't fail the function
 			fmt.Printf("Warning: failed to close cache file: %v\n", closeErr)
 		}
@@ -281,7 +417,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 // This is used to ensure the registry is available for commands that need it
 func DownloadAndUnzipRegistry() error {
 	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
-	if override := os.Getenv("ZANA_REGISTRY_URL"); override != "" {
+	if override := fileSystem.Getenv("ZANA_REGISTRY_URL"); override != "" {
 		registryURL = override
 	}
 
