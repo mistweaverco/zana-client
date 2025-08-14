@@ -79,7 +79,7 @@ func (p *GolangProvider) generatePackageJSON() bool {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(packageJSON); err != nil {
-		fmt.Println("Error encoding package.json:", err)
+		fmt.Println("error encoding package.json:", err)
 		return false
 	}
 	return found
@@ -92,7 +92,7 @@ func (p *GolangProvider) createSymlink(sourceID string) error {
 	zanaBinDir := files.GetAppBinPath()
 
 	if len(registryItem.Bin) == 0 {
-		return fmt.Errorf("Error: no binary name found for package %s", sourceID)
+		return fmt.Errorf("error: no binary name found for package %s", sourceID)
 	}
 
 	for binName := range registryItem.Bin {
@@ -103,10 +103,10 @@ func (p *GolangProvider) createSymlink(sourceID string) error {
 		}
 		binaryPath := filepath.Join(golangBinDir, binName)
 		if _, err := goStat(binaryPath); os.IsNotExist(err) {
-			return fmt.Errorf("Error: binary %s does not exist in %s", binName, golangBinDir)
+			return fmt.Errorf("error: binary %s does not exist in %s", binName, golangBinDir)
 		}
 		if err := goSymlink(binaryPath, symlink); err != nil {
-			return fmt.Errorf("Error creating symlink %s -> %s: %v", symlink, binaryPath, err)
+			return fmt.Errorf("error creating symlink %s -> %s: %v", symlink, binaryPath, err)
 		}
 	}
 
@@ -119,14 +119,14 @@ func (p *GolangProvider) removeBin(sourceID string) error {
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 
 	if len(registryItem.Bin) == 0 {
-		return fmt.Errorf("Error: no binary name found for package %s", sourceID)
+		return fmt.Errorf("error: no binary name found for package %s", sourceID)
 	}
 
 	for binName := range registryItem.Bin {
 		binPath := filepath.Join(golangBinDir, binName)
 		if fi, err := goStat(binPath); err == nil && !fi.IsDir() {
 			if err := goRemove(binPath); err != nil {
-				return fmt.Errorf("Error removing binary %s: %v", binPath, err)
+				return fmt.Errorf("error removing binary %s: %v", binPath, err)
 			}
 		}
 	}
@@ -139,14 +139,14 @@ func (p *GolangProvider) removeSymlink(sourceID string) error {
 	zanaBinDir := files.GetAppBinPath()
 
 	if len(registryItem.Bin) == 0 {
-		return fmt.Errorf("Error: no binary name found for package %s", sourceID)
+		return fmt.Errorf("error: no binary name found for package %s", sourceID)
 	}
 
 	for binName := range registryItem.Bin {
 		symlink := filepath.Join(zanaBinDir, binName)
 		if _, err := goLstat(symlink); err == nil {
 			if err := goRemove(symlink); err != nil {
-				return fmt.Errorf("Error removing symlink %s: %v", symlink, err)
+				return fmt.Errorf("error removing symlink %s: %v", symlink, err)
 			}
 		}
 	}

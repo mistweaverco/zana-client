@@ -77,12 +77,12 @@ func (p *NPMProvider) generatePackageJSON() bool {
 	filePath := filepath.Join(p.APP_PACKAGES_DIR, "package.json")
 	file, err := npmCreate(filePath)
 	if err != nil {
-		fmt.Println("Error creating package.json:", err)
+		fmt.Println("error creating package.json:", err)
 		return false
 	}
 	defer func() {
 		if closeErr := npmClose(file); closeErr != nil {
-			fmt.Printf("Warning: failed to close package.json file: %v\n", closeErr)
+			fmt.Printf("warning: failed to close package.json file: %v\n", closeErr)
 		}
 	}()
 
@@ -152,7 +152,7 @@ func (p *NPMProvider) removeAllSymlinks() error {
 		symlinkPath := filepath.Join(binDir, entry.Name())
 		if _, err := npmLstat(symlinkPath); err == nil {
 			if err := npmRemove(symlinkPath); err != nil {
-				Logger.Info(fmt.Sprintf("Warning: failed to remove symlink %s: %v", symlinkPath, err))
+				Logger.Info(fmt.Sprintf("warning: failed to remove symlink %s: %v", symlinkPath, err))
 			}
 		}
 	}
@@ -161,10 +161,10 @@ func (p *NPMProvider) removeAllSymlinks() error {
 
 func (p *NPMProvider) Clean() bool {
 	if err := p.removeAllSymlinks(); err != nil {
-		Logger.Info(fmt.Sprintf("Error removing symlinks: %v", err))
+		Logger.Info(fmt.Sprintf("error removing symlinks: %v", err))
 	}
 	if err := npmRemoveAll(p.APP_PACKAGES_DIR); err != nil {
-		Logger.Info(fmt.Sprintf("Error removing directory: %v", err))
+		Logger.Info(fmt.Sprintf("error removing directory: %v", err))
 		return false
 	}
 	return p.Sync()
@@ -173,11 +173,11 @@ func (p *NPMProvider) Clean() bool {
 func (p *NPMProvider) Sync() bool {
 	if _, err := npmStat(p.APP_PACKAGES_DIR); os.IsNotExist(err) {
 		if err := npmMkdir(p.APP_PACKAGES_DIR, 0755); err != nil {
-			fmt.Println("Error creating directory:", err)
+			fmt.Println("error creating directory:", err)
 			return false
 		}
 	}
-	Logger.Info(fmt.Sprintf("NPM Sync: Starting sync process"))
+	Logger.Info("npm sync: Starting sync process")
 	packagesFound := p.generatePackageJSON()
 	if !packagesFound {
 		return true
@@ -213,41 +213,41 @@ func (p *NPMProvider) Sync() bool {
 			for _, pkg := range desired {
 				name := p.getRepo(pkg.SourceID)
 				if err := p.createPackageSymlinks(name); err != nil {
-					Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", name, err))
+					Logger.Info(fmt.Sprintf("error creating symlinks for %s: %v", name, err))
 				}
 			}
 			return true
 		}
 		if needsUpdate {
-			Logger.Info(fmt.Sprintf("NPM Sync: Attempting npm ci for faster bulk installation"))
+			Logger.Info("npm sync: Attempting npm ci for faster bulk installation")
 			if p.tryNpmCi() {
-				Logger.Info(fmt.Sprintf("NPM Sync: npm ci completed successfully"))
+				Logger.Info("npm sync: npm ci completed successfully")
 				return true
 			}
-			Logger.Info(fmt.Sprintf("NPM Sync: npm ci failed, falling back to individual package installation"))
+			Logger.Info("npm sync: npm ci failed, falling back to individual package installation")
 			if err := npmRemove(lockFile); err != nil {
-				Logger.Info(fmt.Sprintf("Warning: failed to remove lock file: %v", err))
+				Logger.Info(fmt.Sprintf("warning: failed to remove lock file: %v", err))
 			}
 		}
 	}
-	Logger.Info(fmt.Sprintf("NPM Sync: Installing packages individually"))
+	Logger.Info("npm sync: Installing packages individually")
 	allOk := true
 	installedCount := 0
 	skippedCount := 0
 	for _, pkg := range desired {
 		name := p.getRepo(pkg.SourceID)
 		if p.isPackageInstalled(name, pkg.Version) {
-			Logger.Info(fmt.Sprintf("NPM Sync: Package %s@%s already installed, skipping", name, pkg.Version))
+			Logger.Info(fmt.Sprintf("npm sync: Package %s@%s already installed, skipping", name, pkg.Version))
 			skippedCount++
 			if err := p.createPackageSymlinks(name); err != nil {
-				Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", name, err))
+				Logger.Info(fmt.Sprintf("error creating symlinks for %s: %v", name, err))
 			}
 			continue
 		}
-		Logger.Info(fmt.Sprintf("NPM Sync: Installing package %s@%s", name, pkg.Version))
+		Logger.Info(fmt.Sprintf("npm sync: Installing package %s@%s", name, pkg.Version))
 		installCode, err := npmShellOut("npm", []string{"install", name + "@" + pkg.Version}, p.APP_PACKAGES_DIR, nil)
 		if err != nil || installCode != 0 {
-			fmt.Printf("Error installing %s@%s: %v\n", name, pkg.Version, err)
+			fmt.Printf("error installing %s@%s: %v\n", name, pkg.Version, err)
 			allOk = false
 		} else {
 			installedCount++
@@ -256,7 +256,7 @@ func (p *NPMProvider) Sync() bool {
 			}
 		}
 	}
-	Logger.Info(fmt.Sprintf("NPM Sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount))
+	Logger.Info(fmt.Sprintf("npm sync: Completed - %d packages installed, %d packages skipped", installedCount, skippedCount))
 	return allOk
 }
 
@@ -305,16 +305,16 @@ func (p *NPMProvider) createPackageSymlinks(packageName string) error {
 			symlinkPath := filepath.Join(binDir, binPath)
 			if _, err := npmLstat(symlinkPath); err == nil {
 				if err := npmRemove(symlinkPath); err != nil {
-					Logger.Info(fmt.Sprintf("Warning: failed to remove existing symlink %s: %v", symlinkPath, err))
+					Logger.Info(fmt.Sprintf("warning: failed to remove existing symlink %s: %v", symlinkPath, err))
 				}
 			}
 			fmt.Printf("Creating symlink for %s -> %s\n", symlinkPath, actualBinPath)
 			if err := npmSymlink(actualBinPath, symlinkPath); err != nil {
-				Logger.Info(fmt.Sprintf("Error creating symlink for %s: %v", binPath, err))
+				Logger.Info(fmt.Sprintf("error creating symlink for %s: %v", binPath, err))
 				return err
 			}
 			if err := npmChmod(symlinkPath, 0755); err != nil {
-				Logger.Info(fmt.Sprintf("Error setting executable permissions for %s: %v", binPath, err))
+				Logger.Info(fmt.Sprintf("error setting executable permissions for %s: %v", binPath, err))
 			}
 		}
 	}
@@ -333,7 +333,7 @@ func (p *NPMProvider) removePackageSymlinks(packageName string) error {
 		symlinkPath := filepath.Join(binDir, binName)
 		if _, err := npmLstat(symlinkPath); err == nil {
 			if err := npmRemove(symlinkPath); err != nil {
-				Logger.Info(fmt.Sprintf("Warning: failed to remove symlink %s: %v", symlinkPath, err))
+				Logger.Info(fmt.Sprintf("warning: failed to remove symlink %s: %v", symlinkPath, err))
 			}
 		}
 	}
@@ -346,7 +346,7 @@ func (p *NPMProvider) Install(sourceID, version string) bool {
 		var err error
 		version, err = p.getLatestVersion(packageName)
 		if err != nil {
-			Logger.Info(fmt.Sprintf("Error getting latest version for %s: %v", packageName, err))
+			Logger.Info(fmt.Sprintf("error getting latest version for %s: %v", packageName, err))
 			return false
 		}
 	}
@@ -356,7 +356,7 @@ func (p *NPMProvider) Install(sourceID, version string) bool {
 	success := p.Sync()
 	if success {
 		if err := p.createPackageSymlinks(packageName); err != nil {
-			Logger.Info(fmt.Sprintf("Error creating symlinks for %s: %v", packageName, err))
+			Logger.Info(fmt.Sprintf("error creating symlinks for %s: %v", packageName, err))
 		}
 	}
 	return success
@@ -364,35 +364,35 @@ func (p *NPMProvider) Install(sourceID, version string) bool {
 
 func (p *NPMProvider) Remove(sourceID string) bool {
 	packageName := p.getRepo(sourceID)
-	Logger.Info(fmt.Sprintf("NPM Remove: Removing package %s", packageName))
+	Logger.Info(fmt.Sprintf("npm remove: Removing package %s", packageName))
 	_ = p.removePackageSymlinks(packageName)
 	if err := lppRemove(sourceID); err != nil {
 		Logger.Info(fmt.Sprintf("Error removing package %s from local packages: %v", packageName, err))
 		return false
 	}
-	Logger.Info(fmt.Sprintf("NPM Remove: Package %s removed successfully", packageName))
+	Logger.Info(fmt.Sprintf("npm remove: Package %s removed successfully", packageName))
 	return p.Sync()
 }
 
 func (p *NPMProvider) Update(sourceID string) bool {
 	repo := p.getRepo(sourceID)
 	if repo == "" {
-		Logger.Info(fmt.Sprintf("Invalid source ID format for NPM provider"))
+		Logger.Info("Invalid source ID format for NPM provider")
 		return false
 	}
 	latestVersion, err := p.getLatestVersion(repo)
 	if err != nil {
-		Logger.Info(fmt.Sprintf("Error getting latest version for %s: %v", repo, err))
+		Logger.Info(fmt.Sprintf("error getting latest version for %s: %v", repo, err))
 		return false
 	}
-	Logger.Info(fmt.Sprintf("NPM Update: Updating %s to version %s", repo, latestVersion))
+	Logger.Info(fmt.Sprintf("npm update: Updating %s to version %s", repo, latestVersion))
 	return p.Install(sourceID, latestVersion)
 }
 
 func (p *NPMProvider) getLatestVersion(packageName string) (string, error) {
 	_, output, err := npmShellOutCapture("npm", []string{"view", packageName, "version"}, "", nil)
 	if err != nil {
-		Logger.Error(fmt.Sprintf("NPM getLatestVersion: Command failed for %s: %v, output: %s", packageName, err, output))
+		Logger.Error(fmt.Sprintf("npm getLatestVersion: Command failed for %s: %v, output: %s", packageName, err, output))
 		return "", err
 	}
 	return strings.TrimSpace(output), nil
@@ -401,16 +401,16 @@ func (p *NPMProvider) getLatestVersion(packageName string) (string, error) {
 func (p *NPMProvider) tryNpmCi() bool {
 	lockFile := filepath.Join(p.APP_PACKAGES_DIR, "package-lock.json")
 	if _, err := os.Stat(lockFile); os.IsNotExist(err) {
-		Logger.Info(fmt.Sprintf("NPM Sync: No package-lock.json found, cannot use npm ci"))
+		Logger.Info("npm Sync: No package-lock.json found, cannot use npm ci")
 		return false
 	}
-	Logger.Info(fmt.Sprintf("NPM Sync: Using npm ci for faster bulk installation"))
+	Logger.Info("npm sync: Using npm ci for faster bulk installation")
 	installCode, err := npmShellOut("npm", []string{"ci"}, p.APP_PACKAGES_DIR, nil)
 	if err != nil || installCode != 0 {
-		Logger.Info(fmt.Sprintf("NPM Sync: npm ci failed, falling back to individual package installation: %v", err))
+		Logger.Info(fmt.Sprintf("npm sync: npm ci failed, falling back to individual package installation: %v", err))
 		return false
 	}
-	Logger.Info(fmt.Sprintf("NPM Sync: npm ci completed successfully, creating symlinks"))
+	Logger.Info("npm sync: npm ci completed successfully, creating symlinks")
 	return true
 }
 
