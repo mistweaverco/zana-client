@@ -308,7 +308,7 @@ func (p *NPMProvider) createPackageSymlinks(packageName string) error {
 					Logger.Info(fmt.Sprintf("warning: failed to remove existing symlink %s: %v", symlinkPath, err))
 				}
 			}
-			fmt.Printf("Creating symlink for %s -> %s\n", symlinkPath, actualBinPath)
+			Logger.Info(fmt.Sprintf("Creating symlink for %s -> %s\n", symlinkPath, actualBinPath))
 			if err := npmSymlink(actualBinPath, symlinkPath); err != nil {
 				Logger.Info(fmt.Sprintf("error creating symlink for %s: %v", binPath, err))
 				return err
