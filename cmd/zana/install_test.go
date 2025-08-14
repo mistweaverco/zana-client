@@ -14,8 +14,8 @@ import (
 func TestInstallCommand(t *testing.T) {
 	// Test that install command is properly configured
 	assert.Contains(t, installCmd.Use, "install")
-	assert.Contains(t, installCmd.Short, "Install a package")
-	assert.Contains(t, installCmd.Long, "Install a package from a supported provider")
+	assert.Contains(t, installCmd.Short, "Install one or more packages")
+	assert.Contains(t, installCmd.Long, "Install one or more packages from supported providers")
 
 	// Test aliases
 	aliases := installCmd.Aliases
@@ -24,21 +24,25 @@ func TestInstallCommand(t *testing.T) {
 }
 
 func TestInstallCommandArgs(t *testing.T) {
-	// Test argument validation
+	// Test argument validation using the extracted function
 	testCases := []struct {
 		name        string
 		args        []string
 		expectError bool
 	}{
-		{"no args", []string{}, true},
-		{"one arg valid", []string{"pkg:npm/test-package"}, false},
-		{"two args valid", []string{"pkg:npm/test-package", "1.0.0"}, false},
-		{"three args invalid", []string{"pkg:npm/test-package", "1.0.0", "extra"}, true},
+		{"valid single package", []string{"pkg:npm/test-package"}, false},
+		{"valid multiple packages", []string{"pkg:npm/test-package", "pkg:pypi/black"}, false},
+		{"valid packages with versions", []string{"pkg:npm/test-package@1.0.0", "pkg:pypi/black@22.3.0"}, false},
+		{"valid packages mixed with and without versions", []string{"pkg:npm/test-package", "pkg:pypi/black@22.3.0"}, false},
+		{"invalid format - no pkg prefix", []string{"npm/test-package"}, true},
+		{"invalid format - no provider", []string{"pkg:/test-package"}, true},
+		{"invalid format - no package name", []string{"pkg:npm/"}, true},
+		{"empty args", []string{}, true},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := installCmd.Args(installCmd, tc.args)
+			err := validatePackageArgs(tc.args)
 			if tc.expectError {
 				assert.Error(t, err)
 			} else {
@@ -48,35 +52,78 @@ func TestInstallCommandArgs(t *testing.T) {
 	}
 }
 
-func TestInstallCommandValidation(t *testing.T) {
-	// Test package ID format validation
+func TestParsePackageIDAndVersion(t *testing.T) {
 	testCases := []struct {
-		name        string
-		pkgId       string
-		expectValid bool
+		name            string
+		input           string
+		expectedID      string
+		expectedVersion string
 	}{
-		{"valid npm package", "pkg:npm/test-package", true},
-		{"valid golang package", "pkg:golang/golang.org/x/tools/gopls", true},
-		{"valid pypi package", "pkg:pypi/black", true},
-		{"valid cargo package", "pkg:cargo/ripgrep", true},
-		{"invalid no prefix", "npm/test-package", false},
-		{"invalid empty", "", false},
-		{"invalid format - just pkg:", "pkg:", false},                // This should be invalid
-		{"invalid format single part", "pkg:npm", false},             // This should be invalid
-		{"invalid format with spaces", "pkg:npm/package name", true}, // This is actually valid
+		// Basic packages without versions
+		{"basic npm package", "pkg:npm/eslint", "pkg:npm/eslint", "latest"},
+		{"basic pypi package", "pkg:pypi/black", "pkg:pypi/black", "latest"},
+		{"basic golang package", "pkg:golang/golang.org/x/tools/gopls", "pkg:golang/golang.org/x/tools/gopls", "latest"},
+		{"basic cargo package", "pkg:cargo/ripgrep", "pkg:cargo/ripgrep", "latest"},
+
+		// NPM organization packages (these should NOT treat @org as version)
+		{"npm org package", "pkg:npm/@mistweaverco/kulala-fmt", "pkg:npm/@mistweaverco/kulala-fmt", "latest"},
+		{"npm org package with @", "pkg:npm/@prisma/language-server", "pkg:npm/@prisma/language-server", "latest"},
+		{"npm org package with @", "pkg:npm/@tailwindcss/language-server", "pkg:npm/@tailwindcss/language-server", "latest"},
+
+		// Packages with versions
+		{"npm package with version", "pkg:npm/eslint@1.0.0", "pkg:npm/eslint", "1.0.0"},
+		{"pypi package with version", "pkg:pypi/black@22.3.0", "pkg:pypi/black", "22.3.0"},
+		{"golang package with version", "pkg:golang/golang.org/x/tools/gopls@v0.14.0", "pkg:golang/golang.org/x/tools/gopls", "v0.14.0"},
+		{"cargo package with version", "pkg:cargo/ripgrep@13.0.0", "pkg:cargo/ripgrep", "13.0.0"},
+
+		// NPM organization packages with versions
+		{"npm org package with version", "pkg:npm/@mistweaverco/kulala-fmt@2.10.0", "pkg:npm/@mistweaverco/kulala-fmt", "2.10.0"},
+		{"npm org package with version", "pkg:npm/@prisma/language-server@6.14.0", "pkg:npm/@prisma/language-server", "6.14.0"},
+		{"npm org package with version", "pkg:npm/@tailwindcss/language-server@0.14.26", "pkg:npm/@tailwindcss/language-server", "0.14.26"},
+
+		// Special version cases
+		{"package with latest version", "pkg:npm/eslint@latest", "pkg:npm/eslint", "latest"},
+		{"package with beta version", "pkg:npm/eslint@1.0.0-beta", "pkg:npm/eslint", "1.0.0-beta"},
+		{"package with alpha version", "pkg:npm/eslint@1.0.0-alpha.1", "pkg:npm/eslint", "1.0.0-alpha.1"},
+		{"package with rc version", "pkg:npm/eslint@1.0.0-rc.1", "pkg:npm/eslint", "1.0.0-rc.1"},
+
+		// Edge cases
+		{"package with @ in name but no version", "pkg:npm/@mistweaverco/kulala-fmt", "pkg:npm/@mistweaverco/kulala-fmt", "latest"},
+		{"package with multiple @ symbols", "pkg:npm/@org@suborg/package@1.0.0", "pkg:npm/@org@suborg/package", "1.0.0"},
+		{"package with @ at end but no version", "pkg:npm/package@", "pkg:npm/package@", "latest"},
 	}
 
-	for _, tt := range testCases {
-		t.Run(tt.name, func(t *testing.T) {
-			// Check if it starts with pkg:
-			hasPrefix := strings.HasPrefix(tt.pkgId, "pkg:")
-
-			// Additional validation: must have at least one slash after pkg:
-			isValid := hasPrefix && strings.Contains(tt.pkgId[4:], "/")
-
-			assert.Equal(t, tt.expectValid, isValid)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			id, version := parsePackageIDAndVersion(tc.input)
+			assert.Equal(t, tc.expectedID, id, "Package ID mismatch")
+			assert.Equal(t, tc.expectedVersion, version, "Version mismatch")
 		})
 	}
+}
+
+func TestInstallCommandValidation(t *testing.T) {
+	t.Run("unsupported provider", func(t *testing.T) {
+		// Test the validation function directly
+		err := validatePackageArgs([]string{"pkg:unsupported/test-package"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported provider 'unsupported'")
+		assert.Contains(t, err.Error(), "Supported providers:")
+	})
+
+	t.Run("invalid package ID format", func(t *testing.T) {
+		// Test the validation function directly
+		err := validatePackageArgs([]string{"invalid-format"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid package ID format 'invalid-format': must start with 'pkg:'")
+	})
+
+	t.Run("missing package name", func(t *testing.T) {
+		// Test the validation function directly
+		err := validatePackageArgs([]string{"pkg:npm/"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "package name cannot be empty")
+	})
 }
 
 func TestInstallCommandProviderValidation(t *testing.T) {
@@ -111,26 +158,36 @@ func TestInstallCommandProviderValidation(t *testing.T) {
 func TestInstallCommandVersionHandling(t *testing.T) {
 	// Test version argument handling
 	testCases := []struct {
-		name            string
-		args            []string
-		expectedPkgId   string
-		expectedVersion string
+		name             string
+		args             []string
+		expectedPackages []string
+		expectedVersion  string
 	}{
-		{"no version specified", []string{"pkg:npm/test-package"}, "pkg:npm/test-package", "latest"},
-		{"version specified", []string{"pkg:npm/test-package", "1.0.0"}, "pkg:npm/test-package", "1.0.0"},
-		{"latest version", []string{"pkg:npm/test-package", "latest"}, "pkg:npm/test-package", "latest"},
-		{"empty version", []string{"pkg:npm/test-package", ""}, "pkg:npm/test-package", ""},
+		{"no version specified", []string{"pkg:npm/test-package"}, []string{"pkg:npm/test-package"}, "latest"},
+		{"version specified", []string{"pkg:npm/test-package", "1.0.0"}, []string{"pkg:npm/test-package"}, "1.0.0"},
+		{"latest version", []string{"pkg:npm/test-package", "latest"}, []string{"pkg:npm/test-package"}, "latest"},
+		{"empty version", []string{"pkg:npm/test-package", ""}, []string{"pkg:npm/test-package"}, ""},
+		{"two packages no version", []string{"pkg:npm/test-package", "pkg:pypi/black"}, []string{"pkg:npm/test-package", "pkg:pypi/black"}, "latest"},
+		{"two packages with version", []string{"pkg:npm/test-package", "pkg:pypi/black", "1.0.0"}, []string{"pkg:npm/test-package", "pkg:pypi/black"}, "1.0.0"},
+		{"three packages with version", []string{"pkg:npm/test-package", "pkg:pypi/black", "pkg:golang/gopls", "latest"}, []string{"pkg:npm/test-package", "pkg:pypi/black", "pkg:golang/gopls"}, "latest"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			pkgId := tc.args[0]
-			version := "latest"
-			if len(tc.args) > 1 {
-				version = tc.args[1]
+			// Determine if a version is specified (last argument might be a version)
+			var packages []string
+			var version string
+
+			// Check if the last argument is a version (not starting with 'pkg:')
+			if len(tc.args) > 1 && !strings.HasPrefix(tc.args[len(tc.args)-1], "pkg:") {
+				version = tc.args[len(tc.args)-1]
+				packages = tc.args[:len(tc.args)-1]
+			} else {
+				version = "latest"
+				packages = tc.args
 			}
 
-			assert.Equal(t, tc.expectedPkgId, pkgId)
+			assert.Equal(t, tc.expectedPackages, packages)
 			assert.Equal(t, tc.expectedVersion, version)
 		})
 	}
@@ -164,7 +221,7 @@ func TestInstallCommandHelp(t *testing.T) {
 	// We'll just test the command structure instead
 	assert.NotNil(t, installCmd)
 	assert.Contains(t, installCmd.Use, "install")
-	assert.Contains(t, installCmd.Short, "Install a package")
+	assert.Contains(t, installCmd.Short, "Install one or more packages")
 }
 
 func TestInstallCommandIntegration(t *testing.T) {
@@ -179,6 +236,8 @@ func TestInstallCommandIntegration(t *testing.T) {
 		{"valid golang package", []string{"pkg:golang/golang.org/x/tools/gopls"}},
 		{"valid pypi package", []string{"pkg:pypi/black"}},
 		{"valid cargo package", []string{"pkg:cargo/ripgrep"}},
+		{"multiple packages", []string{"pkg:npm/test-package", "pkg:pypi/black"}},
+		{"multiple packages with version", []string{"pkg:npm/test-package", "pkg:pypi/black", "1.0.0"}},
 	}
 
 	for _, tc := range testCases {
@@ -206,7 +265,7 @@ func TestInstallCommandRunPaths(t *testing.T) {
 		installCmd.Run(installCmd, []string{"pkg:unknown/x"})
 	})
 
-	t.Run("successful install", func(t *testing.T) {
+	t.Run("successful install single package", func(t *testing.T) {
 		prevSupp := isSupportedProviderFn
 		prevInstall := installPackageFn
 		isSupportedProviderFn = func(p string) bool { return true }
@@ -215,13 +274,37 @@ func TestInstallCommandRunPaths(t *testing.T) {
 		installCmd.Run(installCmd, []string{"pkg:npm/eslint"})
 	})
 
-	t.Run("failed install", func(t *testing.T) {
+	t.Run("successful install multiple packages", func(t *testing.T) {
+		prevSupp := isSupportedProviderFn
+		prevInstall := installPackageFn
+		isSupportedProviderFn = func(p string) bool { return true }
+		installPackageFn = func(id, v string) bool { return true }
+		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
+		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "pkg:pypi/black"})
+	})
+
+	t.Run("failed install single package", func(t *testing.T) {
 		prevSupp := isSupportedProviderFn
 		prevInstall := installPackageFn
 		isSupportedProviderFn = func(p string) bool { return true }
 		installPackageFn = func(id, v string) bool { return false }
 		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
 		installCmd.Run(installCmd, []string{"pkg:npm/eslint"})
+	})
+
+	t.Run("mixed success/failure multiple packages", func(t *testing.T) {
+		prevSupp := isSupportedProviderFn
+		prevInstall := installPackageFn
+		isSupportedProviderFn = func(p string) bool { return true }
+		installPackageFn = func(id, v string) bool {
+			// First package succeeds, second fails
+			if id == "pkg:npm/eslint" {
+				return true
+			}
+			return false
+		}
+		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
+		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "pkg:pypi/black"})
 	})
 }
 
@@ -235,6 +318,7 @@ func TestInstallCommandErrorHandling(t *testing.T) {
 		{"unsupported provider", []string{"pkg:unsupported/package"}},
 		{"malformed package id", []string{"pkg:"}},
 		{"empty package id", []string{""}},
+		{"multiple packages with one invalid", []string{"pkg:npm/valid", "invalid-format"}},
 	}
 
 	for _, tc := range testCases {
@@ -271,7 +355,44 @@ func TestInstallCommandProviderIntegration(t *testing.T) {
 }
 
 func TestInstallCommandFullOutputGolden(t *testing.T) {
-	t.Run("install with version specified", func(t *testing.T) {
+	t.Run("multiple packages with mixed success", func(t *testing.T) {
+		// Capture stdout
+		old := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		// Stub functions
+		prevSupp := isSupportedProviderFn
+		prevInstall := installPackageFn
+		isSupportedProviderFn = func(p string) bool { return true }
+		installPackageFn = func(id, v string) bool {
+			// First package succeeds, second fails
+			if strings.Contains(id, "eslint") {
+				return true
+			}
+			return false
+		}
+		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
+
+		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "pkg:npm/prettier"})
+
+		// Restore stdout and read
+		w.Close()
+		os.Stdout = old
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		out := buf.String()
+
+		// Check for expected output
+		assert.Contains(t, out, "✓ Successfully installed pkg:npm/eslint@latest")
+		assert.Contains(t, out, "✗ Failed to install pkg:npm/prettier@latest")
+		assert.Contains(t, out, "Installation Summary:")
+		assert.Contains(t, out, "Successfully installed: 1")
+		assert.Contains(t, out, "Failed to install: 1")
+		assert.Contains(t, out, "Failed packages: pkg:npm/prettier")
+	})
+
+	t.Run("multiple packages with versions", func(t *testing.T) {
 		// Capture stdout
 		old := os.Stdout
 		r, w, _ := os.Pipe()
@@ -284,7 +405,7 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		installPackageFn = func(id, v string) bool { return true }
 		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
 
-		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "1.0.0"})
+		installCmd.Run(installCmd, []string{"pkg:npm/eslint@2.0.0", "pkg:pypi/black@22.3.0"})
 
 		// Restore stdout and read
 		w.Close()
@@ -293,37 +414,15 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		io.Copy(&buf, r)
 		out := buf.String()
 
-		assert.Contains(t, out, "Installing pkg:npm/eslint (version: 1.0.0)")
-		assert.Contains(t, out, "Successfully installed pkg:npm/eslint")
+		// Check for expected output
+		assert.Contains(t, out, "✓ Successfully installed pkg:npm/eslint@2.0.0")
+		assert.Contains(t, out, "✓ Successfully installed pkg:pypi/black@22.3.0")
+		assert.Contains(t, out, "Installation Summary:")
+		assert.Contains(t, out, "Successfully installed: 2")
+		assert.NotContains(t, out, "Failed to install:")
 	})
 
-	t.Run("install with latest version", func(t *testing.T) {
-		// Capture stdout
-		old := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		// Stub functions
-		prevSupp := isSupportedProviderFn
-		prevInstall := installPackageFn
-		isSupportedProviderFn = func(p string) bool { return true }
-		installPackageFn = func(id, v string) bool { return true }
-		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
-
-		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "latest"})
-
-		// Restore stdout and read
-		w.Close()
-		os.Stdout = old
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		out := buf.String()
-
-		assert.Contains(t, out, "Installing pkg:npm/eslint (version: latest)")
-		assert.Contains(t, out, "Successfully installed pkg:npm/eslint")
-	})
-
-	t.Run("install failure", func(t *testing.T) {
+	t.Run("all packages fail", func(t *testing.T) {
 		// Capture stdout
 		old := os.Stdout
 		r, w, _ := os.Pipe()
@@ -336,7 +435,7 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		installPackageFn = func(id, v string) bool { return false }
 		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
 
-		installCmd.Run(installCmd, []string{"pkg:npm/eslint"})
+		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "pkg:pypi/black"})
 
 		// Restore stdout and read
 		w.Close()
@@ -345,71 +444,51 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		io.Copy(&buf, r)
 		out := buf.String()
 
-		assert.Contains(t, out, "Installing pkg:npm/eslint (version: latest)")
-		assert.Contains(t, out, "Failed to install pkg:npm/eslint")
+		// Check for expected output
+		assert.Contains(t, out, "✗ Failed to install pkg:npm/eslint@latest")
+		assert.Contains(t, out, "✗ Failed to install pkg:pypi/black@latest")
+		assert.Contains(t, out, "Installation Summary:")
+		assert.Contains(t, out, "Successfully installed: 0")
+		assert.Contains(t, out, "Failed to install: 2")
+		assert.Contains(t, out, "Failed packages: pkg:npm/eslint, pkg:pypi/black")
 	})
 }
 
-func TestInstallCommandValidationErrors(t *testing.T) {
-	t.Run("invalid package format - missing provider/package", func(t *testing.T) {
-		// Capture stdout
-		old := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
+func TestIsValidVersionString(t *testing.T) {
+	testCases := []struct {
+		name     string
+		version  string
+		expected bool
+	}{
+		// Valid versions
+		{"latest", "latest", true},
+		{"semantic version", "1.0.0", true},
+		{"version with v prefix", "v1.0.0", true},
+		{"beta version", "1.0.0-beta", true},
+		{"alpha version", "1.0.0-alpha.1", true},
+		{"rc version", "1.0.0-rc.1", true},
+		{"patch version", "1.0.1", true},
+		{"major version", "2.0.0", true},
+		{"version with build", "1.0.0+build.1", true},
+		{"version with prerelease", "1.0.0-rc.1+build.1", true},
 
-		installCmd.Run(installCmd, []string{"pkg:"})
+		// Invalid versions (no digits)
+		{"empty string", "", false},
+		{"just text", "alpha", false},
+		{"just beta", "beta", false},
+		{"just rc", "rc", false},
+		{"just text with dash", "alpha-beta", false},
+		{"just text with dot", "alpha.beta", false},
+		{"just text with plus", "alpha+beta", false},
+		{"just text with underscore", "alpha_beta", false},
+		{"just text with tilde", "alpha~beta", false},
+		{"just text with caret", "alpha^beta", false},
+	}
 
-		// Restore stdout and read
-		w.Close()
-		os.Stdout = old
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		out := buf.String()
-
-		assert.Contains(t, out, "Error: Invalid package ID format. Expected 'pkg:provider/package-name'")
-	})
-
-	t.Run("invalid package format - just provider", func(t *testing.T) {
-		// Capture stdout
-		old := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		installCmd.Run(installCmd, []string{"pkg:npm"})
-
-		// Restore stdout and read
-		w.Close()
-		os.Stdout = old
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		out := buf.String()
-
-		assert.Contains(t, out, "Error: Invalid package ID format. Expected 'pkg:provider/package-name'")
-	})
-
-	t.Run("unsupported provider calls availableProvidersFn", func(t *testing.T) {
-		// Capture stdout
-		old := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		// Stub functions
-		prevSupp := isSupportedProviderFn
-		prevAvail := availableProvidersFn
-		isSupportedProviderFn = func(p string) bool { return false }
-		availableProvidersFn = func() []string { return []string{"npm", "pypi", "golang", "cargo"} }
-		defer func() { isSupportedProviderFn = prevSupp; availableProvidersFn = prevAvail }()
-
-		installCmd.Run(installCmd, []string{"pkg:unknown/package"})
-
-		// Restore stdout and read
-		w.Close()
-		os.Stdout = old
-		var buf bytes.Buffer
-		io.Copy(&buf, r)
-		out := buf.String()
-
-		assert.Contains(t, out, "Error: Unsupported provider 'unknown'")
-		assert.Contains(t, out, "Supported providers: npm, pypi, golang, cargo")
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isValidVersionString(tc.version)
+			assert.Equal(t, tc.expected, result, "Version validation mismatch for '%s'", tc.version)
+		})
+	}
 }

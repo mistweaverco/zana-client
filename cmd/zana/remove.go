@@ -9,10 +9,10 @@ import (
 )
 
 var removeCmd = &cobra.Command{
-	Use:     "remove <pkgId>",
+	Use:     "remove <pkgId> [pkgId...]",
 	Aliases: []string{"rm", "delete"},
-	Short:   "Remove a package",
-	Long: `Remove a package from a supported provider.
+	Short:   "Remove one or more packages",
+	Long: `Remove one or more packages from supported providers.
 
 Supported package ID formats:
   pkg:npm/@prisma/language-server
@@ -22,40 +22,65 @@ Supported package ID formats:
 
 Examples:
   zana remove pkg:npm/@prisma/language-server
-  zana rm pkg:golang/golang.org/x/tools/gopls
-  zana delete pkg:pypi/black
-  zana remove pkg:cargo/ripgrep`,
-	Args: cobra.ExactArgs(1),
+  zana rm pkg:golang/golang.org/x/tools/gopls pkg:npm/eslint
+  zana delete pkg:pypi/black pkg:cargo/ripgrep
+  zana remove pkg:npm/prettier pkg:golang/golang.org/x/tools/gopls`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		pkgId := args[0]
+		packages := args
 
-		// Validate package ID format
-		if !strings.HasPrefix(pkgId, "pkg:") {
-			fmt.Printf("Error: Invalid package ID format. Must start with 'pkg:'\n")
-			return
+		// Validate all package IDs
+		for _, pkgId := range packages {
+			if !strings.HasPrefix(pkgId, "pkg:") {
+				fmt.Printf("Error: Invalid package ID format '%s'. Must start with 'pkg:'\n", pkgId)
+				return
+			}
+
+			// Parse provider from package ID
+			parts := strings.Split(strings.TrimPrefix(pkgId, "pkg:"), "/")
+			if len(parts) < 2 {
+				fmt.Printf("Error: Invalid package ID format '%s'. Expected 'pkg:provider/package-name'\n", pkgId)
+				return
+			}
+
+			provider := parts[0]
+			if !isSupportedProviderFn(provider) {
+				fmt.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, pkgId, strings.Join(availableProvidersFn(), ", "))
+				return
+			}
 		}
 
-		// Parse provider from package ID
-		parts := strings.Split(strings.TrimPrefix(pkgId, "pkg:"), "/")
-		if len(parts) < 2 {
-			fmt.Printf("Error: Invalid package ID format. Expected 'pkg:provider/package-name'\n")
-			return
+		// Remove all packages
+		fmt.Printf("Removing %d package(s)...\n", len(packages))
+
+		allSuccess := true
+		successCount := 0
+		failedCount := 0
+
+		for _, pkgId := range packages {
+			fmt.Printf("Removing %s...\n", pkgId)
+
+			// Remove the package
+			success := removePackageFn(pkgId)
+			if success {
+				fmt.Printf("✓ Successfully removed %s\n", pkgId)
+				successCount++
+			} else {
+				fmt.Printf("✗ Failed to remove %s\n", pkgId)
+				failedCount++
+				allSuccess = false
+			}
 		}
 
-		provider := parts[0]
-		if !isSupportedProviderFn(provider) {
-			fmt.Printf("Error: Unsupported provider '%s'. Supported providers: %s\n", provider, strings.Join(availableProvidersFn(), ", "))
-			return
-		}
+		// Print summary
+		fmt.Printf("\nRemove Summary:\n")
+		fmt.Printf("  Successfully removed: %d\n", successCount)
+		fmt.Printf("  Failed to remove: %d\n", failedCount)
 
-		fmt.Printf("Removing %s...\n", pkgId)
-
-		// Remove the package
-		success := removePackageFn(pkgId)
-		if success {
-			fmt.Printf("Successfully removed %s\n", pkgId)
+		if allSuccess {
+			fmt.Printf("All packages removed successfully!\n")
 		} else {
-			fmt.Printf("Failed to remove %s\n", pkgId)
+			fmt.Printf("Some packages failed to remove.\n")
 		}
 	},
 }
