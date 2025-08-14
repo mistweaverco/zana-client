@@ -86,7 +86,8 @@ func (p *GolangProvider) generatePackageJSON() bool {
 }
 
 func (p *GolangProvider) createSymlink(sourceID string) error {
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	zanaBinDir := files.GetAppBinPath()
 
@@ -113,7 +114,8 @@ func (p *GolangProvider) createSymlink(sourceID string) error {
 }
 
 func (p *GolangProvider) removeBin(sourceID string) error {
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	golangBinDir := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 
 	if len(registryItem.Bin) == 0 {
@@ -132,7 +134,8 @@ func (p *GolangProvider) removeBin(sourceID string) error {
 }
 
 func (p *GolangProvider) removeSymlink(sourceID string) error {
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	zanaBinDir := files.GetAppBinPath()
 
 	if len(registryItem.Bin) == 0 {
@@ -163,7 +166,8 @@ func (p *GolangProvider) Clean() bool {
 		if err := p.removeSymlink(pkg.SourceID); err != nil {
 			Logger.Error(fmt.Sprintf("Error removing symlink for package %s: %v", name, err))
 		}
-		for bin := range registry_parser.GetBySourceId(pkg.SourceID).Bin {
+		parser := registry_parser.NewDefaultRegistryParser()
+		for bin := range parser.GetBySourceId(pkg.SourceID).Bin {
 			binPath := filepath.Join(p.APP_PACKAGES_DIR, "bin", bin)
 			if fi, err := goStat(binPath); err == nil && !fi.IsDir() {
 				if err := goRemove(binPath); err != nil {

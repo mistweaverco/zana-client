@@ -50,7 +50,7 @@ func TestGolangCreateSymlink_RemovesExistingAndSymlinkError(t *testing.T) {
 		Name: "tool", Version: "v1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/acme/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 
 	// ensure golang bin contains the binary
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
@@ -92,7 +92,7 @@ func TestGolangRemoveBin_ErrorOnRemove(t *testing.T) {
 		Name: "tool", Version: "v1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/acme/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 
 	// create binary file so goStat finds it
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
@@ -118,7 +118,7 @@ func TestGolangClean_BinaryRemoveErrorAndLocalRemoveError(t *testing.T) {
 		Name: "tool", Version: "v1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/acme/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 
 	// create a binary so Clean tries to remove it and emit error
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")

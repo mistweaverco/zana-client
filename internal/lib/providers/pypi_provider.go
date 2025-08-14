@@ -158,8 +158,9 @@ func (p *PyPiProvider) createWrappers() error {
 		return nil
 	}
 	zanaBinDir := files.GetAppBinPath()
+	parser := registry_parser.NewDefaultRegistryParser()
 	for _, pkg := range desired {
-		registryItem := registry_parser.GetBySourceId(pkg.SourceID)
+		registryItem := parser.GetBySourceId(pkg.SourceID)
 		if len(registryItem.Bin) == 0 {
 			continue
 		}
@@ -236,8 +237,9 @@ func (p *PyPiProvider) removeAllWrappers() error {
 		return nil
 	}
 	zanaBinDir := files.GetAppBinPath()
+	parser := registry_parser.NewDefaultRegistryParser()
 	for _, pkg := range desired {
-		registryItem := registry_parser.GetBySourceId(pkg.SourceID)
+		registryItem := parser.GetBySourceId(pkg.SourceID)
 		for binName := range registryItem.Bin {
 			wrapperPath := filepath.Join(zanaBinDir, binName)
 			if _, err := pipLstat(wrapperPath); err == nil {
@@ -255,7 +257,8 @@ func (p *PyPiProvider) removePackageWrappers(packageName string) error {
 	zanaBinDir := files.GetAppBinPath()
 	// Reconstruct sourceId to query registry
 	sourceID := p.PREFIX + packageName
-	registryItem := registry_parser.GetBySourceId(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	registryItem := parser.GetBySourceId(sourceID)
 	if len(registryItem.Bin) == 0 {
 		return nil
 	}

@@ -209,11 +209,13 @@ func (d *defaultLocalPackagesProvider) GetData(force bool) local_packages_parser
 }
 
 func (d *defaultRegistryProvider) GetData(force bool) []registry_parser.RegistryItem {
-	return registry_parser.GetData(force)
+	parser := registry_parser.NewDefaultRegistryParser()
+	return parser.GetData(force)
 }
 
 func (d *defaultRegistryProvider) GetLatestVersion(sourceID string) string {
-	return registry_parser.GetLatestVersion(sourceID)
+	parser := registry_parser.NewDefaultRegistryParser()
+	return parser.GetLatestVersion(sourceID)
 }
 
 func (d *defaultUpdateChecker) CheckIfUpdateIsAvailable(currentVersion, latestVersion string) (bool, string) {

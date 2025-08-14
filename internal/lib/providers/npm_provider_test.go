@@ -145,7 +145,7 @@ func TestPyPiErrorBranches(t *testing.T) {
 		Name: "black", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/black"},
 		Bin: map[string]string{"black": "black"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	oldLs, oldRm, oldCh := pipLstat, pipRemove, pipChmod
 	pipLstat = func(string) (os.FileInfo, error) { return fileInfoNow(t), nil }
 	pipRemove = func(string) error { return errors.New("rm") }
@@ -190,7 +190,7 @@ func TestGolangErrorBranches(t *testing.T) {
 		Name: "nobin", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/nobin"},
 		Bin: map[string]string{},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	assert.Error(t, p.createSymlink("pkg:golang/nobin"))
 	assert.Error(t, p.removeSymlink("pkg:golang/nobin"))
 	assert.Error(t, p.removeBin("pkg:golang/nobin"))
@@ -200,7 +200,7 @@ func TestGolangErrorBranches(t *testing.T) {
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	assert.Error(t, p.createSymlink("pkg:golang/tool"))
 
 	// Sync go unavailable
@@ -344,7 +344,7 @@ func TestMoreBranchesPyPI(t *testing.T) {
 		Name: "wrap", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/wrap"},
 		Bin: map[string]string{"wrap": "wrap"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	_ = os.WriteFile(filepath.Join(files.GetAppBinPath(), "wrap"), []byte(""), 0755)
 	oldLs := pipLstat
 	oldRm := pipRemove
@@ -415,7 +415,7 @@ func TestPyPiCreateWrappers_WrapperCreateErrorContinues(t *testing.T) {
 		Name: "wbad", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/wbad"},
 		Bin: map[string]string{"bad": ""},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// Should not error overall
 	assert.NoError(t, p.createWrappers())
 }
@@ -481,7 +481,7 @@ func TestPyPiSync_CreateDirErrorAndSkipInstalledInLoopAndFreezeError(t *testing.
 		Name: "c2", Version: "2.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/c2"},
 		Bin: map[string]string{},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// requirements
 	assert.True(t, p.generateRequirementsTxt())
 	// freeze returns c1 only; then later return non-zero to exercise error path too
@@ -535,7 +535,7 @@ func TestPyPiSync_SkipBranchInLoop(t *testing.T) {
 		Name: "c2", Version: "2.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/c2"},
 		Bin: map[string]string{},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// ensure requirements created
 	_ = p.generateRequirementsTxt()
 	// Freeze returns c1 installed for both areAllPackagesInstalled and the installed map
@@ -568,7 +568,7 @@ func TestPyPiRemove_WrapperRemovalErrorAndLocalRemoveError(t *testing.T) {
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// Ensure bin removal succeeds so we reach wrappers and local remove branches
 	lib := filepath.Join(p.APP_PACKAGES_DIR, "lib", "python3.11", "site-packages")
 	_ = os.MkdirAll(lib, 0755)
@@ -601,7 +601,7 @@ func TestPyPiRemove_LocalRemoveErrorReturnsFalse(t *testing.T) {
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	lib := filepath.Join(p.APP_PACKAGES_DIR, "lib", "python3.11", "site-packages")
 	_ = os.MkdirAll(lib, 0755)
 	info := filepath.Join(lib, "tool-1.0.0.dist-info")
@@ -661,7 +661,7 @@ func TestMoreBranchesGolang(t *testing.T) {
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/acme/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	oldLs := goLstat
 	oldRm := goRemove
 	goLstat = func(string) (os.FileInfo, error) { return fileInfoNow(t), nil }
@@ -749,7 +749,7 @@ func TestPyPiAreAllInstalledTrueTriggersWrappers(t *testing.T) {
 		Name: "black", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/black"},
 		Bin: map[string]string{"black": "black"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// freeze shows installed equal
 	oldCap := pipShellOutCapture
 	pipShellOutCapture = func(string, []string, string, []string) (int, string, error) { return 0, "black==1.0.0", nil }
@@ -772,7 +772,7 @@ func TestGolangSyncInstallSuccess(t *testing.T) {
 		Name: "y", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/x/y"},
 		Bin: map[string]string{"y": "y"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// ensure go.mod missing -> mod init path
 	_ = os.Remove(filepath.Join(p.APP_PACKAGES_DIR, "go.mod"))
 	// pre-create installed binary so createSymlink can find it
@@ -1678,7 +1678,7 @@ func TestPyPiMorePermutations(t *testing.T) {
 		Name: "nobin", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/nobin"},
 		Bin: map[string]string{},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	assert.NoError(t, p.createWrappers())
 	// Multi-bin
 	writeRegistry(t, []registry_parser.RegistryItem{{
@@ -1730,7 +1730,7 @@ func TestGolangMorePermutations(t *testing.T) {
 		Name: "skip", Version: "v1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/x/skip"},
 		Bin: map[string]string{"skip": "skip"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	oldGo := goShellOut
 	goShellOut = func(string, []string, string, []string) (int, error) { return 0, nil }
 	assert.True(t, p.Sync())
@@ -1841,7 +1841,7 @@ func TestPyPiGenerateRequirementsCreateErrorAndRemoveWrappersNoBinAndRemoveBinSu
 		Name: "nobin", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/nobin"},
 		Bin: map[string]string{},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	assert.NoError(t, p.removePackageWrappers("nobin"))
 
 	// removeBin success: create info dir and bin file; ensure it deletes
@@ -1871,7 +1871,7 @@ func TestGolangCreateSymlinkSuccessAndGeneratePackageJSONCreateErrorAndUpdateInv
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	_ = os.MkdirAll(gobin, 0755)
 	assert.NoError(t, os.WriteFile(filepath.Join(gobin, "tool"), []byte(""), 0755))
@@ -2244,7 +2244,7 @@ func TestPyPiSyncMixedInstalledSkippedAndGuiScriptsAndRemoveHappy(t *testing.T) 
 		Name: "c2", Version: "2.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/c2"},
 		Bin: map[string]string{"c2": "c2"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// freeze shows both installed to take the all-installed fast path and avoid real installs
 	oldCap := pipShellOutCapture
 	oldOut := pipShellOut
@@ -2268,7 +2268,7 @@ func TestPyPiSyncMixedInstalledSkippedAndGuiScriptsAndRemoveHappy(t *testing.T) 
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// create wrapper and bin to be removed
 	_ = os.WriteFile(filepath.Join(files.GetAppBinPath(), "tool"), []byte(""), 0755)
 	_ = os.MkdirAll(filepath.Join(p.APP_PACKAGES_DIR, "lib", "python3.11", "site-packages"), 0755)
@@ -2298,7 +2298,7 @@ func TestGolangCleanMultipleAndInstallLatestSuccess(t *testing.T) {
 		Name: "two", Version: "v1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/a/two"},
 		Bin: map[string]string{"two": "two"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
 	_ = os.MkdirAll(gobin, 0755)
 	_ = os.WriteFile(filepath.Join(gobin, "one"), []byte(""), 0755)
@@ -2311,7 +2311,7 @@ func TestGolangCleanMultipleAndInstallLatestSuccess(t *testing.T) {
 		Name: "inst", Version: "v2.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/a/inst"},
 		Bin: map[string]string{"inst": "inst"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 	// pre-create binary so createSymlink can succeed
 	_ = os.WriteFile(filepath.Join(gobin, "inst"), []byte(""), 0755)
 	oldCap := goShellOutCapture

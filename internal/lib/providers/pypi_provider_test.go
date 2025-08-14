@@ -178,7 +178,7 @@ func TestPyPiProviderBasicFlows(t *testing.T) {
 		Name: "black", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:pypi/black"},
 		Bin: map[string]string{"black": "black"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 
 	// generate requirements
 	ok := p.generateRequirementsTxt()
@@ -276,7 +276,7 @@ func TestGolangProviderBasicFlows(t *testing.T) {
 		Name: "tool", Version: "1.0.0", Source: registry_parser.RegistryItemSource{ID: "pkg:golang/github.com/acme/tool"},
 		Bin: map[string]string{"tool": "tool"},
 	}})
-	_ = registry_parser.GetData(true)
+	_ = registry_parser.NewDefaultRegistryParser().GetData(true)
 
 	// precreate binary to allow createSymlink to succeed
 	gobin := filepath.Join(p.APP_PACKAGES_DIR, "bin")
