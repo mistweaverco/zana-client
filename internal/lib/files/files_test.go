@@ -28,18 +28,6 @@ func (m *MockHTTPClient) Get(url string) (*http.Response, error) {
 	return nil, errors.New("mock not implemented")
 }
 
-// MockZipReader for testing zip operations
-type MockZipReader struct {
-	OpenReaderFunc func(name string) (*zip.ReadCloser, error)
-}
-
-func (m *MockZipReader) OpenReader(name string) (*zip.ReadCloser, error) {
-	if m.OpenReaderFunc != nil {
-		return m.OpenReaderFunc(name)
-	}
-	return nil, errors.New("mock not implemented")
-}
-
 // MockZipArchive is a mock implementation of the ZipArchive interface.
 type MockZipArchive struct {
 	Files     []*zip.File
@@ -515,16 +503,16 @@ func TestDependencyInjection(t *testing.T) {
 	})
 
 	t.Run("set and reset zip reader", func(t *testing.T) {
-		mockZipReader := &MockZipReader{}
-		SetZipReader(mockZipReader)
+		mockZipOpener := &MockZipFileOpener{}
+		SetZipFileOpener(mockZipOpener)
 
 		// Verify it was set
-		assert.Equal(t, mockZipReader, zipReader)
+		assert.Equal(t, mockZipOpener, zipFileOpener)
 
 		ResetDependencies()
 
 		// Verify it was reset
-		assert.IsType(t, &defaultZipReader{}, zipReader)
+		assert.IsType(t, &RealZipFileOpener{}, zipFileOpener)
 	})
 }
 
@@ -561,10 +549,10 @@ func TestDefaultImplementations(t *testing.T) {
 		assert.Equal(t, "test_file", info.Name())
 	})
 
-	t.Run("default zip reader", func(t *testing.T) {
-		zr := &defaultZipReader{}
+	t.Run("default zip file opener", func(t *testing.T) {
+		zr := &RealZipFileOpener{}
 		// This will fail with non-existent file, but we can test the interface implementation
-		_, err := zr.OpenReader("/non/existent/file.zip")
+		_, err := zr.Open("test.zip")
 		assert.Error(t, err)
 	})
 }
@@ -730,13 +718,13 @@ func TestDownloadAndUnzipRegistry(t *testing.T) {
 		SetHTTPClient(mockClient)
 		defer ResetDependencies()
 
-		// Mock zip reader that returns error to avoid panic
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error to avoid panic
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test the function
@@ -1239,10 +1227,10 @@ func TestDefaultImplementationsComprehensive(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("default zip reader", func(t *testing.T) {
-		zr := &defaultZipReader{}
+	t.Run("default zip file opener", func(t *testing.T) {
+		zr := &RealZipFileOpener{}
 		// This will fail with non-existent file, but we can test the interface implementation
-		_, err := zr.OpenReader("/non/existent/file.zip")
+		_, err := zr.Open("test.zip")
 		assert.Error(t, err)
 	})
 }
@@ -1366,13 +1354,13 @@ func TestUnzipWithMockZip(t *testing.T) {
 		require.NoError(t, err)
 		zipFile.Close()
 
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				// For testing, just return an error to test error paths
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1406,13 +1394,13 @@ func TestUnzipWithMockZip(t *testing.T) {
 		require.NoError(t, err)
 		zipFile.Close()
 
-		// Mock zip reader that returns error for testing
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error for testing
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1447,13 +1435,13 @@ func TestUnzipWithMockZip(t *testing.T) {
 		require.NoError(t, err)
 		zipFile.Close()
 
-		// Mock zip reader that returns error for testing
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error for testing
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1487,13 +1475,13 @@ func TestUnzipWithMockZip(t *testing.T) {
 		require.NoError(t, err)
 		zipFile.Close()
 
-		// Mock zip reader that returns error for testing
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error for testing
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1514,13 +1502,13 @@ func TestUnzipErrorScenarios(t *testing.T) {
 		SetFileSystem(mockFS)
 		defer ResetDependencies()
 
-		// Mock zip reader that returns error
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		err := Unzip("test.zip", "/dest")
@@ -1552,13 +1540,13 @@ func TestUnzipErrorScenarios(t *testing.T) {
 		require.NoError(t, err)
 		zipFile.Close()
 
-		// Mock zip reader that creates a real zip for testing
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that creates a real zip for testing
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1592,13 +1580,13 @@ func TestUnzipErrorScenarios(t *testing.T) {
 		require.NoError(t, err)
 		zipFile.Close()
 
-		// Mock zip reader that returns error for testing
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error for testing
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1934,13 +1922,13 @@ func TestUnzipMissingBranches(t *testing.T) {
 			return errors.New("mkdir error")
 		}
 
-		// Mock zip reader that returns error to avoid complex zip creation
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error to avoid complex zip creation
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		// Test unzip - should fail due to zip open error
@@ -1961,13 +1949,13 @@ func TestUnzipSimple(t *testing.T) {
 		SetFileSystem(mockFS)
 		defer ResetDependencies()
 
-		// Mock zip reader that returns error
-		mockZipReader := &MockZipReader{
-			OpenReaderFunc: func(name string) (*zip.ReadCloser, error) {
+		// Mock zip opener that returns error
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
 				return nil, errors.New("zip open error")
 			},
 		}
-		SetZipReader(mockZipReader)
+		SetZipFileOpener(mockZipOpener)
 		defer ResetDependencies()
 
 		err := Unzip("test.zip", "/dest")

@@ -31,11 +31,6 @@ type HTTPClient interface {
 	Get(url string) (*http.Response, error)
 }
 
-// ZipReader interface for zip operations
-type ZipReader interface {
-	OpenReader(name string) (*zip.ReadCloser, error)
-}
-
 // ZipArchive is an interface that abstracts the functionality
 // of a *zip.ReadCloser.
 type ZipArchive interface {
@@ -96,26 +91,6 @@ func (d *defaultHTTPClient) Get(url string) (*http.Response, error) {
 	return http.Get(url)
 }
 
-// defaultZipReader implements ZipReader
-type defaultZipReader struct{}
-
-func (d *defaultZipReader) OpenReader(name string) (*zip.ReadCloser, error) {
-	return zip.OpenReader(name)
-}
-
-// zipReaderAdapter adapts the old ZipReader interface to the new ZipFileOpener interface
-type zipReaderAdapter struct {
-	zipReader ZipReader
-}
-
-func (a *zipReaderAdapter) Open(name string) (ZipArchive, error) {
-	rc, err := a.zipReader.OpenReader(name)
-	if err != nil {
-		return nil, err
-	}
-	return &RealZipArchive{ReadCloser: rc}, nil
-}
-
 // RealZipArchive is a wrapper for a real *zip.ReadCloser
 type RealZipArchive struct {
 	*zip.ReadCloser
@@ -146,7 +121,6 @@ func (o *RealZipFileOpener) Open(name string) (ZipArchive, error) {
 var (
 	fileSystem    FileSystem    = &defaultFileSystem{fs: afero.NewOsFs()}
 	httpClient    HTTPClient    = &defaultHTTPClient{}
-	zipReader     ZipReader     = &defaultZipReader{}
 	zipFileOpener ZipFileOpener = &RealZipFileOpener{}
 )
 
@@ -160,13 +134,6 @@ func SetHTTPClient(client HTTPClient) {
 	httpClient = client
 }
 
-// SetZipReader sets the zip reader implementation
-func SetZipReader(zr ZipReader) {
-	zipReader = zr
-	// Also set the zipFileOpener using the adapter for backward compatibility
-	zipFileOpener = &zipReaderAdapter{zipReader: zr}
-}
-
 // SetZipFileOpener sets the zip file opener implementation
 func SetZipFileOpener(zfo ZipFileOpener) {
 	zipFileOpener = zfo
@@ -176,8 +143,7 @@ func SetZipFileOpener(zfo ZipFileOpener) {
 func ResetDependencies() {
 	fileSystem = &defaultFileSystem{fs: afero.NewOsFs()}
 	httpClient = &defaultHTTPClient{}
-	zipReader = &defaultZipReader{}
-	zipFileOpener = &zipReaderAdapter{zipReader: &defaultZipReader{}}
+	zipFileOpener = &RealZipFileOpener{}
 }
 
 func Download(url string, dest string) error {
