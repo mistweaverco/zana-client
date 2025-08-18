@@ -1,8 +1,8 @@
 package zana
 
 import (
+	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -21,11 +21,11 @@ var cfg = config.NewConfig(config.Config{
 
 var rootCmd = &cobra.Command{
 	Use:   "zana",
-	Short: "Zana is Mason.nvim,  but maintained by the community",
-	Long:  "A package manager for Neovim. Easily install and manage LSP servers, DAP servers, linters and formatters.",
+	Short: "Zana is Mason.nvim, but not only for Neovim",
+	Long:  "Zana is a minimal CLI and TUI for managing LSP servers, DAP servers, linters, and formatters, for Neovim, but not limited to just Neovim.",
 	Run: func(cmd *cobra.Command, files []string) {
 		if cfg.Flags.Version {
-			log.Info("Version", runtime.GOOS, version.VERSION)
+			fmt.Println(version.VERSION)
 			return
 		} else {
 			// Check health before starting the main application
