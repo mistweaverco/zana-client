@@ -86,22 +86,35 @@ It's advised to keep the `zana-lock.json` file in version control.
 If you want the installed packages to be available in your path,
 you can add the following to your shell configuration file:
 
-```sh
-# For bash/zsh (add to ~/.bashrc or ~/.zshrc)
-source <(zana env)
+#### bash environment setup
 
-# For zsh with evalcache - https://github.com/mroth/evalcache
+add to `~/.bashrc`:
+
+```sh
+source <(zana env)
+```
+
+#### zsh environment setup
+
+add to `~/.zshrc`:
+
+```sh
+source <(zana env)
+```
+
+or with [evalcache](https://github.com/mroth/evalcache) for zsh,
+add to `~/.zshrc`:
+
+```sh
 _evalcache zana env zsh
 ```
 
-```sh
-# For PowerShell (add to profile)
-zana env powershell | Invoke-Expression
-```
+#### PowerShell environment setup
+
+add to `profile`:
 
 ```sh
-# Manual setup
-eval "$(zana env)"
+zana env powershell | Invoke-Expression
 ```
 
 ### CLI autocompletion
@@ -109,16 +122,42 @@ eval "$(zana env)"
 If you want autocompletion for the CLI commands,
 you can add the following to your shell configuration file:
 
+#### bash autocompletion setup
+
+add to `~/.bashrc`:
+
 ```sh
-# For bash/zsh (add to ~/.bashrc or ~/.zshrc)
 source <(zana completion bash)
-# For zsh (add to ~/.zshrc)
+```
+
+#### zsh autocompletion setup
+
+add to `~/.zshrc`:
+
+```sh
 source <(zana completion zsh)
-# For zsh with evalcache - https://github.com/mroth/evalcache
+```
+
+or with [evalcache](https://github.com/mroth/evalcache) for zsh,
+add to `~/.zshrc`:
+
+```sh
 _evalcache zana completion zsh
-# For fish (add to ~/.config/fish/completions/zana.fish)
+```
+
+#### fish autocompletion setup
+
+add to `~/.config/fish/completions/zana.fish`:
+
+```sh
 zana completion fish > ~/.config/fish/completions/zana.fish
-# For PowerShell (add to profile)
+```
+
+#### powershell autocompletion setup
+
+add to `profile`:
+
+```sh
 zana completion powershell | Invoke-Expression
 ```
 
