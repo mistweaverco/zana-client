@@ -236,7 +236,6 @@ zana-registry.json
 		return false
 	}
 
-	fmt.Println("Created .gitignore in zana config directory")
 	return true
 }
 
