@@ -30,7 +30,7 @@ Easily install and manage LSP servers, DAP servers, linters, and formatters.
 
 <p></p>
 
-Currently, Zana is in pre-alpha and under active development.
+Currently, Zana is in beta and under active development.
 
 <p></p>
 
