@@ -13,8 +13,8 @@ import (
 func TestRootCommand(t *testing.T) {
 	// Test that root command is properly configured
 	assert.Equal(t, "zana", rootCmd.Use)
-	assert.Contains(t, rootCmd.Short, "Mason.nvim")
-	assert.Contains(t, rootCmd.Long, "package manager for Neovim")
+	assert.Contains(t, rootCmd.Short, "Zana is Mason.nvim, but not only for Neovim")
+	assert.Contains(t, rootCmd.Long, "Zana is a minimal CLI and TUI for managing LSP servers, DAP servers, linters, and formatters, for Neovim, but not limited to just Neovim.")
 
 	// Test that all expected subcommands are added
 	subcommands := rootCmd.Commands()
