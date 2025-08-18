@@ -81,12 +81,17 @@ Zana will create it for you (when you install a package).
 
 It's advised to keep the `zana-lock.json` file in version control.
 
+### Modify environment path
+
 If you want the installed packages to be available in your path,
 you can add the following to your shell configuration file:
 
 ```sh
 # For bash/zsh (add to ~/.bashrc or ~/.zshrc)
 source <(zana env)
+
+# For zsh with evalcache - https://github.com/mroth/evalcache
+_evalcache zana env zsh
 ```
 
 ```sh
@@ -97,6 +102,24 @@ zana env powershell | Invoke-Expression
 ```sh
 # Manual setup
 eval "$(zana env)"
+```
+
+### CLI autocompletion
+
+If you want autocompletion for the CLI commands,
+you can add the following to your shell configuration file:
+
+```sh
+# For bash/zsh (add to ~/.bashrc or ~/.zshrc)
+source <(zana completion bash)
+# For zsh (add to ~/.zshrc)
+source <(zana completion zsh)
+# For zsh with evalcache - https://github.com/mroth/evalcache
+_evalcache zana completion zsh
+# For fish (add to ~/.config/fish/completions/zana.fish)
+zana completion fish > ~/.config/fish/completions/zana.fish
+# For PowerShell (add to profile)
+zana completion powershell | Invoke-Expression
 ```
 
 ### CLI Options
