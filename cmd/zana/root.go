@@ -53,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(removeCmd)
+	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.PersistentFlags().BoolVar(&cfg.Flags.Version, "version", false, "version")
 	rootCmd.PersistentFlags().DurationVar(&cfg.Flags.CacheMaxAge, "cache-max-age", 24*time.Hour, "maximum age of registry cache (e.g., 1h, 24h, 7d)")
