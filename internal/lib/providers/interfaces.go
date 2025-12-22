@@ -50,6 +50,16 @@ type ProviderFactory interface {
 	CreatePyPIProvider() PackageManager
 	CreateGolangProvider() PackageManager
 	CreateCargoProvider() PackageManager
+	CreateGitHubProvider() PackageManager
+	CreateGitLabProvider() PackageManager
+	CreateCodebergProvider() PackageManager
+	CreateGemProvider() PackageManager
+	CreateComposerProvider() PackageManager
+	CreateLuaRocksProvider() PackageManager
+	CreateNuGetProvider() PackageManager
+	CreateOpamProvider() PackageManager
+	CreateOpenVSXProvider() PackageManager
+	CreateGenericProvider() PackageManager
 }
 
 // DefaultProviderFactory is the default implementation
@@ -69,4 +79,44 @@ func (f *DefaultProviderFactory) CreateGolangProvider() PackageManager {
 
 func (f *DefaultProviderFactory) CreateCargoProvider() PackageManager {
 	return NewProviderCargo()
+}
+
+func (f *DefaultProviderFactory) CreateGitHubProvider() PackageManager {
+	return NewProviderGitHub()
+}
+
+func (f *DefaultProviderFactory) CreateGitLabProvider() PackageManager {
+	return NewProviderGitLab()
+}
+
+func (f *DefaultProviderFactory) CreateCodebergProvider() PackageManager {
+	return NewProviderCodeberg()
+}
+
+func (f *DefaultProviderFactory) CreateGemProvider() PackageManager {
+	return NewProviderGem()
+}
+
+func (f *DefaultProviderFactory) CreateComposerProvider() PackageManager {
+	return NewProviderComposer()
+}
+
+func (f *DefaultProviderFactory) CreateLuaRocksProvider() PackageManager {
+	return NewProviderLuaRocks()
+}
+
+func (f *DefaultProviderFactory) CreateNuGetProvider() PackageManager {
+	return NewProviderNuGet()
+}
+
+func (f *DefaultProviderFactory) CreateOpamProvider() PackageManager {
+	return NewProviderOpam()
+}
+
+func (f *DefaultProviderFactory) CreateOpenVSXProvider() PackageManager {
+	return NewProviderOpenVSX()
+}
+
+func (f *DefaultProviderFactory) CreateGenericProvider() PackageManager {
+	return NewProviderGeneric()
 }

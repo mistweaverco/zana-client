@@ -148,7 +148,7 @@ func (ls *ListService) ListInstalledPackages(filters []string) {
 	}
 
 	// Display packages grouped by provider and count updates
-	providers := []string{"npm", "golang", "pypi", "cargo"}
+	providers := []string{"npm", "golang", "pypi", "cargo", "github", "gitlab", "codeberg", "gem", "composer", "luarocks", "nuget", "opam", "openvsx", "generic"}
 	updateCount := 0
 	totalCount := 0
 
@@ -268,7 +268,7 @@ func (ls *ListService) ListAllPackages(filters []string) {
 	}
 
 	// Display packages grouped by provider
-	providers := []string{"npm", "golang", "pypi", "cargo"}
+	providers := []string{"npm", "golang", "pypi", "cargo", "github", "gitlab", "codeberg", "gem", "composer", "luarocks", "nuget", "opam", "openvsx", "generic"}
 	for _, provider := range providers {
 		if packages, exists := packagesByProvider[provider]; exists {
 			fmt.Printf("🔹 %s Packages (%d):\n", strings.ToUpper(provider), len(packages))
@@ -379,6 +379,12 @@ func getProviderFromSourceID(sourceID string) string {
 		return "pypi"
 	} else if strings.HasPrefix(sourceID, "cargo:") {
 		return "cargo"
+	} else if strings.HasPrefix(sourceID, "github:") {
+		return "github"
+	} else if strings.HasPrefix(sourceID, "gitlab:") {
+		return "gitlab"
+	} else if strings.HasPrefix(sourceID, "codeberg:") {
+		return "codeberg"
 	}
 	// Legacy format support
 	if strings.HasPrefix(sourceID, "pkg:npm/") {
@@ -389,6 +395,12 @@ func getProviderFromSourceID(sourceID string) string {
 		return "pypi"
 	} else if strings.HasPrefix(sourceID, "pkg:cargo/") {
 		return "cargo"
+	} else if strings.HasPrefix(sourceID, "pkg:github/") {
+		return "github"
+	} else if strings.HasPrefix(sourceID, "pkg:gitlab/") {
+		return "gitlab"
+	} else if strings.HasPrefix(sourceID, "pkg:codeberg/") {
+		return "codeberg"
 	}
 	return "unknown"
 }
@@ -420,6 +432,26 @@ func getProviderIcon(provider string) string {
 		return "🐍"
 	case "cargo":
 		return "🦀"
+	case "github":
+		return "🐙"
+	case "gitlab":
+		return "🦊"
+	case "codeberg":
+		return "🦫"
+	case "gem":
+		return "💎"
+	case "composer":
+		return "🎼"
+	case "luarocks":
+		return "🌙"
+	case "nuget":
+		return "📦"
+	case "opam":
+		return "🐫"
+	case "openvsx":
+		return "📦"
+	case "generic":
+		return "🔧"
 	default:
 		return "📋"
 	}

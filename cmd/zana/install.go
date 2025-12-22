@@ -120,12 +120,21 @@ Supported package ID formats:
   golang:golang.org/x/tools/gopls@v0.14.0
   pypi:black@22.3.0
   cargo:ripgrep@13.0.0
+  github:user/repo
+  github:user/repo@v1.0.0
+  gitlab:group/subgroup/project
+  gitlab:group/subgroup/project@v1.0.0
+  codeberg:user/repo
+  codeberg:user/repo@v1.0.0
 
 Examples:
   zana install npm:@prisma/language-server
   zana install golang:golang.org/x/tools/gopls@latest
   zana install npm:eslint pypi:black@22.3.0
-  zana install cargo:ripgrep@13.0.0 npm:prettier`,
+  zana install cargo:ripgrep@13.0.0 npm:prettier
+  zana install github:sharkdp/bat
+  zana install gitlab:group/subgroup/myproject@v1.0.0
+  zana install codeberg:user/repo`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		return validatePackageArgs(args)
 	},
