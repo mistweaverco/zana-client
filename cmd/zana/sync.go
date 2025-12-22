@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
@@ -29,11 +30,11 @@ The registry URL can be overridden using the ZANA_REGISTRY_URL environment varia
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Downloading registry...")
 		if err := syncRegistryFn(); err != nil {
-			fmt.Printf("✗ Failed to sync registry: %v\n", err)
+			fmt.Printf("%s Failed to sync registry: %v\n", IconClose(), err)
 			osExit(1)
 			return
 		}
-		fmt.Println("✓ Registry synced successfully")
+		fmt.Printf("%s Registry synced successfully\n", IconCheck())
 	},
 }
 
@@ -47,7 +48,7 @@ are installed with their exact versions as specified in the lock file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Syncing packages from zana-lock.json...")
 		syncPackagesFn()
-		fmt.Println("✓ Packages sync completed")
+		fmt.Printf("%s Packages sync completed\n", IconCheck())
 	},
 }
 
@@ -65,9 +66,18 @@ func downloadAndUnzipRegistryForced() error {
 
 	cachePath := files.GetRegistryCachePath()
 
-	// Force download by using 0 duration (cache is never valid)
-	if err := files.DownloadWithCache(registryURL, cachePath, 0); err != nil {
-		return fmt.Errorf("failed to download registry: %w", err)
+	// Force download by using 0 duration (cache is never valid) with spinner
+	var downloadErr error
+	action := func() {
+		downloadErr = files.DownloadWithCache(registryURL, cachePath, 0)
+	}
+
+	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
+		return err
+	}
+
+	if downloadErr != nil {
+		return fmt.Errorf("failed to download registry: %w", downloadErr)
 	}
 
 	// Unzip the registry

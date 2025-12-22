@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/spf13/afero"
 )
 
@@ -422,9 +423,24 @@ func DownloadAndUnzipRegistry() error {
 
 	cachePath := GetRegistryCachePath()
 
-	// Download the registry
-	if err := DownloadWithCache(registryURL, cachePath, 24*time.Hour); err != nil {
-		return fmt.Errorf("failed to download registry: %w", err)
+	// Check if cache is valid first
+	if IsCacheValid(cachePath, 24*time.Hour) {
+		// Cache is valid, just unzip if needed
+		return nil
+	}
+
+	// Download the registry with spinner
+	var downloadErr error
+	action := func() {
+		downloadErr = DownloadWithCache(registryURL, cachePath, 24*time.Hour)
+	}
+
+	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
+		return err
+	}
+
+	if downloadErr != nil {
+		return fmt.Errorf("failed to download registry: %w", downloadErr)
 	}
 
 	// Unzip the registry

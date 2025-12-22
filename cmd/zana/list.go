@@ -89,7 +89,7 @@ func (ls *ListService) ListInstalledPackages(filters []string) {
 	// even when the registry cannot be refreshed (e.g. offline).
 	_ = ls.fileDownloader.DownloadAndUnzipRegistry()
 
-	fmt.Println("📦 Locally Installed Packages")
+	fmt.Printf("%s Locally Installed Packages\n", IconSummary())
 	fmt.Println()
 
 	localPackages := ls.localPackages.GetData(true).Packages
@@ -170,10 +170,10 @@ func (ls *ListService) ListInstalledPackages(filters []string) {
 	}
 
 	// Show summary
-	fmt.Printf("📊 Summary: %d of %d packages are up to date", totalCount-updateCount, totalCount)
+	fmt.Printf("%s Summary: %d of %d packages are up to date", IconSummary(), totalCount-updateCount, totalCount)
 	if updateCount > 0 {
 		fmt.Printf(", %d updates available", updateCount)
-		fmt.Printf("\n💡 Use 'zana update --all' to update all packages")
+		fmt.Printf("\n%s Use 'zana update --all' to update all packages", IconLightbulb())
 	}
 	fmt.Println()
 }
@@ -193,23 +193,23 @@ func (ls *ListService) ListAllPackages(filters []string) {
 
 	if len(registry) == 0 {
 		fmt.Println("No packages found in the registry.")
-		fmt.Println("🔄 Downloading registry...")
+		fmt.Printf("%s Downloading registry...\n", IconRefresh())
 
 		// Try to download the registry
 		if err := ls.fileDownloader.DownloadAndUnzipRegistry(); err != nil {
-			fmt.Printf("❌ Failed to download registry: %v\n", err)
-			fmt.Println("💡 Use 'zana' (without flags) to download the registry manually.")
+			fmt.Printf("%s Failed to download registry: %v\n", IconCancel(), err)
+			fmt.Printf("%s Use 'zana' (without flags) to download the registry manually.\n", IconLightbulb())
 			return
 		}
 
-		fmt.Println("✅ Registry downloaded successfully!")
+		fmt.Printf("%s Registry downloaded successfully!\n", IconCheckCircle())
 		fmt.Println()
 
 		// Try to get the registry data again
 		registry = ls.registry.GetData(true)
 
 		if len(registry) == 0 {
-			fmt.Println("❌ Still no packages found after downloading registry.")
+			fmt.Printf("%s Still no packages found after downloading registry.\n", IconCancel())
 			return
 		}
 	}
@@ -279,13 +279,13 @@ func (ls *ListService) ListAllPackages(filters []string) {
 				// Build status indicators
 				statusIndicators := []string{}
 				if isInstalled {
-					statusIndicators = append(statusIndicators, "✅ Installed")
+					statusIndicators = append(statusIndicators, IconCheckCircle()+" Installed")
 					// Check if update is available
 					updateInfo, hasUpdate := ls.checkUpdateAvailability(pkg.Source.ID, installedVersion)
 					if hasUpdate {
 						statusIndicators = append(statusIndicators, updateInfo)
 					} else {
-						statusIndicators = append(statusIndicators, "✅ Up to date")
+						statusIndicators = append(statusIndicators, IconCheckCircle()+" Up to date")
 					}
 				}
 
@@ -313,13 +313,13 @@ func (ls *ListService) checkUpdateAvailability(sourceID, currentVersion string) 
 	}
 	// If local version is unknown or set to "latest", always show update to the concrete remote version
 	if currentVersion == "" || currentVersion == "latest" {
-		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
+		return fmt.Sprintf("%s Update available: v%s", IconRefresh(), latestVersion), true
 	}
 	updateAvailable, _ := ls.updateChecker.CheckIfUpdateIsAvailable(currentVersion, latestVersion)
 	if updateAvailable {
-		return fmt.Sprintf("🔄 Update available: v%s", latestVersion), true
+		return fmt.Sprintf("%s Update available: v%s", IconRefresh(), latestVersion), true
 	}
-	return "✅ Up to date", false
+	return IconCheckCircle() + " Up to date", false
 }
 
 // Default implementations for backward compatibility
@@ -425,34 +425,34 @@ func getPackageNameFromSourceID(sourceID string) string {
 func getProviderIcon(provider string) string {
 	switch provider {
 	case "npm":
-		return "📦"
+		return IconNPM()
 	case "golang":
-		return "🐹"
+		return IconGolang()
 	case "pypi":
-		return "🐍"
+		return IconPython()
 	case "cargo":
-		return "🦀"
+		return IconCargo()
 	case "github":
-		return "🐙"
+		return IconGitHub()
 	case "gitlab":
-		return "🦊"
+		return IconGitLab()
 	case "codeberg":
-		return "🦫"
+		return IconCodeberg()
 	case "gem":
-		return "💎"
+		return IconGem()
 	case "composer":
-		return "🎼"
+		return IconComposer()
 	case "luarocks":
-		return "🌙"
+		return IconLuaRocks()
 	case "nuget":
-		return "📦"
+		return IconNuGet()
 	case "opam":
-		return "🐫"
+		return IconOpam()
 	case "openvsx":
-		return "📦"
+		return IconOpenVSX()
 	case "generic":
-		return "🔧"
+		return IconGeneric()
 	default:
-		return "📋"
+		return IconGeneric()
 	}
 }

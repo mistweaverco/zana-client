@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
 )
@@ -37,10 +38,11 @@ Examples:
 		packages := args
 
 		// Process all packages
-		internalIDs := make([]string, len(packages))
-		displayIDs := make([]string, len(packages))
+		// Use slices instead of fixed-size arrays to handle multi-select results
+		internalIDs := make([]string, 0, len(packages))
+		displayIDs := make([]string, 0, len(packages))
 
-		for i, userPkgID := range packages {
+		for _, userPkgID := range packages {
 			// Parse package ID and version from the user-facing ID
 			baseID, _ := parsePackageIDAndVersion(userPkgID)
 
@@ -52,18 +54,23 @@ Examples:
 				// Package name without provider - search installed packages and prompt user
 				matches := findInstalledPackagesByName(baseID)
 				if len(matches) == 0 {
-					fmt.Printf("✗ No installed packages found matching '%s'\n", baseID)
+					fmt.Printf("%s No installed packages found matching '%s'\n", IconClose(), baseID)
 					return
 				}
 
-				selectedSourceID, err := promptForProviderSelection(baseID, matches)
+				// Always show confirmation for partial names (user didn't provide full provider:package-id)
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matches, false, "remove")
 				if err != nil {
-					fmt.Printf("✗ Error selecting provider for '%s': %v\n", baseID, err)
+					fmt.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
 					return
 				}
 
-				internalID = selectedSourceID
-				displayID = userPkgID
+				// Process all selected packages
+				for _, selectedSourceID := range selectedSourceIDs {
+					internalIDs = append(internalIDs, selectedSourceID)
+					displayIDs = append(displayIDs, selectedSourceID)
+				}
+				continue // Skip the single package processing below
 			} else {
 				// Package with provider - parse normally
 				provider, pkgName, err := parseUserPackageID(baseID)
@@ -77,32 +84,44 @@ Examples:
 				}
 
 				internalID = toInternalPackageID(provider, pkgName)
-				displayID = userPkgID
+				// Construct displayID from provider and package name (full provider:package-id format)
+				displayID = fmt.Sprintf("%s:%s", provider, pkgName)
 			}
 
-			internalIDs[i] = internalID
-			displayIDs[i] = displayID
+			internalIDs = append(internalIDs, internalID)
+			displayIDs = append(displayIDs, displayID)
 		}
 
 		// Remove all packages
-		fmt.Printf("Removing %d package(s)...\n", len(packages))
+		fmt.Printf("Removing %d package(s)...\n", len(internalIDs))
 
 		allSuccess := true
 		successCount := 0
 		failedCount := 0
 
-		for i := range packages {
+		for i := range internalIDs {
 			internalID := internalIDs[i]
 			displayID := displayIDs[i]
-			fmt.Printf("Removing %s...\n", displayID)
 
-			// Remove the package
-			success := removePackageFn(internalID)
+			// Remove the package with spinner showing package name
+			var success bool
+			action := func() {
+				success = removePackageFn(internalID)
+			}
+
+			title := fmt.Sprintf("Removing %s...", displayID)
+			if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+				fmt.Printf("%s Failed to remove %s: %v\n", IconClose(), displayID, err)
+				failedCount++
+				allSuccess = false
+				continue
+			}
+
 			if success {
-				fmt.Printf("✓ Successfully removed %s\n", displayID)
+				fmt.Printf("%s Successfully removed %s\n", IconCheck(), displayID)
 				successCount++
 			} else {
-				fmt.Printf("✗ Failed to remove %s\n", displayID)
+				fmt.Printf("%s Failed to remove %s\n", IconClose(), displayID)
 				failedCount++
 				allSuccess = false
 			}

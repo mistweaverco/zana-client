@@ -20,7 +20,7 @@ This command verifies the presence of required tools and dependencies:
   - Cargo (Rust package manager)`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("🔍 Checking system requirements...")
+		fmt.Printf("%s Checking system requirements...\n", IconMagnify())
 		fmt.Println()
 
 		// Check requirements
@@ -38,9 +38,9 @@ This command verifies the presence of required tools and dependencies:
 		// Overall status
 		allMet := results.HasNPM && results.HasPython && results.HasPythonDistutils && results.HasGo && results.HasCargo
 		if allMet {
-			fmt.Println("✅ All requirements are met! Your system is ready to use Zana.")
+			fmt.Printf("%s All requirements are met! Your system is ready to use Zana.\n", IconCheckCircle())
 		} else {
-			fmt.Println("⚠️  Some requirements are not met. Some package managers may not work properly.")
+			fmt.Printf("%s Some requirements are not met. Some package managers may not work properly.\n", IconAlert())
 			fmt.Println()
 			fmt.Println("To install missing requirements:")
 			fmt.Println("  - NPM: Install Node.js from https://nodejs.org/")
@@ -58,10 +58,10 @@ func displayRequirement(name string, met bool, description string) {
 	var status, icon string
 	if met {
 		status = "Available"
-		icon = "✅"
+		icon = IconCheckCircle()
 	} else {
 		status = "Missing"
-		icon = "❌"
+		icon = IconCancel()
 	}
 
 	fmt.Printf("%s %s: %s\n", icon, name, status)
