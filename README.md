@@ -26,6 +26,14 @@ but rather any other editor 🫶.
 
 Zana is [swahili] for "tools" or "tooling."
 
+<p></p>
+
+Currently, Zana is in beta and under active development.
+
+<p></p>
+
+</div>
+
 ## Terms used
 
 - *Language Server Protocol (LSP)*: A protocol that defines
@@ -43,19 +51,10 @@ Zana is [swahili] for "tools" or "tooling."
 - A Terminal User Interface (TUI)**: A text-based user interface
   that runs in a terminal emulator.
 
-
 A minimal LSP/DAP/formatter/linter package manager
 uses the [Zana Registry][zana-registry] to install and manage packages.
 
 Easily install and manage LSP servers, DAP servers, linters, and formatters.
-
-<p></p>
-
-Currently, Zana is in beta and under active development.
-
-<p></p>
-
-</div>
 
 ## Requirements
 
