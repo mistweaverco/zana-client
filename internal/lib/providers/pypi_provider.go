@@ -43,19 +43,42 @@ var lppPyRemove = local_packages_parser.RemoveLocalPackage
 var lppPyGetDataForProvider = local_packages_parser.GetDataForProvider
 var lppPyGetData = local_packages_parser.GetData
 
+// getPythonVersion detects the current Python version (e.g., "3.11", "3.12")
+// by running python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+func (p *PyPiProvider) getPythonVersion() (string, error) {
+	// Try python3 first, then python
+	pythonCmd := "python3"
+	if !pipHasCommand("python3", []string{"--version"}, nil) {
+		if !pipHasCommand("python", []string{"--version"}, nil) {
+			return "", fmt.Errorf("python3 or python command not found")
+		}
+		pythonCmd = "python"
+	}
+
+	code, output, err := pipShellOutCapture(pythonCmd, []string{"-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"}, "", nil)
+	if err != nil || code != 0 {
+		return "", fmt.Errorf("failed to detect Python version: %v, output: %s", err, output)
+	}
+	version := strings.TrimSpace(output)
+	return version, nil
+}
+
 func NewProviderPyPi() *PyPiProvider {
 	p := &PyPiProvider{}
 	p.PROVIDER_NAME = "pypi"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = p.PROVIDER_NAME + ":"
-	hasPip := pipHasCommand("pip", []string{"--version"}, nil)
-	if !hasPip {
-		hasPip = pipHasCommand("pip3", []string{"--version"}, nil)
+
+	// Prefer pip3 to ensure we're using Python 3, fallback to pip
+	hasPip3 := pipHasCommand("pip3", []string{"--version"}, nil)
+	if hasPip3 {
+		pipCmd = "pip3"
+	} else {
+		hasPip := pipHasCommand("pip", []string{"--version"}, nil)
 		if !hasPip {
 			Logger.Error("PyPI Provider: pip or pip3 command not found. Please install pip to use the PyPiProvider.")
-		} else {
-			pipCmd = "pip3"
 		}
+		// pipCmd defaults to "pip" if pip3 is not available
 	}
 	return p
 }
@@ -214,8 +237,24 @@ exec %s "$@"
 	return nil
 }
 
-// findSitePackagesDir finds the site-packages directory where pip installed the modules
+// findSitePackagesDir finds the site-packages directory where pip installed the modules.
+// It uses the current Python version to locate the correct directory, ensuring compatibility
+// with the latest Python version instead of relying on old versions.
 func (p *PyPiProvider) findSitePackagesDir() string {
+	// First, try to detect the current Python version and use that
+	pythonVersion, err := p.getPythonVersion()
+	if err == nil {
+		// Construct the expected path using current Python version
+		expectedPath := filepath.Join(p.APP_PACKAGES_DIR, "lib", "python"+pythonVersion, "site-packages")
+		if _, err := pipStat(expectedPath); err == nil {
+			return expectedPath
+		}
+		// If the directory doesn't exist yet, return the expected path anyway
+		// It will be created when packages are installed
+		return expectedPath
+	}
+
+	// Fallback: search for any python* directory (for backward compatibility)
 	libDir := filepath.Join(p.APP_PACKAGES_DIR, "lib")
 	if _, err := pipStat(libDir); os.IsNotExist(err) {
 		return ""
@@ -224,12 +263,22 @@ func (p *PyPiProvider) findSitePackagesDir() string {
 	if err != nil {
 		return ""
 	}
+	// Prefer newer Python versions by sorting and taking the last one
+	var pythonDirs []string
 	for _, entry := range entries {
 		if entry.IsDir() && strings.HasPrefix(entry.Name(), "python") {
-			sitePackagesPath := filepath.Join(libDir, entry.Name(), "site-packages")
-			if _, err := pipStat(sitePackagesPath); err == nil {
-				return sitePackagesPath
-			}
+			pythonDirs = append(pythonDirs, entry.Name())
+		}
+	}
+	if len(pythonDirs) == 0 {
+		return ""
+	}
+	// Sort to prefer newer versions (python3.12 > python3.11 > python3.10)
+	// Simple string sort works because "python3.12" > "python3.11" lexicographically
+	for i := len(pythonDirs) - 1; i >= 0; i-- {
+		sitePackagesPath := filepath.Join(libDir, pythonDirs[i], "site-packages")
+		if _, err := pipStat(sitePackagesPath); err == nil {
+			return sitePackagesPath
 		}
 	}
 	return ""
@@ -370,6 +419,15 @@ func (p *PyPiProvider) Sync() bool {
 
 	Logger.Info("PyPI Sync: Starting sync process")
 
+	// Ensure we're using the current Python version by detecting it
+	pythonVersion, err := p.getPythonVersion()
+	if err != nil {
+		Logger.Error(fmt.Sprintf("PyPI Sync: Failed to detect Python version: %v", err))
+		// Continue anyway, pip will use whatever Python it's associated with
+	} else {
+		Logger.Info(fmt.Sprintf("PyPI Sync: Using Python version %s", pythonVersion))
+	}
+
 	desired := local_packages_parser.GetDataForProvider("pypi").Packages
 
 	if p.areAllPackagesInstalled(desired) {
@@ -388,6 +446,7 @@ func (p *PyPiProvider) Sync() bool {
 		if v, ok := installed[name]; !ok || v != pkg.Version {
 			pkgString := fmt.Sprintf("%s==%s", name, pkg.Version)
 			Logger.Info(fmt.Sprintf("PyPI Sync: Installing package %s", pkgString))
+			// Use the current pip command which should be associated with the current Python version
 			installCode, err := pipShellOut(pipCmd, []string{"install", pkgString, "--prefix", p.APP_PACKAGES_DIR}, p.APP_PACKAGES_DIR, nil)
 			if err != nil || installCode != 0 {
 				Logger.Error(fmt.Sprintf("Error installing %s==%s: %v", name, pkg.Version, err))
