@@ -28,7 +28,8 @@ Zana is [swahili] for "tools" or "tooling."
 
 <p></p>
 
-Currently, Zana is in beta and under active development.
+Currently, Zana is in early development,
+but should be considered stable enough for general use.
 
 <p></p>
 
