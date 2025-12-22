@@ -319,8 +319,17 @@ func getLocalPackagesData() []localPackageItem {
 	return localItems
 }
 
-// deriveNameFromSourceID extracts the package name from a sourceId like "pkg:cargo/ripgrep"
+// deriveNameFromSourceID extracts the package name from a sourceId.
+// Supports both legacy format (pkg:cargo/ripgrep) and new format (cargo:ripgrep).
 func deriveNameFromSourceID(sourceID string) string {
+	// Support new format: provider:pkg
+	if strings.Contains(sourceID, ":") && !strings.HasPrefix(sourceID, "pkg:") {
+		parts := strings.SplitN(sourceID, ":", 2)
+		if len(parts) == 2 {
+			return parts[1]
+		}
+	}
+	// Legacy format: pkg:provider/pkg
 	withoutPrefix := strings.TrimPrefix(sourceID, "pkg:")
 	parts := strings.SplitN(withoutPrefix, "/", 2)
 	if len(parts) == 2 {

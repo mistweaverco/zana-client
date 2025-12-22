@@ -12,7 +12,7 @@
         "properties": {
           "source_id": {
             "type": "string",
-            "pattern": "^pkg:(github|npm)/.+$"
+            "pattern": "^(npm|pypi|golang|cargo):.+$|^pkg:(github|npm|pypi|golang|cargo)/.+$"
           },
           "version": {
             "type": "string",

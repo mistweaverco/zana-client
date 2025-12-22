@@ -125,12 +125,14 @@ var updateCmd = &cobra.Command{
 	Long: `Update packages to their latest versions.
 
 Examples:
-  zana update pkg:npm/eslint
-  zana update pkg:golang/golang.org/x/tools/gopls pkg:npm/prettier
-  zana update pkg:pypi/black pkg:cargo/ripgrep
+  zana update npm:eslint
+  zana update golang:golang.org/x/tools/gopls npm:prettier
+  zana update pypi:black cargo:ripgrep
   zana update --all (update all installed packages)
   zana update --self (update zana itself to the latest version)`,
 	Args: cobra.MinimumNArgs(0), // Allow no args if --all or --self is used
+	// Enable shell completion for package IDs.
+	ValidArgsFunction: packageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		selfFlag, _ := cmd.Flags().GetBool("self")
 		if selfFlag {
@@ -167,29 +169,24 @@ Examples:
 			return
 		}
 
-		// Validate all package IDs first
+		// Validate and normalize all package IDs first
 		packages := args
-		for _, pkgId := range packages {
-			if !strings.HasPrefix(pkgId, "pkg:") {
+		internalIDs := make([]string, len(packages))
+		for i, userPkgID := range packages {
+			provider, _, err := parseUserPackageID(userPkgID)
+			if err != nil {
 				service := newUpdateService()
-				service.output.Printf("Error: Invalid package ID format '%s'. Must start with 'pkg:'\n", pkgId)
+				service.output.Printf("Error: %v\n", err)
 				return
 			}
-
-			// Parse provider from package ID
-			parts := strings.Split(strings.TrimPrefix(pkgId, "pkg:"), "/")
-			if len(parts) < 2 {
-				service := newUpdateService()
-				service.output.Printf("Error: Invalid package ID format '%s'. Expected 'pkg:provider/package-name'\n", pkgId)
-				return
-			}
-
-			provider := parts[0]
 			if !providers.IsSupportedProvider(provider) {
 				service := newUpdateService()
-				service.output.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, pkgId, strings.Join(providers.AvailableProviders, ", "))
+				service.output.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, userPkgID, strings.Join(providers.AvailableProviders, ", "))
 				return
 			}
+			// Normalize to internal ID for the provider layer
+			_, pkgName, _ := parseUserPackageID(userPkgID)
+			internalIDs[i] = toInternalPackageID(provider, pkgName)
 		}
 
 		// Update individual packages
@@ -200,16 +197,17 @@ Examples:
 		successCount := 0
 		failedCount := 0
 
-		for _, pkgId := range packages {
-			service.output.Printf("Updating %s...\n", pkgId)
+		for idx, userPkgID := range packages {
+			internalID := internalIDs[idx]
+			service.output.Printf("Updating %s...\n", userPkgID)
 
 			// Update the package using the service method (which can be mocked in tests)
-			success := service.updatePackage(pkgId)
+			success := service.updatePackage(internalID)
 			if success {
-				service.output.Printf("✓ Successfully updated %s\n", pkgId)
+				service.output.Printf("✓ Successfully updated %s\n", userPkgID)
 				successCount++
 			} else {
-				service.output.Printf("✗ Failed to update %s\n", pkgId)
+				service.output.Printf("✗ Failed to update %s\n", userPkgID)
 				failedCount++
 				allSuccess = false
 			}

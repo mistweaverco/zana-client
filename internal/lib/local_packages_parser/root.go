@@ -37,8 +37,24 @@ func NewWithFileManager(fileManager FileManager) *LocalPackagesParser {
 	}
 }
 
+// normalizePackageID converts a package ID from legacy format (pkg:provider/pkg)
+// to the new format (provider:pkg), or returns it unchanged if already in new format.
+// This ensures backward compatibility when reading zana-lock.json files.
+func normalizePackageID(sourceID string) string {
+	if strings.HasPrefix(sourceID, "pkg:") {
+		rest := strings.TrimPrefix(sourceID, "pkg:")
+		parts := strings.SplitN(rest, "/", 2)
+		if len(parts) == 2 {
+			return parts[0] + ":" + parts[1]
+		}
+	}
+	return sourceID
+}
+
 // GetData returns the local packages data from the local packages file.
 // The force flag is ignored; data is always read from disk to avoid caching.
+// Package IDs are normalized from legacy format (pkg:provider/pkg) to new format (provider:pkg)
+// for backward compatibility.
 func (lpp *LocalPackagesParser) GetData(force bool) LocalPackageRoot {
 	localPackagesFile := lpp.fileManager.GetAppLocalPackagesFilePath()
 	var localPackageRoot LocalPackageRoot
@@ -58,16 +74,26 @@ func (lpp *LocalPackagesParser) GetData(force bool) LocalPackageRoot {
 		return LocalPackageRoot{Packages: []LocalPackageItem{}}
 	}
 
+	// Normalize all package IDs from legacy format to new format
+	for i := range localPackageRoot.Packages {
+		localPackageRoot.Packages[i].SourceID = normalizePackageID(localPackageRoot.Packages[i].SourceID)
+	}
+
 	return localPackageRoot
 }
 
 // GetDataForProvider returns the local packages data
-// for a specific provider
+// for a specific provider. Supports both legacy (pkg:provider/pkg) and new (provider:pkg) formats.
 func (lpp *LocalPackagesParser) GetDataForProvider(provider string) LocalPackageRoot {
 	localPackageRoot := lpp.GetData(false)
 	filteredPackages := []LocalPackageItem{}
 
 	for _, item := range localPackageRoot.Packages {
+		// Check for new format: provider:pkg
+		if strings.HasPrefix(item.SourceID, provider+":") {
+			filteredPackages = append(filteredPackages, item)
+		}
+		// Also check legacy format for backward compatibility (though GetData normalizes)
 		if strings.HasPrefix(item.SourceID, "pkg:"+provider+"/") {
 			filteredPackages = append(filteredPackages, item)
 		}
@@ -77,12 +103,14 @@ func (lpp *LocalPackagesParser) GetDataForProvider(provider string) LocalPackage
 }
 
 func (lpp *LocalPackagesParser) AddLocalPackage(sourceId string, version string) error {
+	// Normalize the source ID to new format before storing
+	normalizedID := normalizePackageID(sourceId)
 	localPackageRoot := lpp.GetData(false)
 	packageExists := false
 
-	// Check if the package is already installed
+	// Check if the package is already installed (compare normalized IDs)
 	for i, pkg := range localPackageRoot.Packages {
-		if pkg.SourceID == sourceId {
+		if pkg.SourceID == normalizedID {
 			// Update the existing package with the new version
 			localPackageRoot.Packages[i].Version = version
 			packageExists = true
@@ -90,10 +118,10 @@ func (lpp *LocalPackagesParser) AddLocalPackage(sourceId string, version string)
 		}
 	}
 
-	// If not found, add the new package
+	// If not found, add the new package with normalized ID
 	if !packageExists {
 		localPackageRoot.Packages = append(localPackageRoot.Packages, LocalPackageItem{
-			SourceID: sourceId,
+			SourceID: normalizedID,
 			Version:  version,
 		})
 	}
@@ -113,9 +141,11 @@ func (lpp *LocalPackagesParser) AddLocalPackage(sourceId string, version string)
 }
 
 func (lpp *LocalPackagesParser) RemoveLocalPackage(sourceId string) error {
+	// Normalize the source ID to new format before looking up
+	normalizedID := normalizePackageID(sourceId)
 	localPackageRoot := lpp.GetData(false)
 	for i, pkg := range localPackageRoot.Packages {
-		if pkg.SourceID == sourceId {
+		if pkg.SourceID == normalizedID {
 			localPackageRoot.Packages = append(localPackageRoot.Packages[:i], localPackageRoot.Packages[i+1:]...)
 			break
 		}
@@ -136,9 +166,11 @@ func (lpp *LocalPackagesParser) RemoveLocalPackage(sourceId string) error {
 }
 
 func (lpp *LocalPackagesParser) GetBySourceId(sourceId string) LocalPackageItem {
+	// Normalize the source ID to new format before looking up
+	normalizedID := normalizePackageID(sourceId)
 	localPackageRoot := lpp.GetData(false)
 	for _, item := range localPackageRoot.Packages {
-		if item.SourceID == sourceId {
+		if item.SourceID == normalizedID {
 			return item
 		}
 	}
@@ -146,9 +178,11 @@ func (lpp *LocalPackagesParser) GetBySourceId(sourceId string) LocalPackageItem 
 }
 
 func (lpp *LocalPackagesParser) IsPackageInstalled(sourceId string) bool {
+	// Normalize the source ID to new format before looking up
+	normalizedID := normalizePackageID(sourceId)
 	localPackageRoot := lpp.GetData(false)
 	for _, item := range localPackageRoot.Packages {
-		if item.SourceID == sourceId {
+		if item.SourceID == normalizedID {
 			return true
 		}
 	}

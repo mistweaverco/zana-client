@@ -40,12 +40,18 @@ func NewProviderGolang() *GolangProvider {
 	p := &GolangProvider{}
 	p.PROVIDER_NAME = "golang"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
-	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
+	p.PREFIX = p.PROVIDER_NAME + ":"
 	return p
 }
 
 func (p *GolangProvider) getRepo(sourceID string) string {
-	re := regexp.MustCompile("^" + p.PREFIX + "(.*)")
+	// Support both legacy (pkg:golang/pkg) and new (golang:pkg) formats
+	normalized := normalizePackageID(sourceID)
+	if strings.HasPrefix(normalized, p.PREFIX) {
+		return strings.TrimPrefix(normalized, p.PREFIX)
+	}
+	// Fallback for legacy format
+	re := regexp.MustCompile("^pkg:" + p.PROVIDER_NAME + "/(.*)")
 	matches := re.FindStringSubmatch(sourceID)
 	if len(matches) > 1 {
 		return matches[1]

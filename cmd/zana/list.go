@@ -262,6 +262,17 @@ func checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
 }
 
 func getProviderFromSourceID(sourceID string) string {
+	// Support both legacy (pkg:provider/pkg) and new (provider:pkg) formats
+	if strings.HasPrefix(sourceID, "npm:") {
+		return "npm"
+	} else if strings.HasPrefix(sourceID, "golang:") {
+		return "golang"
+	} else if strings.HasPrefix(sourceID, "pypi:") {
+		return "pypi"
+	} else if strings.HasPrefix(sourceID, "cargo:") {
+		return "cargo"
+	}
+	// Legacy format support
 	if strings.HasPrefix(sourceID, "pkg:npm/") {
 		return "npm"
 	} else if strings.HasPrefix(sourceID, "pkg:golang/") {
@@ -275,13 +286,18 @@ func getProviderFromSourceID(sourceID string) string {
 }
 
 func getPackageNameFromSourceID(sourceID string) string {
-	// Remove the "pkg:" prefix
+	// Support new format: provider:pkg
+	if strings.Contains(sourceID, ":") && !strings.HasPrefix(sourceID, "pkg:") {
+		parts := strings.SplitN(sourceID, ":", 2)
+		if len(parts) == 2 {
+			return parts[1]
+		}
+	}
+	// Legacy format: pkg:provider/pkg
 	withoutPrefix := strings.TrimPrefix(sourceID, "pkg:")
-
-	// Split by "/" to separate provider from package name
 	parts := strings.SplitN(withoutPrefix, "/", 2)
 	if len(parts) >= 2 {
-		return parts[1] // Return everything after the first "/"
+		return parts[1]
 	}
 	return sourceID
 }
