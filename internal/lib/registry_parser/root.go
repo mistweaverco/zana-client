@@ -54,6 +54,7 @@ type RegistryItem struct {
 	Licenses    []string           `json:"licenses"`
 	Languages   []string           `json:"languages"`
 	Categories  []string           `json:"categories"`
+	Aliases     []string           `json:"aliases,omitempty"`
 	Source      RegistryItemSource `json:"source"`
 	Bin         map[string]string  `json:"bin"`
 }
@@ -93,6 +94,30 @@ func (rp *RegistryParser) GetBySourceId(sourceId string) RegistryItem {
 func (rp *RegistryParser) GetLatestVersion(sourceId string) string {
 	item := rp.GetBySourceId(sourceId)
 	return item.Version
+}
+
+// GetByNameOrAlias finds a registry item by its name or any of its aliases.
+// It prioritizes exact name matches over alias matches.
+func (rp *RegistryParser) GetByNameOrAlias(name string) RegistryItem {
+	registryRoot := rp.GetData(false)
+
+	// First pass: check for exact name matches (prioritize these)
+	for _, item := range registryRoot {
+		if item.Name == name {
+			return item
+		}
+	}
+
+	// Second pass: check for alias matches only if no name match was found
+	for _, item := range registryRoot {
+		for _, alias := range item.Aliases {
+			if alias == name {
+				return item
+			}
+		}
+	}
+
+	return RegistryItem{}
 }
 
 // LoadFromBytes loads registry data from JSON bytes

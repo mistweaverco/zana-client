@@ -392,3 +392,81 @@ func TestIntegration(t *testing.T) {
 		assert.Equal(t, "3.0.0", parser.GetLatestVersion("pkg:npm/zebra"))
 	})
 }
+
+func TestGetByNameOrAlias(t *testing.T) {
+	t.Run("finds item by name", func(t *testing.T) {
+		mockReader := &mockFileReader{}
+		parser := NewRegistryParser(mockReader)
+
+		jsonData := `[
+			{"name": "test-package", "version": "1.0.0", "source": {"id": "pkg:npm/test-package"}}
+		]`
+
+		err := parser.LoadFromBytes([]byte(jsonData))
+		require.NoError(t, err)
+
+		item := parser.GetByNameOrAlias("test-package")
+		assert.Equal(t, "test-package", item.Name)
+		assert.Equal(t, "1.0.0", item.Version)
+	})
+
+	t.Run("finds item by alias", func(t *testing.T) {
+		mockReader := &mockFileReader{}
+		parser := NewRegistryParser(mockReader)
+
+		jsonData := `[
+			{"name": "main-package", "version": "1.0.0", "aliases": ["alias1", "alias2"], "source": {"id": "pkg:npm/main-package"}}
+		]`
+
+		err := parser.LoadFromBytes([]byte(jsonData))
+		require.NoError(t, err)
+
+		item := parser.GetByNameOrAlias("alias1")
+		assert.Equal(t, "main-package", item.Name)
+		assert.Equal(t, "1.0.0", item.Version)
+
+		item = parser.GetByNameOrAlias("alias2")
+		assert.Equal(t, "main-package", item.Name)
+	})
+
+	t.Run("returns empty item when name or alias not found", func(t *testing.T) {
+		mockReader := &mockFileReader{}
+		parser := NewRegistryParser(mockReader)
+
+		jsonData := `[
+			{"name": "test", "version": "1.0.0", "aliases": ["alias1"], "source": {"id": "pkg:npm/test"}}
+		]`
+
+		err := parser.LoadFromBytes([]byte(jsonData))
+		require.NoError(t, err)
+
+		item := parser.GetByNameOrAlias("nonexistent")
+		assert.Equal(t, RegistryItem{}, item)
+	})
+
+	t.Run("returns empty item when no data loaded", func(t *testing.T) {
+		mockReader := &mockFileReader{}
+		parser := NewRegistryParser(mockReader)
+
+		item := parser.GetByNameOrAlias("test")
+		assert.Equal(t, RegistryItem{}, item)
+	})
+
+	t.Run("prioritizes name over alias when both match", func(t *testing.T) {
+		mockReader := &mockFileReader{}
+		parser := NewRegistryParser(mockReader)
+
+		jsonData := `[
+			{"name": "package-a", "version": "1.0.0", "aliases": ["package-b"], "source": {"id": "pkg:npm/package-a"}},
+			{"name": "package-b", "version": "2.0.0", "source": {"id": "pkg:npm/package-b"}}
+		]`
+
+		err := parser.LoadFromBytes([]byte(jsonData))
+		require.NoError(t, err)
+
+		// Should find package-b by name, not package-a by alias
+		item := parser.GetByNameOrAlias("package-b")
+		assert.Equal(t, "package-b", item.Name)
+		assert.Equal(t, "2.0.0", item.Version)
+	})
+}
