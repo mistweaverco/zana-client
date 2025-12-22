@@ -157,6 +157,71 @@ func TestListService(t *testing.T) {
 		assert.Equal(t, mockUpdateChecker, service.updateChecker)
 		assert.Equal(t, mockFileDownloader, service.fileDownloader)
 	})
+
+	t.Run("ListInstalledPackages refreshes registry via downloader", func(t *testing.T) {
+		called := false
+
+		mockLocalPackages := &MockLocalPackagesProvider{
+			GetDataFunc: func(force bool) local_packages_parser.LocalPackageRoot {
+				// Return empty package list so the method exits quickly.
+				return local_packages_parser.LocalPackageRoot{Packages: []local_packages_parser.LocalPackageItem{}}
+			},
+		}
+
+		mockFileDownloader := &MockFileDownloader{
+			DownloadAndUnzipRegistryFunc: func() error {
+				called = true
+				return nil
+			},
+		}
+
+		service := NewListServiceWithDependencies(
+			mockLocalPackages,
+			&MockRegistryProvider{},
+			&MockUpdateChecker{},
+			mockFileDownloader,
+		)
+
+		// We don't care about the actual output here, just that the
+		// downloader is invoked as part of the listing process.
+		_ = captureOutput(t, func() {
+			service.ListInstalledPackages()
+		})
+
+		assert.True(t, called, "expected registry downloader to be called")
+	})
+
+	t.Run("ListAllPackages refreshes registry via downloader", func(t *testing.T) {
+		called := false
+
+		mockRegistry := &MockRegistryProvider{
+			GetDataFunc: func(force bool) []registry_parser.RegistryItem {
+				// Return an empty registry so the method can proceed
+				// down the empty-path logic without extra noise.
+				return []registry_parser.RegistryItem{}
+			},
+		}
+
+		mockFileDownloader := &MockFileDownloader{
+			DownloadAndUnzipRegistryFunc: func() error {
+				called = true
+				return nil
+			},
+		}
+
+		service := NewListServiceWithDependencies(
+			&MockLocalPackagesProvider{},
+			mockRegistry,
+			&MockUpdateChecker{},
+			mockFileDownloader,
+		)
+
+		_ = captureOutput(t, func() {
+			service.ListAllPackages()
+		})
+
+		assert.True(t, called, "expected registry downloader to be called")
+	})
 }
 
 func TestListInstalledPackagesGolden(t *testing.T) {

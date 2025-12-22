@@ -83,4 +83,3 @@ var (
 	syncRegistryFn = downloadAndUnzipRegistryForced
 	syncPackagesFn = providers.SyncAll
 )
-

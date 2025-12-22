@@ -79,6 +79,12 @@ var newListService = NewListService
 
 // ListInstalledPackages lists locally installed packages
 func (ls *ListService) ListInstalledPackages() {
+	// Ensure the registry is up to date so that update checks
+	// for installed packages use the freshest available data.
+	// Errors are ignored intentionally so that listing still works
+	// even when the registry cannot be refreshed (e.g. offline).
+	_ = ls.fileDownloader.DownloadAndUnzipRegistry()
+
 	fmt.Println("📦 Locally Installed Packages")
 	fmt.Println()
 
@@ -132,6 +138,11 @@ func (ls *ListService) ListInstalledPackages() {
 
 // ListAllPackages lists all available packages from the registry
 func (ls *ListService) ListAllPackages() {
+	// Make sure we have an up-to-date registry before listing.
+	// This mirrors the behavior of the TUI boot process which
+	// refreshes the registry when the cache is too old.
+	_ = ls.fileDownloader.DownloadAndUnzipRegistry()
+
 	fmt.Println("📚 All Available Packages")
 	fmt.Println()
 
