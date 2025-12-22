@@ -37,19 +37,19 @@ but should be considered stable enough for general use.
 
 ## Terms used
 
-- *Language Server Protocol (LSP)*: A protocol that defines
+- *Language Server Protocol* (LSP): A protocol that defines
   how code editors and IDEs communicate with language servers.
-- Debug Adapter Protocol (DAP)**: A protocol that defines
+- *Debug Adapter Protocol* (DAP): A protocol that defines
   how code editors and IDEs communicate with debuggers.
-- **Package**: A package is a LSP server, DAP server, formatter
+- *Package*: A package is a LSP server, DAP server, formatter
   or linter that can be installed via Zana.
-- **Provider**: A provider is a package source,
+- *Provider*: A provider is a package source,
     e.g., `npm`, `pypi`, `golang`, etc.
-- **Package ID**: A package ID is a unique identifier for a package,
+- *Package ID*: A package ID is a unique identifier for a package,
     e.g., `npm:@mistweavercokulala-ls@0.1.0`.
-- **Zana Registry**: The Zana Registry is a registry of
+- *Zana Registry*: The Zana Registry is a registry of
     available packages that can be installed via Zana.
-- A Terminal User Interface (TUI)**: A text-based user interface
+- *Terminal User Interface* (TUI): A text-based user interface
   that runs in a terminal emulator.
 
 A minimal LSP/DAP/formatter/linter package manager
