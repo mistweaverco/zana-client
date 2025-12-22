@@ -19,12 +19,17 @@ Supported package ID formats:
   golang:golang.org/x/tools/gopls
   pypi:black
   cargo:ripgrep
+  github:user/repo
+  gitlab:group/subgroup/project
+  codeberg:user/repo
 
 Examples:
   zana remove npm:@prisma/language-server
   zana rm golang:golang.org/x/tools/gopls npm:eslint
   zana delete pypi:black cargo:ripgrep
-  zana remove npm:prettier golang:golang.org/x/tools/gopls`,
+  zana remove npm:prettier golang:golang.org/x/tools/gopls
+  zana remove github:sharkdp/bat
+  zana remove gitlab:group/subgroup/myproject`,
 	Args: cobra.MinimumNArgs(1),
 	// Enable shell completion for installed package IDs only.
 	ValidArgsFunction: installedPackageIDCompletion,

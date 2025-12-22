@@ -14,6 +14,16 @@ const (
 	ProviderPyPi
 	ProviderGolang
 	ProviderCargo
+	ProviderGitHub
+	ProviderGitLab
+	ProviderCodeberg
+	ProviderGem
+	ProviderComposer
+	ProviderLuaRocks
+	ProviderNuGet
+	ProviderOpam
+	ProviderOpenVSX
+	ProviderGeneric
 	ProviderUnsupported
 )
 
@@ -49,12 +59,62 @@ func getCargoProvider() PackageManager {
 	return globalFactory.CreateCargoProvider()
 }
 
+func getGitHubProvider() PackageManager {
+	return globalFactory.CreateGitHubProvider()
+}
+
+func getGitLabProvider() PackageManager {
+	return globalFactory.CreateGitLabProvider()
+}
+
+func getCodebergProvider() PackageManager {
+	return globalFactory.CreateCodebergProvider()
+}
+
+func getGemProvider() PackageManager {
+	return globalFactory.CreateGemProvider()
+}
+
+func getComposerProvider() PackageManager {
+	return globalFactory.CreateComposerProvider()
+}
+
+func getLuaRocksProvider() PackageManager {
+	return globalFactory.CreateLuaRocksProvider()
+}
+
+func getNuGetProvider() PackageManager {
+	return globalFactory.CreateNuGetProvider()
+}
+
+func getOpamProvider() PackageManager {
+	return globalFactory.CreateOpamProvider()
+}
+
+func getOpenVSXProvider() PackageManager {
+	return globalFactory.CreateOpenVSXProvider()
+}
+
+func getGenericProvider() PackageManager {
+	return globalFactory.CreateGenericProvider()
+}
+
 // AvailableProviders lists all provider names supported by Zana
 var AvailableProviders = []string{
 	"npm",
 	"pypi",
 	"golang",
 	"cargo",
+	"github",
+	"gitlab",
+	"codeberg",
+	"gem",
+	"composer",
+	"luarocks",
+	"nuget",
+	"opam",
+	"openvsx",
+	"generic",
 }
 
 // IsSupportedProvider returns true if the given provider name is supported
@@ -107,6 +167,26 @@ func detectProvider(sourceId string) Provider {
 		return ProviderGolang
 	case "cargo":
 		return ProviderCargo
+	case "github":
+		return ProviderGitHub
+	case "gitlab":
+		return ProviderGitLab
+	case "codeberg":
+		return ProviderCodeberg
+	case "gem":
+		return ProviderGem
+	case "composer":
+		return ProviderComposer
+	case "luarocks":
+		return ProviderLuaRocks
+	case "nuget":
+		return ProviderNuGet
+	case "opam":
+		return ProviderOpam
+	case "openvsx":
+		return ProviderOpenVSX
+	case "generic":
+		return ProviderGeneric
 	default:
 		return ProviderUnsupported
 	}
@@ -141,6 +221,56 @@ func SyncAll() {
 	if cargo, ok := cargoProvider.(*CargoProvider); ok {
 		cargo.Sync()
 	}
+
+	githubProvider := getGitHubProvider()
+	if github, ok := githubProvider.(*GitHubProvider); ok {
+		github.Sync()
+	}
+
+	gitlabProvider := getGitLabProvider()
+	if gitlab, ok := gitlabProvider.(*GitLabProvider); ok {
+		gitlab.Sync()
+	}
+
+	codebergProvider := getCodebergProvider()
+	if codeberg, ok := codebergProvider.(*CodebergProvider); ok {
+		codeberg.Sync()
+	}
+
+	gemProvider := getGemProvider()
+	if gem, ok := gemProvider.(*GemProvider); ok {
+		gem.Sync()
+	}
+
+	composerProvider := getComposerProvider()
+	if composer, ok := composerProvider.(*ComposerProvider); ok {
+		composer.Sync()
+	}
+
+	luarocksProvider := getLuaRocksProvider()
+	if luarocks, ok := luarocksProvider.(*LuaRocksProvider); ok {
+		luarocks.Sync()
+	}
+
+	nugetProvider := getNuGetProvider()
+	if nuget, ok := nugetProvider.(*NuGetProvider); ok {
+		nuget.Sync()
+	}
+
+	opamProvider := getOpamProvider()
+	if opam, ok := opamProvider.(*OpamProvider); ok {
+		opam.Sync()
+	}
+
+	openvsxProvider := getOpenVSXProvider()
+	if openvsx, ok := openvsxProvider.(*OpenVSXProvider); ok {
+		openvsx.Sync()
+	}
+
+	genericProvider := getGenericProvider()
+	if generic, ok := genericProvider.(*GenericProvider); ok {
+		generic.Sync()
+	}
 }
 
 func Install(sourceId string, version string) bool {
@@ -154,6 +284,26 @@ func Install(sourceId string, version string) bool {
 		return getGolangProvider().Install(sourceId, version)
 	case ProviderCargo:
 		return getCargoProvider().Install(sourceId, version)
+	case ProviderGitHub:
+		return getGitHubProvider().Install(sourceId, version)
+	case ProviderGitLab:
+		return getGitLabProvider().Install(sourceId, version)
+	case ProviderCodeberg:
+		return getCodebergProvider().Install(sourceId, version)
+	case ProviderGem:
+		return getGemProvider().Install(sourceId, version)
+	case ProviderComposer:
+		return getComposerProvider().Install(sourceId, version)
+	case ProviderLuaRocks:
+		return getLuaRocksProvider().Install(sourceId, version)
+	case ProviderNuGet:
+		return getNuGetProvider().Install(sourceId, version)
+	case ProviderOpam:
+		return getOpamProvider().Install(sourceId, version)
+	case ProviderOpenVSX:
+		return getOpenVSXProvider().Install(sourceId, version)
+	case ProviderGeneric:
+		return getGenericProvider().Install(sourceId, version)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -171,6 +321,26 @@ func Remove(sourceId string) bool {
 		return getGolangProvider().Remove(sourceId)
 	case ProviderCargo:
 		return getCargoProvider().Remove(sourceId)
+	case ProviderGitHub:
+		return getGitHubProvider().Remove(sourceId)
+	case ProviderGitLab:
+		return getGitLabProvider().Remove(sourceId)
+	case ProviderCodeberg:
+		return getCodebergProvider().Remove(sourceId)
+	case ProviderGem:
+		return getGemProvider().Remove(sourceId)
+	case ProviderComposer:
+		return getComposerProvider().Remove(sourceId)
+	case ProviderLuaRocks:
+		return getLuaRocksProvider().Remove(sourceId)
+	case ProviderNuGet:
+		return getNuGetProvider().Remove(sourceId)
+	case ProviderOpam:
+		return getOpamProvider().Remove(sourceId)
+	case ProviderOpenVSX:
+		return getOpenVSXProvider().Remove(sourceId)
+	case ProviderGeneric:
+		return getGenericProvider().Remove(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}
@@ -188,6 +358,26 @@ func Update(sourceId string) bool {
 		return getGolangProvider().Update(sourceId)
 	case ProviderCargo:
 		return getCargoProvider().Update(sourceId)
+	case ProviderGitHub:
+		return getGitHubProvider().Update(sourceId)
+	case ProviderGitLab:
+		return getGitLabProvider().Update(sourceId)
+	case ProviderCodeberg:
+		return getCodebergProvider().Update(sourceId)
+	case ProviderGem:
+		return getGemProvider().Update(sourceId)
+	case ProviderComposer:
+		return getComposerProvider().Update(sourceId)
+	case ProviderLuaRocks:
+		return getLuaRocksProvider().Update(sourceId)
+	case ProviderNuGet:
+		return getNuGetProvider().Update(sourceId)
+	case ProviderOpam:
+		return getOpamProvider().Update(sourceId)
+	case ProviderOpenVSX:
+		return getOpenVSXProvider().Update(sourceId)
+	case ProviderGeneric:
+		return getGenericProvider().Update(sourceId)
 	case ProviderUnsupported:
 		// Unsupported provider
 	}

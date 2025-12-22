@@ -165,14 +165,112 @@ zana completion powershell | Invoke-Expression
 
 You can run `zana --help` to see the available CLI options.
 
-- install/add: Install packages (e.g., `zana install pkg:npm/@mistweavercokulala-ls@0.1.0 pkg:pypi/black pkg:golang/golangci-lint`)
-- list/ls: Lists all installed packages (or with `--all`/`-A` flag all available packages.
-- update/up: Update packages (e.g., `zana update pkg:npm/@mistweaverco/kulala-ls pkg:pypi/black@latest`)
-- remove/rm/delete: Remove packages (e.g., `zana remove pkg:npm/@mistweaverco/kulala-ls pkg:pypi/black pkg:golang/golangci-lint`)
+#### zana install
 
-The `update` command accepts the an optional `--all`/`-A` flag to update all packages.
+`install`/`add` install packages
 
-- health: Checks for requirements (for shelling out to install packages)
+```sh
+zana install \
+  npm:@mistweavercokulala-ls@0.1.0 \
+  pypi:black \
+  golang:golangci-lint
+```
+
+#### zana sync
+
+`sync` syncs the installed packages or registry data.
+
+For packages,
+it will make sure exactly the same packages are installed
+that are listed in the `zana-lock.json` file.
+
+```sh
+zana sync packages
+```
+
+For registry data,
+it'll update the local registry cache
+with the latest data from the Zana Registry.
+
+```sh
+zana sync registry
+```
+
+The registry data is cached locally,
+but with the `sync registry` command you can force an update.
+
+#### zana list
+
+`list`/`ls` list all installed packages.
+
+```sh
+zana list
+```
+
+or with `--all`/`-A` flag all available packages.
+
+```sh
+zana list --all
+```
+
+You can also filter packages by
+prefix of either the package id or name.
+
+```sh
+ # lists all available packages with "yaml" in the name
+zana list -A yaml
+```
+
+#### zana update
+
+`update`/`up` updates packages.
+
+```sh
+zana update \
+  npm:@mistweavercokulala-ls \
+  pypi:black@latest
+```
+
+You can also update all packages at once with the `--all`/`-A` flag.
+
+```sh
+zana update --all
+```
+
+or filter packages by
+prefix of either the package id or name.
+
+```sh
+ # updates all installed packages with "yaml" in the name
+zana update -A yaml
+```
+
+#### zana remove
+
+`remove`/`rm` removes packages.
+
+```sh
+zana remove \
+  npm:@mistweavercokulala-ls \
+  pypi:black
+```
+
+or filter packages by
+prefix of either the package id or name.
+
+```sh
+ # removes all installed packages with "yaml" in the name
+zana remove -A yaml
+```
+
+#### zana health
+
+- `health` checks for requirements
+(for shelling out to install packages)
+
+```sh
+zana health
+```
 
 ### Where are the packages?
 
@@ -187,35 +285,31 @@ If `ZANA_HOME` isn't set, the basepath is:
 - macOS: `$HOME/Library/Application Support/zana/packages`
 - Windows: `%APPDATA%\zana\packages`
 
-The packages are installed in the following directories:
+The packages are installed in the following directory structure:
 
-- `pkg:npm`: `$basepath/npm`
-- `pkg:pypi`: `$basepath/pypi`
-- `pkg:github`: `$basepath/github`
-- `pkg:golang`: `$basepath/golang`
-- `pkg:cargo`: `$basepath/cargo`
+```
+$basepath/$provider/$package-name/
+```
 
-## What's working?
 
-- [x] [registry](https://github.com/mistweaverco/zana-registry) updates on startup
-- [x] Updates available for installed packages?
-- [x] Filtering packages
-- [x] Vim keymaps
-- [x] Install `pkg:npm` packages
-- [x] Update `pkg:npm` packages
-- [x] Remove `pkg:npm` packages
-- [ ] Install `pkg:github` packages
-- [ ] Update `pkg:github` packages
-- [ ] Remove `pkg:github` packages
-- [x] Install `pkg:pypi` packages
-- [x] Update `pkg:pypi` packages
-- [x] Remove `pkg:pypi` packages
-- [x] Install `pkg:golang` packages
-- [x] Update `pkg:golang` packages
-- [x] Remove `pkg:golang` packages
-- [x] Install `pkg:cargo` packages
-- [x] Update `pkg:cargo` packages
-- [x] Remove `pkg:cargo` packages
+## Supported providers
+
+- Providers
+  - [x] `cargo`
+  - [x] `codeberg`
+  - [x] `composer`
+  - [x] `gem`
+  - [x] `generic` (shell commands)
+  - [x] `github`
+  - [x] `gitlab`
+  - [x] `golang`
+  - [x] `luarocks`
+  - [x] `npm`
+  - [x] `nuget`
+  - [x] `opam`
+  - [x] `openvsx`
+  - [x] `pypi`
+
 
 
 [download-page]: https://getzana.net/#download

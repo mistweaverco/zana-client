@@ -128,6 +128,7 @@ Examples:
   zana update npm:eslint
   zana update golang:golang.org/x/tools/gopls npm:prettier
   zana update pypi:black cargo:ripgrep
+  zana update github:user/repo gitlab:group/subgroup/project
   zana update --all (update all installed packages)
   zana update --self (update zana itself to the latest version)`,
 	Args: cobra.MinimumNArgs(0), // Allow no args if --all or --self is used

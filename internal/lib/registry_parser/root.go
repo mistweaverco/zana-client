@@ -42,8 +42,123 @@ func NewDefaultRegistryParser() *RegistryParser {
 	return NewRegistryParser(&defaultFileReader{})
 }
 
+// RegistryItemSourceAssetFile can be a string or an array of strings
+type RegistryItemSourceAssetFile struct {
+	value interface{}
+}
+
+func (f *RegistryItemSourceAssetFile) UnmarshalJSON(data []byte) error {
+	// Try string first
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		f.value = str
+		return nil
+	}
+	// Try array
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		f.value = arr
+		return nil
+	}
+	return fmt.Errorf("cannot unmarshal file: expected string or array")
+}
+
+func (f *RegistryItemSourceAssetFile) String() string {
+	if str, ok := f.value.(string); ok {
+		return str
+	}
+	if arr, ok := f.value.([]string); ok && len(arr) > 0 {
+		return arr[0] // Return first file if it's an array
+	}
+	return ""
+}
+
+func (f *RegistryItemSourceAssetFile) IsArray() bool {
+	_, ok := f.value.([]string)
+	return ok
+}
+
+func (f *RegistryItemSourceAssetFile) GetArray() []string {
+	if arr, ok := f.value.([]string); ok {
+		return arr
+	}
+	if str, ok := f.value.(string); ok {
+		return []string{str}
+	}
+	return nil
+}
+
+type RegistryItemSourceAsset struct {
+	Target interface{}                 `json:"target"` // Can be string or []string
+	File   RegistryItemSourceAssetFile `json:"file"`
+	Bin    interface{}                 `json:"bin,omitempty"` // Can be string or map[string]string
+}
+
+// RegistryItemSourceAssetList is a custom type that can unmarshal both a single object and an array
+type RegistryItemSourceAssetList []RegistryItemSourceAsset
+
+// UnmarshalJSON implements custom JSON unmarshaling to handle both single object and array formats
+func (a *RegistryItemSourceAssetList) UnmarshalJSON(data []byte) error {
+	// Handle null or empty values
+	if len(data) == 0 || string(data) == "null" {
+		*a = nil
+		return nil
+	}
+
+	// Try to unmarshal as array first
+	var arr []RegistryItemSourceAsset
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*a = arr
+		return nil
+	}
+
+	// If that fails, try as a single object
+	var obj RegistryItemSourceAsset
+	if err := json.Unmarshal(data, &obj); err == nil {
+		*a = []RegistryItemSourceAsset{obj}
+		return nil
+	}
+
+	return fmt.Errorf("cannot unmarshal asset: expected array or object, got: %s", string(data))
+}
+
+type RegistryItemSourceDownloadFile struct {
+	Target interface{}       `json:"target"` // Can be string or []string
+	Files  map[string]string `json:"files"`  // Map of filename -> URL
+	Bin    string            `json:"bin,omitempty"`
+}
+
+type RegistryItemSourceDownloadList []RegistryItemSourceDownloadFile
+
+// UnmarshalJSON implements custom JSON unmarshaling to handle both single object and array formats
+func (d *RegistryItemSourceDownloadList) UnmarshalJSON(data []byte) error {
+	// Handle null or empty values
+	if len(data) == 0 || string(data) == "null" {
+		*d = nil
+		return nil
+	}
+
+	// Try to unmarshal as array first
+	var arr []RegistryItemSourceDownloadFile
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*d = arr
+		return nil
+	}
+
+	// If that fails, try as a single object
+	var obj RegistryItemSourceDownloadFile
+	if err := json.Unmarshal(data, &obj); err == nil {
+		*d = []RegistryItemSourceDownloadFile{obj}
+		return nil
+	}
+
+	return fmt.Errorf("cannot unmarshal download: expected array or object, got: %s", string(data))
+}
+
 type RegistryItemSource struct {
-	ID string `json:"id"`
+	ID       string                         `json:"id"`
+	Asset    RegistryItemSourceAssetList    `json:"asset,omitempty"`
+	Download RegistryItemSourceDownloadList `json:"download,omitempty"`
 }
 
 type RegistryItem struct {
