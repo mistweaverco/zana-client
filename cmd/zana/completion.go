@@ -3,48 +3,148 @@ package zana
 import (
 	"strings"
 
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/spf13/cobra"
 )
 
-// displayPackageIDFromRegistryID converts an internal registry/source ID into
+// displayPackageNameFromRegistryID converts an internal registry/source ID into
 // the user-facing format used on the CLI.
 //
 // Internal IDs are currently of the form:
 //
-//	pkg:<provider>/<package-id>
+//	<provider>:<package-id>
 //
 // and are exposed to users as:
 //
 //	<provider>:<package-id>
-func displayPackageIDFromRegistryID(sourceID string) string {
-	if strings.HasPrefix(sourceID, "pkg:") {
-		rest := strings.TrimPrefix(sourceID, "pkg:")
-		parts := strings.SplitN(rest, "/", 2)
-		if len(parts) == 2 {
-			return parts[0] + ":" + parts[1]
-		}
+func displayPackageNameFromRegistryID(sourceID string) string {
+	if sourceID == "" {
+		return ""
 	}
-	return sourceID
+	packageName := sourceID
+	if strings.Contains(sourceID, ":") {
+		provider_and_package_name := strings.SplitN(sourceID, ":", 2)
+		if len(provider_and_package_name) == 0 {
+			return ""
+		}
+		packageName = provider_and_package_name[1]
+	}
+	return packageName
 }
 
 // newRegistryParserFn is an indirection for tests.
 var newRegistryParserFn = registry_parser.NewDefaultRegistryParser
 
 // packageIDCompletion provides shell completion for package IDs based on the
-// locally available registry data.
+// locally available registry data. It matches package names (without provider prefix)
+// using substring matching (case-insensitive), allowing users to search by package name
+// without needing to know the provider.
+//
+// When the user types without a provider prefix (e.g., "yaml"), it matches package names
+// that contain the typed text and returns the full "provider:package" format.
+// When the user types with a provider prefix (e.g., "npm:yaml"), it matches the full ID.
 func packageIDCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	parser := newRegistryParserFn()
 	items := parser.GetData(false)
 
 	completions := make([]string, 0, len(items))
-	for _, item := range items {
-		displayID := displayPackageIDFromRegistryID(strings.TrimSpace(item.Source.ID))
-		if displayID == "" {
-			continue
+	toCompleteLower := strings.ToLower(toComplete)
+
+	// Check if user has started typing a provider prefix (contains colon)
+	hasProviderPrefix := strings.Contains(toComplete, ":")
+
+	if hasProviderPrefix {
+		// User is typing with provider prefix, match on the full ID prefix
+		for _, item := range items {
+			fullID := strings.TrimSpace(item.Source.ID)
+			if fullID == "" {
+				continue
+			}
+			// Match if the full ID starts with what the user typed (case-insensitive)
+			if toComplete == "" || strings.HasPrefix(strings.ToLower(fullID), toCompleteLower) {
+				completions = append(completions, fullID)
+			}
 		}
-		if toComplete == "" || strings.HasPrefix(displayID, toComplete) {
-			completions = append(completions, displayID)
+	} else {
+		// User is typing without provider prefix, match on package name
+		//
+		// IMPORTANT: Shell completion filters returned strings by prefix.
+		// When user types "yaml", the shell filters out "npm:yaml-language-server"
+		// because it doesn't start with "yaml".
+		//
+		// Solution: Return package names WITHOUT provider prefix when no provider
+		// is specified. The install command will detect missing provider and search.
+		// This allows substring matching to work in completions.
+		for _, item := range items {
+			displayID := displayPackageNameFromRegistryID(strings.TrimSpace(item.Source.ID))
+			if displayID == "" {
+				continue
+			}
+			displayIDLower := strings.ToLower(displayID)
+
+			// Match if package name contains the typed text (substring match, case-insensitive)
+			// Return just the package name (without provider) so shell completion works
+			if toComplete == "" || strings.Contains(displayIDLower, toCompleteLower) {
+				// Return package name without provider - install command will handle provider selection
+				completions = append(completions, displayID)
+			}
+		}
+	}
+
+	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
+// newLocalPackagesParserFn is an indirection for tests.
+var newLocalPackagesParserFn = func() local_packages_parser.LocalPackageRoot {
+	return local_packages_parser.GetData(false)
+}
+
+// installedPackageIDCompletion provides shell completion for installed package IDs only.
+// It matches package names (without provider prefix) using substring matching (case-insensitive),
+// allowing users to search by package name without needing to know the provider.
+//
+// When the user types without a provider prefix (e.g., "yaml"), it matches package names
+// that contain the typed text and returns just the package name.
+// When the user types with a provider prefix (e.g., "npm:yaml"), it matches the full ID.
+func installedPackageIDCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	localPackagesRoot := newLocalPackagesParserFn()
+	installedPackages := localPackagesRoot.Packages
+
+	completions := make([]string, 0, len(installedPackages))
+	toCompleteLower := strings.ToLower(toComplete)
+
+	// Check if user has started typing a provider prefix (contains colon)
+	hasProviderPrefix := strings.Contains(toComplete, ":")
+
+	if hasProviderPrefix {
+		// User is typing with provider prefix, match on the full ID prefix
+		for _, pkg := range installedPackages {
+			sourceID := strings.TrimSpace(pkg.SourceID)
+			if sourceID == "" {
+				continue
+			}
+			// Match if the full ID starts with what the user typed (case-insensitive)
+			if toComplete == "" || strings.HasPrefix(strings.ToLower(sourceID), toCompleteLower) {
+				completions = append(completions, sourceID)
+			}
+		}
+	} else {
+		// User is typing without provider prefix, match on package name
+		// Return package names WITHOUT provider prefix so shell completion works
+		for _, pkg := range installedPackages {
+			displayID := displayPackageNameFromRegistryID(strings.TrimSpace(pkg.SourceID))
+			if displayID == "" {
+				continue
+			}
+			displayIDLower := strings.ToLower(displayID)
+
+			// Match if package name contains the typed text (substring match, case-insensitive)
+			// Return just the package name (without provider) so shell completion works
+			if toComplete == "" || strings.Contains(displayIDLower, toCompleteLower) {
+				// Return package name without provider - remove/update commands will handle provider selection
+				completions = append(completions, displayID)
+			}
 		}
 	}
 

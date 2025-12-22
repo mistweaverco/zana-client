@@ -1,7 +1,10 @@
 package zana
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
@@ -78,12 +81,19 @@ func normalizePackageID(sourceID string) string {
 
 // validatePackageArgs validates the package arguments (for cobra)
 // and ensures that all providers are supported.
+// It allows package names without providers (they will be handled in Run function).
 func validatePackageArgs(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("requires at least 1 argument")
 	}
 
 	for _, arg := range args {
+		// Check if it's a package name without provider (no colon and no pkg: prefix)
+		if !strings.Contains(arg, ":") && !strings.HasPrefix(arg, "pkg:") {
+			// Allow it - will be handled in Run function
+			continue
+		}
+
 		provider, _, err := parseUserPackageID(arg)
 		if err != nil {
 			return err
@@ -130,23 +140,72 @@ Examples:
 		for _, userPkgID := range args {
 			// Parse package ID and version from the user-facing ID
 			baseID, version := parsePackageIDAndVersion(userPkgID)
-			provider, pkgName, err := parseUserPackageID(baseID)
-			if err != nil {
-				// This shouldn't happen because Args validation already ran,
-				// but guard just in case.
-				fmt.Printf("Error: %v\n", err)
-				return
-			}
 
-			internalID := toInternalPackageID(provider, pkgName)
+			var internalID string
+			var displayID string
+
+			// Check if this is a package name without provider
+			if !strings.Contains(baseID, ":") && !strings.HasPrefix(baseID, "pkg:") {
+				// Package name without provider - search registry and prompt user
+				matches := findPackagesByName(baseID)
+				if len(matches) == 0 {
+					fmt.Printf("✗ No packages found matching '%s'\n", baseID)
+					failureCount++
+					failures = append(failures, userPkgID)
+					continue
+				}
+
+				// Filter matches to exact package name matches first (for better UX)
+				exactMatches := []PackageMatch{}
+				partialMatches := []PackageMatch{}
+				baseIDLower := strings.ToLower(baseID)
+
+				for _, match := range matches {
+					matchNameLower := strings.ToLower(match.PackageName)
+					if matchNameLower == baseIDLower {
+						exactMatches = append(exactMatches, match)
+					} else {
+						partialMatches = append(partialMatches, match)
+					}
+				}
+
+				// Use exact matches if available, otherwise use partial matches
+				matchesToShow := exactMatches
+				if len(exactMatches) == 0 {
+					matchesToShow = partialMatches
+				}
+
+				selectedSourceID, err := promptForProviderSelection(baseID, matchesToShow)
+				if err != nil {
+					fmt.Printf("✗ Error selecting provider for '%s': %v\n", baseID, err)
+					failureCount++
+					failures = append(failures, userPkgID)
+					continue
+				}
+
+				internalID = selectedSourceID
+				displayID = userPkgID
+			} else {
+				// Package with provider - parse normally
+				provider, pkgName, err := parseUserPackageID(baseID)
+				if err != nil {
+					// This shouldn't happen because Args validation already ran,
+					// but guard just in case.
+					fmt.Printf("Error: %v\n", err)
+					return
+				}
+
+				internalID = toInternalPackageID(provider, pkgName)
+				displayID = userPkgID
+			}
 
 			if installPackageFn(internalID, version) {
 				successCount++
-				fmt.Printf("✓ Successfully installed %s@%s\n", userPkgID, version)
+				fmt.Printf("✓ Successfully installed %s@%s\n", displayID, version)
 			} else {
 				failureCount++
-				failures = append(failures, userPkgID)
-				fmt.Printf("✗ Failed to install %s@%s\n", userPkgID, version)
+				failures = append(failures, displayID)
+				fmt.Printf("✗ Failed to install %s@%s\n", displayID, version)
 			}
 		}
 
@@ -201,4 +260,137 @@ func parsePackageIDAndVersion(pkgId string) (string, string) {
 	}
 	// No valid version found, return the full package ID with "latest"
 	return pkgId, "latest"
+}
+
+// PackageMatch represents a package found in the registry
+type PackageMatch struct {
+	SourceID    string
+	Provider    string
+	PackageName string
+	Name        string
+	Description string
+	Version     string
+}
+
+// findPackagesByName searches the registry for packages matching the given name
+// (substring match, case-insensitive) and returns matches grouped by provider.
+func findPackagesByName(packageName string) []PackageMatch {
+	parser := newRegistryParserFn()
+	items := parser.GetData(false)
+
+	matches := []PackageMatch{}
+	packageNameLower := strings.ToLower(packageName)
+
+	for _, item := range items {
+		// Extract provider and package name from source ID
+		sourceID := strings.TrimSpace(item.Source.ID)
+		if sourceID == "" {
+			continue
+		}
+
+		// Get package name without provider
+		displayID := displayPackageNameFromRegistryID(sourceID)
+		if displayID == "" {
+			continue
+		}
+
+		displayIDLower := strings.ToLower(displayID)
+
+		// Check if package name contains the search term (substring match)
+		if strings.Contains(displayIDLower, packageNameLower) {
+			// Extract provider
+			var provider string
+			if strings.Contains(sourceID, ":") {
+				parts := strings.SplitN(sourceID, ":", 2)
+				if len(parts) == 2 {
+					provider = parts[0]
+				}
+			}
+
+			matches = append(matches, PackageMatch{
+				SourceID:    sourceID,
+				Provider:    provider,
+				PackageName: displayID,
+				Name:        item.Name,
+				Description: item.Description,
+				Version:     strings.TrimSpace(item.Version),
+			})
+		}
+	}
+
+	return matches
+}
+
+// promptForProviderSelection prompts the user to select a provider when multiple
+// packages with the same name are found across different providers.
+func promptForProviderSelection(packageName string, matches []PackageMatch) (string, error) {
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no packages found matching '%s'", packageName)
+	}
+
+	// Group matches by provider to show unique providers
+	providerMatches := make(map[string][]PackageMatch)
+	for _, match := range matches {
+		providerMatches[match.Provider] = append(providerMatches[match.Provider], match)
+	}
+
+	// Create a list of unique providers with their first match
+	uniqueProviders := []string{}
+	providerToMatch := make(map[string]PackageMatch)
+	for provider, providerMatches := range providerMatches {
+		uniqueProviders = append(uniqueProviders, provider)
+		providerToMatch[provider] = providerMatches[0] // Use first match as representative
+	}
+
+	if len(uniqueProviders) == 1 {
+		// Only one provider, auto-select and show what was selected
+		selected := matches[0]
+		fmt.Printf("✓ Found '%s' in %s provider: %s\n", packageName, selected.Provider, selected.SourceID)
+		return selected.SourceID, nil
+	}
+
+	if len(matches) == 1 {
+		// Only one match total, auto-select
+		fmt.Printf("✓ Found '%s': %s\n", packageName, matches[0].SourceID)
+		return matches[0].SourceID, nil
+	}
+
+	// Multiple providers found, prompt user
+	fmt.Printf("\n🔍 Found '%s' in multiple providers:\n\n", packageName)
+
+	// Show options
+	for i, provider := range uniqueProviders {
+		match := providerToMatch[provider]
+		fmt.Printf("  %d. %s:%s", i+1, provider, match.PackageName)
+		if match.Name != "" && match.Name != match.PackageName {
+			fmt.Printf(" (%s)", match.Name)
+		}
+		if match.Description != "" {
+			// Truncate description if too long
+			desc := match.Description
+			if len(desc) > 60 {
+				desc = desc[:57] + "..."
+			}
+			fmt.Printf(" - %s", desc)
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("\nSelect provider (1-%d): ", len(uniqueProviders))
+
+	// Read user input
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("failed to read input: %w", err)
+	}
+
+	input = strings.TrimSpace(input)
+	choice, err := strconv.Atoi(input)
+	if err != nil || choice < 1 || choice > len(uniqueProviders) {
+		return "", fmt.Errorf("invalid selection: please choose a number between 1 and %d", len(uniqueProviders))
+	}
+
+	selectedProvider := uniqueProviders[choice-1]
+	return providerToMatch[selectedProvider].SourceID, nil
 }
