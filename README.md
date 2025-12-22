@@ -1,15 +1,18 @@
 <div align="center">
 
-![Zana Logo](assets/logo.svg)
+![Zana logo][logo]
 
 # zana-client
 
-[![Made with love](assets/badge-made-with-love.svg)](https://github.com/mistweaverco/zana-client/graphs/contributors)
-[![Go](assets/badge-golang.svg)](https://golang.org/)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge)](https://github.com/mistweaverco/zana-client/releases/latest)
-[![Discord](assets/badge-discord.svg)](https://getzana.net/discord)
+[![Made with love][badge-made-with-love]][contributors]
+[![Go][badge-golang]][golang-website]
+[![Latest release][badge-latest-release]][latest-release]
 
-[Requirements](#requirements) • [Install](#install) • [Usage](#usage) • [What's working?](#whats-working)
+[Terms used](#requirements) •
+[Requirements](#requirements) •
+[Install](#install) •
+[Usage](#usage) •
+[Supported providers](#supported-providers)
 
 <p></p>
 
@@ -21,9 +24,27 @@ Zana 📦 aims to be like Mason.nvim 🧱,
 but with the goal of supporting 🌈 not only Neovim,
 but rather any other editor 🫶.
 
-Zana is swahili for "tools" or "tooling".
+Zana is [swahili] for "tools" or "tooling."
 
-A minimal package manager for Neovim (and other editors) which
+## Terms used
+
+- *Language Server Protocol (LSP)*: A protocol that defines
+  how code editors and IDEs communicate with language servers.
+- Debug Adapter Protocol (DAP)**: A protocol that defines
+  how code editors and IDEs communicate with debuggers.
+- **Package**: A package is a LSP server, DAP server, formatter
+  or linter that can be installed via Zana.
+- **Provider**: A provider is a package source,
+    e.g., `npm`, `pypi`, `golang`, etc.
+- **Package ID**: A package ID is a unique identifier for a package,
+    e.g., `npm:@mistweavercokulala-ls@0.1.0`.
+- **Zana Registry**: The Zana Registry is a registry of
+    available packages that can be installed via Zana.
+- A Terminal User Interface (TUI)**: A text-based user interface
+  that runs in a terminal emulator.
+
+
+A minimal LSP/DAP/formatter/linter package manager
 uses the [Zana Registry][zana-registry] to install and manage packages.
 
 Easily install and manage LSP servers, DAP servers, linters, and formatters.
@@ -40,18 +61,23 @@ Currently, Zana is in beta and under active development.
 
 Zana is a TUI, therefore you need to have a terminal emulator available.
 
-Besides that, we shell out to `npm`, `pip`, `cargo`, `go`, and `git` to install packages,
-depending on the package type.
+Besides that, we shell out a lot to install packages.
 
-E.g. if you want to install `pkg:npm` packages, you need to have `npm` installed.
+E.g. if you want to install `npm` packages,
+you need to have `npm` installed.
 
 For the packages to work in Neovim, you need to
-[Zana.nvim](https://github.com/mistweaverco/zana.nvim) installed.
+[zana.nvim] installed,
+or source the environment setup in your shell.
+
+```sh
+source <(zana env)
+```
 
 ## Install
 
-Just head over to the [download page][download-page] or
-grab it directtly from the [releases][releases-page].
+Just head over to the [download page][download-website] or
+grab it directtly from the [releases][latest-release].
 
 ## Usage
 
@@ -61,14 +87,15 @@ This file is used to keep track of the installed packages and their versions.
 You can tell Zana where to find the `zana-lock.json` and
 the packages by setting the environment variable `ZANA_HOME`.
 
-If `ZANA_HOME` is not set,
+If `ZANA_HOME` isn't set,
 Zana will look for the `zana-lock.json` file in the default locations:
 
-- Linux: `$XDG_CONFIG_HOME/zana/zana-lock.json` or `$HOME/.config/zana/zana-lock.json`
+- Linux: `$XDG_CONFIG_HOME/zana/zana-lock.json` or
+  `$HOME/.config/zana/zana-lock.json`
 - macOS: `$HOME/Library/Application Support/zana/zana-lock.json`
 - Windows: `%APPDATA%\zana\zana-lock.json`
 
-If the file does not exist,
+If the file doesn't exist,
 Zana will create it for you (when you install a package).
 
 1. Start Zana by running `zana` in your terminal.
@@ -181,7 +208,7 @@ zana install \
 `sync` syncs the installed packages or registry data.
 
 For packages,
-it will make sure exactly the same packages are installed
+it'll make sure exactly the same packages are installed
 that are listed in the `zana-lock.json` file.
 
 ```sh
@@ -291,28 +318,35 @@ The packages are installed in the following directory structure:
 $basepath/$provider/$package-name/
 ```
 
-
 ## Supported providers
 
-- Providers
-  - [x] `cargo`
-  - [x] `codeberg`
-  - [x] `composer`
-  - [x] `gem`
-  - [x] `generic` (shell commands)
-  - [x] `github`
-  - [x] `gitlab`
-  - [x] `golang`
-  - [x] `luarocks`
-  - [x] `npm`
-  - [x] `nuget`
-  - [x] `opam`
-  - [x] `openvsx`
-  - [x] `pypi`
+- `cargo`
+- `codeberg`
+- `composer`
+- `gem`
+- `generic` (shell commands)
+- `github`
+- `gitlab`
+- `golang`
+- `luarocks`
+- `npm`
+- `nuget`
+- `opam`
+- `openvsx`
+- `pypi`
 
 
 
-[download-page]: https://getzana.net/#download
-[releases-page]: https://github.com/mistweaverco/zana-client/releases/latest
+[golang-website]: https://golang.org
+[website]: https://getzana.net
+[registry-website]: https://registry.getzana.net
+[badge-made-with-love]: assets/badge-made-with-love.svg
+[badge-golang]: assets/badge-golang.svg
+[contributors]: https://github.com/mistweaverco/zana-client/graphs/contributors
+[logo]: assets/logo.svg
+[swahili]: https://en.wikipedia.org/wiki/Swahili_language
+[badge-latest-release]: https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge
+[latest-release]: https://github.com/mistweaverco/zana-client/releases/latest
+[download-website]: https://getzana.net/#download
 [zana-registry]: https://github.com/mistweaverco/zana-registry
-
+[zana.nvim]: https://github.com/mistweaverco/zana-nvim
