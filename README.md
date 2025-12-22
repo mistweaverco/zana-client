@@ -272,6 +272,12 @@ prefix of either the package id or name.
 zana update -A yaml
 ```
 
+Zana can also update itself with:
+
+```sh
+zana update --self
+```
+
 #### zana remove
 
 `remove`/`rm` removes packages.
