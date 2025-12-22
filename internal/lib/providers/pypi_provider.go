@@ -47,7 +47,7 @@ func NewProviderPyPi() *PyPiProvider {
 	p := &PyPiProvider{}
 	p.PROVIDER_NAME = "pypi"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
-	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
+	p.PREFIX = p.PROVIDER_NAME + ":"
 	hasPip := pipHasCommand("pip", []string{"--version"}, nil)
 	if !hasPip {
 		hasPip = pipHasCommand("pip3", []string{"--version"}, nil)
@@ -61,7 +61,13 @@ func NewProviderPyPi() *PyPiProvider {
 }
 
 func (p *PyPiProvider) getRepo(sourceID string) string {
-	re := regexp.MustCompile("^" + p.PREFIX + "(.*)")
+	// Support both legacy (pkg:pypi/pkg) and new (pypi:pkg) formats
+	normalized := normalizePackageID(sourceID)
+	if strings.HasPrefix(normalized, p.PREFIX) {
+		return strings.TrimPrefix(normalized, p.PREFIX)
+	}
+	// Fallback for legacy format
+	re := regexp.MustCompile("^pkg:" + p.PROVIDER_NAME + "/(.*)")
 	matches := re.FindStringSubmatch(sourceID)
 	if len(matches) > 1 {
 		return matches[1]
@@ -255,7 +261,7 @@ func (p *PyPiProvider) removeAllWrappers() error {
 // removePackageWrappers removes wrapper scripts for a specific package
 func (p *PyPiProvider) removePackageWrappers(packageName string) error {
 	zanaBinDir := files.GetAppBinPath()
-	// Reconstruct sourceId to query registry
+	// Reconstruct sourceId to query registry (use new format)
 	sourceID := p.PREFIX + packageName
 	parser := registry_parser.NewDefaultRegistryParser()
 	registryItem := parser.GetBySourceId(sourceID)

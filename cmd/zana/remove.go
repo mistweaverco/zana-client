@@ -15,39 +15,35 @@ var removeCmd = &cobra.Command{
 	Long: `Remove one or more packages from supported providers.
 
 Supported package ID formats:
-  pkg:npm/@prisma/language-server
-  pkg:golang/golang.org/x/tools/gopls
-  pkg:pypi/black
-  pkg:cargo/ripgrep
+  npm:@prisma/language-server
+  golang:golang.org/x/tools/gopls
+  pypi:black
+  cargo:ripgrep
 
 Examples:
-  zana remove pkg:npm/@prisma/language-server
-  zana rm pkg:golang/golang.org/x/tools/gopls pkg:npm/eslint
-  zana delete pkg:pypi/black pkg:cargo/ripgrep
-  zana remove pkg:npm/prettier pkg:golang/golang.org/x/tools/gopls`,
+  zana remove npm:@prisma/language-server
+  zana rm golang:golang.org/x/tools/gopls npm:eslint
+  zana delete pypi:black cargo:ripgrep
+  zana remove npm:prettier golang:golang.org/x/tools/gopls`,
 	Args: cobra.MinimumNArgs(1),
+	// Enable shell completion for package IDs.
+	ValidArgsFunction: packageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		packages := args
 
-		// Validate all package IDs
-		for _, pkgId := range packages {
-			if !strings.HasPrefix(pkgId, "pkg:") {
-				fmt.Printf("Error: Invalid package ID format '%s'. Must start with 'pkg:'\n", pkgId)
+		// Validate and normalize all package IDs
+		internalIDs := make([]string, len(packages))
+		for i, userPkgID := range packages {
+			provider, pkgName, err := parseUserPackageID(userPkgID)
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
 				return
 			}
-
-			// Parse provider from package ID
-			parts := strings.Split(strings.TrimPrefix(pkgId, "pkg:"), "/")
-			if len(parts) < 2 {
-				fmt.Printf("Error: Invalid package ID format '%s'. Expected 'pkg:provider/package-name'\n", pkgId)
-				return
-			}
-
-			provider := parts[0]
 			if !isSupportedProviderFn(provider) {
-				fmt.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, pkgId, strings.Join(availableProvidersFn(), ", "))
+				fmt.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, userPkgID, strings.Join(availableProvidersFn(), ", "))
 				return
 			}
+			internalIDs[i] = toInternalPackageID(provider, pkgName)
 		}
 
 		// Remove all packages
@@ -57,16 +53,17 @@ Examples:
 		successCount := 0
 		failedCount := 0
 
-		for _, pkgId := range packages {
-			fmt.Printf("Removing %s...\n", pkgId)
+		for i, userPkgID := range packages {
+			internalID := internalIDs[i]
+			fmt.Printf("Removing %s...\n", userPkgID)
 
 			// Remove the package
-			success := removePackageFn(pkgId)
+			success := removePackageFn(internalID)
 			if success {
-				fmt.Printf("✓ Successfully removed %s\n", pkgId)
+				fmt.Printf("✓ Successfully removed %s\n", userPkgID)
 				successCount++
 			} else {
-				fmt.Printf("✗ Failed to remove %s\n", pkgId)
+				fmt.Printf("✗ Failed to remove %s\n", userPkgID)
 				failedCount++
 				allSuccess = false
 			}

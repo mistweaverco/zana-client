@@ -67,17 +67,37 @@ func IsSupportedProvider(name string) bool {
 	return false
 }
 
+// normalizePackageID converts a package ID from legacy format (pkg:provider/pkg)
+// to the new format (provider:pkg), or returns it unchanged if already in new format.
+func normalizePackageID(sourceID string) string {
+	if strings.HasPrefix(sourceID, "pkg:") {
+		rest := strings.TrimPrefix(sourceID, "pkg:")
+		parts := strings.SplitN(rest, "/", 2)
+		if len(parts) == 2 {
+			return parts[0] + ":" + parts[1]
+		}
+	}
+	return sourceID
+}
+
+// extractProviderAndPackage extracts provider and package name from a source ID.
+// Supports both legacy (pkg:provider/pkg) and new (provider:pkg) formats.
+func extractProviderAndPackage(sourceID string) (string, string) {
+	normalized := normalizePackageID(sourceID)
+	parts := strings.SplitN(normalized, ":", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return "", ""
+}
+
 func detectProvider(sourceId string) Provider {
-	if !strings.HasPrefix(sourceId, "pkg:") {
+	normalized := normalizePackageID(sourceId)
+	providerName, _ := extractProviderAndPackage(normalized)
+	if providerName == "" {
 		return ProviderUnsupported
 	}
 
-	parts := strings.SplitN(sourceId, "/", 2)
-	if len(parts) < 2 {
-		return ProviderUnsupported
-	}
-
-	providerName := strings.TrimPrefix(parts[0], "pkg:")
 	switch strings.ToLower(providerName) {
 	case "npm":
 		return ProviderNPM

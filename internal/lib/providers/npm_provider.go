@@ -44,12 +44,18 @@ func NewProviderNPM() *NPMProvider {
 	p := &NPMProvider{}
 	p.PROVIDER_NAME = "npm"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
-	p.PREFIX = "pkg:" + p.PROVIDER_NAME + "/"
+	p.PREFIX = p.PROVIDER_NAME + ":"
 	return p
 }
 
 func (p *NPMProvider) getRepo(sourceID string) string {
-	re := regexp.MustCompile("^" + p.PREFIX + "(.*)")
+	// Support both legacy (pkg:npm/pkg) and new (npm:pkg) formats
+	normalized := normalizePackageID(sourceID)
+	if strings.HasPrefix(normalized, p.PREFIX) {
+		return strings.TrimPrefix(normalized, p.PREFIX)
+	}
+	// Fallback for legacy format
+	re := regexp.MustCompile("^pkg:" + p.PROVIDER_NAME + "/(.*)")
 	matches := re.FindStringSubmatch(sourceID)
 	if len(matches) > 1 {
 		return matches[1]
