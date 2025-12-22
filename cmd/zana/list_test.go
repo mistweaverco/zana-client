@@ -185,7 +185,7 @@ func TestListService(t *testing.T) {
 		// We don't care about the actual output here, just that the
 		// downloader is invoked as part of the listing process.
 		_ = captureOutput(t, func() {
-			service.ListInstalledPackages()
+			service.ListInstalledPackages(nil)
 		})
 
 		assert.True(t, called, "expected registry downloader to be called")
@@ -217,7 +217,7 @@ func TestListService(t *testing.T) {
 		)
 
 		_ = captureOutput(t, func() {
-			service.ListAllPackages()
+			service.ListAllPackages(nil)
 		})
 
 		assert.True(t, called, "expected registry downloader to be called")
@@ -240,7 +240,7 @@ func TestListInstalledPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListInstalledPackages()
+			service.ListInstalledPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_installed_empty")
@@ -287,7 +287,7 @@ func TestListInstalledPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListInstalledPackages()
+			service.ListInstalledPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_installed_with_data")
@@ -325,7 +325,7 @@ func TestListAllPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages()
+			service.ListAllPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_all_empty_registry")
@@ -361,7 +361,7 @@ func TestListAllPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages()
+			service.ListAllPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_all_download_failure")
@@ -402,7 +402,7 @@ func TestListAllPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages()
+			service.ListAllPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_all_with_data")
@@ -768,7 +768,7 @@ func TestListCommandFullOutputGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListInstalledPackages()
+			service.ListInstalledPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_installed_mixed_updates")
@@ -817,7 +817,7 @@ func TestListCommandFullOutputGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages()
+			service.ListAllPackages(nil)
 		})
 
 		goldenPath := getGoldenFilePath("list_all_with_descriptions")

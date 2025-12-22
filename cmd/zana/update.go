@@ -131,8 +131,8 @@ Examples:
   zana update --all (update all installed packages)
   zana update --self (update zana itself to the latest version)`,
 	Args: cobra.MinimumNArgs(0), // Allow no args if --all or --self is used
-	// Enable shell completion for package IDs.
-	ValidArgsFunction: packageIDCompletion,
+	// Enable shell completion for installed package IDs only.
+	ValidArgsFunction: installedPackageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		selfFlag, _ := cmd.Flags().GetBool("self")
 		if selfFlag {
@@ -169,24 +169,57 @@ Examples:
 			return
 		}
 
-		// Validate and normalize all package IDs first
+		// Process all packages
 		packages := args
 		internalIDs := make([]string, len(packages))
+		displayIDs := make([]string, len(packages))
+
 		for i, userPkgID := range packages {
-			provider, _, err := parseUserPackageID(userPkgID)
-			if err != nil {
-				service := newUpdateService()
-				service.output.Printf("Error: %v\n", err)
-				return
+			// Parse package ID and version from the user-facing ID
+			baseID, _ := parsePackageIDAndVersion(userPkgID)
+
+			var internalID string
+			var displayID string
+
+			// Check if this is a package name without provider
+			if !strings.Contains(baseID, ":") && !strings.HasPrefix(baseID, "pkg:") {
+				// Package name without provider - search installed packages and prompt user
+				matches := findInstalledPackagesByName(baseID)
+				if len(matches) == 0 {
+					service := newUpdateService()
+					service.output.Printf("✗ No installed packages found matching '%s'\n", baseID)
+					return
+				}
+
+				selectedSourceID, err := promptForProviderSelection(baseID, matches)
+				if err != nil {
+					service := newUpdateService()
+					service.output.Printf("✗ Error selecting provider for '%s': %v\n", baseID, err)
+					return
+				}
+
+				internalID = selectedSourceID
+				displayID = userPkgID
+			} else {
+				// Package with provider - parse normally
+				provider, pkgName, err := parseUserPackageID(baseID)
+				if err != nil {
+					service := newUpdateService()
+					service.output.Printf("Error: %v\n", err)
+					return
+				}
+				if !providers.IsSupportedProvider(provider) {
+					service := newUpdateService()
+					service.output.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, userPkgID, strings.Join(providers.AvailableProviders, ", "))
+					return
+				}
+
+				internalID = toInternalPackageID(provider, pkgName)
+				displayID = userPkgID
 			}
-			if !providers.IsSupportedProvider(provider) {
-				service := newUpdateService()
-				service.output.Printf("Error: Unsupported provider '%s' for package '%s'. Supported providers: %s\n", provider, userPkgID, strings.Join(providers.AvailableProviders, ", "))
-				return
-			}
-			// Normalize to internal ID for the provider layer
-			_, pkgName, _ := parseUserPackageID(userPkgID)
-			internalIDs[i] = toInternalPackageID(provider, pkgName)
+
+			internalIDs[i] = internalID
+			displayIDs[i] = displayID
 		}
 
 		// Update individual packages
@@ -197,17 +230,18 @@ Examples:
 		successCount := 0
 		failedCount := 0
 
-		for idx, userPkgID := range packages {
+		for idx := range packages {
 			internalID := internalIDs[idx]
-			service.output.Printf("Updating %s...\n", userPkgID)
+			displayID := displayIDs[idx]
+			service.output.Printf("Updating %s...\n", displayID)
 
 			// Update the package using the service method (which can be mocked in tests)
 			success := service.updatePackage(internalID)
 			if success {
-				service.output.Printf("✓ Successfully updated %s\n", userPkgID)
+				service.output.Printf("✓ Successfully updated %s\n", displayID)
 				successCount++
 			} else {
-				service.output.Printf("✗ Failed to update %s\n", userPkgID)
+				service.output.Printf("✗ Failed to update %s\n", displayID)
 				failedCount++
 				allSuccess = false
 			}

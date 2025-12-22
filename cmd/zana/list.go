@@ -50,22 +50,25 @@ func NewListServiceWithDependencies(
 }
 
 var listCmd = &cobra.Command{
-	Use:     "list",
+	Use:     "list [filter...]",
 	Aliases: []string{"ls"},
 	Short:   "List packages",
 	Long: `List packages based on the specified options.
 
 By default, shows locally installed packages.
-Use --all to show all available packages from the registry.`,
-	Args: cobra.NoArgs,
+Use --all to show all available packages from the registry.
+You can provide filter arguments to show only packages whose names start with the filter strings.`,
+	Args: cobra.ArbitraryArgs,
+	// Enable shell completion for package names
+	ValidArgsFunction: packageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
 		allFlag, _ := cmd.Flags().GetBool("all")
 		service := newListService()
 
 		if allFlag {
-			service.ListAllPackages()
+			service.ListAllPackages(args)
 		} else {
-			service.ListInstalledPackages()
+			service.ListInstalledPackages(args)
 		}
 	},
 }
@@ -78,7 +81,8 @@ func init() {
 var newListService = NewListService
 
 // ListInstalledPackages lists locally installed packages
-func (ls *ListService) ListInstalledPackages() {
+// If filters are provided, only shows packages whose names start with any of the filter strings
+func (ls *ListService) ListInstalledPackages(filters []string) {
 	// Ensure the registry is up to date so that update checks
 	// for installed packages use the freshest available data.
 	// Errors are ignored intentionally so that listing still works
@@ -96,11 +100,49 @@ func (ls *ListService) ListInstalledPackages() {
 		return
 	}
 
-	fmt.Printf("Found %d installed packages:\n\n", len(localPackages))
+	// Filter packages if filters are provided
+	filteredPackages := localPackages
+	if len(filters) > 0 {
+		filteredPackages = []local_packages_parser.LocalPackageItem{}
+		for _, pkg := range localPackages {
+			packageName := getPackageNameFromSourceID(pkg.SourceID)
+			packageNameLower := strings.ToLower(packageName)
+
+			// Check if package name starts with any of the filter strings
+			matches := false
+			for _, filter := range filters {
+				filterLower := strings.ToLower(filter)
+				if strings.HasPrefix(packageNameLower, filterLower) {
+					matches = true
+					break
+				}
+			}
+
+			if matches {
+				filteredPackages = append(filteredPackages, pkg)
+			}
+		}
+	}
+
+	if len(filteredPackages) == 0 {
+		if len(filters) > 0 {
+			fmt.Printf("No installed packages found matching filters: %s\n", strings.Join(filters, ", "))
+		} else {
+			fmt.Println("No packages are currently installed.")
+			fmt.Println("Use 'zana install <pkgId>' to install packages.")
+		}
+		return
+	}
+
+	fmt.Printf("Found %d installed packages", len(filteredPackages))
+	if len(filters) > 0 {
+		fmt.Printf(" matching filters: %s", strings.Join(filters, ", "))
+	}
+	fmt.Printf(":\n\n")
 
 	// Group packages by provider
 	packagesByProvider := make(map[string][]local_packages_parser.LocalPackageItem)
-	for _, pkg := range localPackages {
+	for _, pkg := range filteredPackages {
 		provider := getProviderFromSourceID(pkg.SourceID)
 		packagesByProvider[provider] = append(packagesByProvider[provider], pkg)
 	}
@@ -137,7 +179,8 @@ func (ls *ListService) ListInstalledPackages() {
 }
 
 // ListAllPackages lists all available packages from the registry
-func (ls *ListService) ListAllPackages() {
+// If filters are provided, only shows packages whose names start with any of the filter strings
+func (ls *ListService) ListAllPackages(filters []string) {
 	// Make sure we have an up-to-date registry before listing.
 	// This mirrors the behavior of the TUI boot process which
 	// refreshes the registry when the cache is too old.
@@ -171,11 +214,55 @@ func (ls *ListService) ListAllPackages() {
 		}
 	}
 
-	fmt.Printf("Found %d packages in the registry:\n\n", len(registry))
+	// Filter packages if filters are provided
+	filteredRegistry := registry
+	if len(filters) > 0 {
+		filteredRegistry = []registry_parser.RegistryItem{}
+		for _, pkg := range registry {
+			packageName := getPackageNameFromSourceID(pkg.Source.ID)
+			packageNameLower := strings.ToLower(packageName)
+
+			// Check if package name starts with any of the filter strings
+			matches := false
+			for _, filter := range filters {
+				filterLower := strings.ToLower(filter)
+				if strings.HasPrefix(packageNameLower, filterLower) {
+					matches = true
+					break
+				}
+			}
+
+			if matches {
+				filteredRegistry = append(filteredRegistry, pkg)
+			}
+		}
+	}
+
+	if len(filteredRegistry) == 0 {
+		if len(filters) > 0 {
+			fmt.Printf("No packages found in the registry matching filters: %s\n", strings.Join(filters, ", "))
+		} else {
+			fmt.Println("No packages found in the registry.")
+		}
+		return
+	}
+
+	fmt.Printf("Found %d packages in the registry", len(filteredRegistry))
+	if len(filters) > 0 {
+		fmt.Printf(" matching filters: %s", strings.Join(filters, ", "))
+	}
+	fmt.Printf(":\n\n")
+
+	// Get installed packages to check status
+	installedPackages := ls.localPackages.GetData(false).Packages
+	installedMap := make(map[string]string) // sourceID -> version
+	for _, pkg := range installedPackages {
+		installedMap[pkg.SourceID] = pkg.Version
+	}
 
 	// Group packages by provider
 	packagesByProvider := make(map[string][]registry_parser.RegistryItem)
-	for _, pkg := range registry {
+	for _, pkg := range filteredRegistry {
 		provider := getProviderFromSourceID(pkg.Source.ID)
 		packagesByProvider[provider] = append(packagesByProvider[provider], pkg)
 	}
@@ -187,7 +274,28 @@ func (ls *ListService) ListAllPackages() {
 			fmt.Printf("🔹 %s Packages (%d):\n", strings.ToUpper(provider), len(packages))
 			for _, pkg := range packages {
 				packageName := getPackageNameFromSourceID(pkg.Source.ID)
-				fmt.Printf("   %s %s (v%s)\n", getProviderIcon(provider), packageName, pkg.Version)
+				installedVersion, isInstalled := installedMap[pkg.Source.ID]
+
+				// Build status indicators
+				statusIndicators := []string{}
+				if isInstalled {
+					statusIndicators = append(statusIndicators, "✅ Installed")
+					// Check if update is available
+					updateInfo, hasUpdate := ls.checkUpdateAvailability(pkg.Source.ID, installedVersion)
+					if hasUpdate {
+						statusIndicators = append(statusIndicators, updateInfo)
+					} else {
+						statusIndicators = append(statusIndicators, "✅ Up to date")
+					}
+				}
+
+				// Display package info
+				fmt.Printf("   %s %s (v%s)", getProviderIcon(provider), packageName, pkg.Version)
+				if len(statusIndicators) > 0 {
+					fmt.Printf(" %s", strings.Join(statusIndicators, " | "))
+				}
+				fmt.Println()
+
 				if pkg.Description != "" {
 					fmt.Printf("      %s\n", pkg.Description)
 				}
@@ -248,12 +356,12 @@ func (d *defaultFileDownloader) DownloadAndUnzipRegistry() error {
 // Legacy functions for backward compatibility
 func listInstalledPackages() {
 	service := NewListService()
-	service.ListInstalledPackages()
+	service.ListInstalledPackages(nil)
 }
 
 func listAllPackages() {
 	service := NewListService()
-	service.ListAllPackages()
+	service.ListAllPackages(nil)
 }
 
 func checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
