@@ -126,7 +126,7 @@ source <(zana env)
 add to `~/.zshrc`:
 
 ```sh
-source <(zana env)
+source <(zana env zsh)
 ```
 
 or with [evalcache](https://github.com/mroth/evalcache) for zsh,
@@ -163,13 +163,6 @@ add to `~/.zshrc`:
 
 ```sh
 source <(zana completion zsh)
-```
-
-or with [evalcache](https://github.com/mroth/evalcache) for zsh,
-add to `~/.zshrc`:
-
-```sh
-_evalcache zana completion zsh
 ```
 
 #### fish autocompletion setup
