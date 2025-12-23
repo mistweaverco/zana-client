@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
 	"github.com/mistweaverco/zana-client/internal/lib/version"
@@ -139,7 +140,7 @@ Examples:
 		if selfFlag {
 			service := newUpdateService()
 			if err := runSelfUpdate(service.output); err != nil {
-				service.output.Printf("✗ Failed to update zana: %v\n", err)
+				service.output.Printf("%s Failed to update zana: %v\n", IconClose(), err)
 				osExit(1)
 				return
 			}
@@ -172,10 +173,10 @@ Examples:
 
 		// Process all packages
 		packages := args
-		internalIDs := make([]string, len(packages))
-		displayIDs := make([]string, len(packages))
+		internalIDs := make([]string, 0, len(packages))
+		displayIDs := make([]string, 0, len(packages))
 
-		for i, userPkgID := range packages {
+		for _, userPkgID := range packages {
 			// Parse package ID and version from the user-facing ID
 			baseID, _ := parsePackageIDAndVersion(userPkgID)
 
@@ -188,19 +189,24 @@ Examples:
 				matches := findInstalledPackagesByName(baseID)
 				if len(matches) == 0 {
 					service := newUpdateService()
-					service.output.Printf("✗ No installed packages found matching '%s'\n", baseID)
+					service.output.Printf("%s No installed packages found matching '%s'\n", IconClose(), baseID)
 					return
 				}
 
-				selectedSourceID, err := promptForProviderSelection(baseID, matches)
+				// Always show confirmation for partial names (user didn't provide full provider:package-id)
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matches, false, "update")
 				if err != nil {
 					service := newUpdateService()
-					service.output.Printf("✗ Error selecting provider for '%s': %v\n", baseID, err)
+					service.output.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
 					return
 				}
 
-				internalID = selectedSourceID
-				displayID = userPkgID
+				// Process all selected packages
+				for _, selectedSourceID := range selectedSourceIDs {
+					internalIDs = append(internalIDs, selectedSourceID)
+					displayIDs = append(displayIDs, selectedSourceID)
+				}
+				continue // Skip the single package processing below
 			} else {
 				// Package with provider - parse normally
 				provider, pkgName, err := parseUserPackageID(baseID)
@@ -216,33 +222,45 @@ Examples:
 				}
 
 				internalID = toInternalPackageID(provider, pkgName)
-				displayID = userPkgID
+				// Construct displayID from provider and package name (full provider:package-id format)
+				displayID = fmt.Sprintf("%s:%s", provider, pkgName)
 			}
 
-			internalIDs[i] = internalID
-			displayIDs[i] = displayID
+			internalIDs = append(internalIDs, internalID)
+			displayIDs = append(displayIDs, displayID)
 		}
 
 		// Update individual packages
 		service := newUpdateService()
-		service.output.Printf("Updating %d package(s) to latest versions...\n", len(packages))
+		service.output.Printf("Updating %d package(s) to latest versions...\n", len(internalIDs))
 
 		allSuccess := true
 		successCount := 0
 		failedCount := 0
 
-		for idx := range packages {
+		for idx := range internalIDs {
 			internalID := internalIDs[idx]
 			displayID := displayIDs[idx]
-			service.output.Printf("Updating %s...\n", displayID)
 
-			// Update the package using the service method (which can be mocked in tests)
-			success := service.updatePackage(internalID)
+			// Update the package with spinner showing package name
+			var success bool
+			action := func() {
+				success = service.updatePackage(internalID)
+			}
+
+			title := fmt.Sprintf("Updating %s...", displayID)
+			if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+				service.output.Printf("%s Failed to update %s: %v\n", IconClose(), displayID, err)
+				failedCount++
+				allSuccess = false
+				continue
+			}
+
 			if success {
-				service.output.Printf("✓ Successfully updated %s\n", displayID)
+				service.output.Printf("%s Successfully updated %s\n", IconCheck(), displayID)
 				successCount++
 			} else {
-				service.output.Printf("✗ Failed to update %s\n", displayID)
+				service.output.Printf("%s Failed to update %s\n", IconClose(), displayID)
 				failedCount++
 				allSuccess = false
 			}
@@ -286,16 +304,26 @@ func (us *UpdateService) UpdateAllPackages() bool {
 	failedCount := 0
 
 	for _, pkg := range localPackages {
-		us.output.Printf("Updating %s...\n", pkg.SourceID)
+		// Update the package with spinner showing package name
+		var success bool
+		action := func() {
+			success = us.updatePackage(pkg.SourceID)
+		}
 
-		// Use the service method (which can be mocked in tests)
-		success := us.updatePackage(pkg.SourceID)
+		title := fmt.Sprintf("Updating %s...", pkg.SourceID)
+		if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+			us.output.Printf("%s Failed to update %s: %v\n", IconClose(), pkg.SourceID, err)
+			failedCount++
+			allSuccess = false
+			continue
+		}
+
 		if success {
 			successCount++
-			us.output.Printf("✓ Successfully updated %s\n", pkg.SourceID)
+			us.output.Printf("%s Successfully updated %s\n", IconCheck(), pkg.SourceID)
 		} else {
 			failedCount++
-			us.output.Printf("✗ Failed to update %s\n", pkg.SourceID)
+			us.output.Printf("%s Failed to update %s\n", IconClose(), pkg.SourceID)
 			allSuccess = false
 		}
 	}
@@ -533,11 +561,20 @@ func runSelfUpdate(output OutputWriter) error {
 	platform := detectPlatform()
 	output.Printf("Detected platform: %s\n", platform)
 
-	// Download new binary
-	output.Printf("Downloading zana %s for %s...\n", latestVersion, platform)
-	newBinaryPath, err := downloadBinary(latestVersion, platform)
-	if err != nil {
+	// Download new binary with spinner
+	var newBinaryPath string
+	var downloadErr error
+	action := func() {
+		newBinaryPath, downloadErr = downloadBinary(latestVersion, platform)
+	}
+
+	title := fmt.Sprintf("Downloading zana %s for %s...", latestVersion, platform)
+	if err := spinner.New().Title(title).Action(action).Run(); err != nil {
 		return fmt.Errorf("failed to download new version: %w", err)
+	}
+
+	if downloadErr != nil {
+		return fmt.Errorf("failed to download new version: %w", downloadErr)
 	}
 	defer os.Remove(newBinaryPath) // Clean up temp file
 
@@ -555,7 +592,7 @@ func runSelfUpdate(output OutputWriter) error {
 		return fmt.Errorf("failed to replace binary: %w", err)
 	}
 
-	output.Printf("✓ Successfully updated zana from %s to %s\n", currentVersion, latestVersion)
+	output.Printf("%s Successfully updated zana from %s to %s\n", IconCheck(), currentVersion, latestVersion)
 	output.Printf("Backup saved as: %s\n", backupPath)
 
 	return nil

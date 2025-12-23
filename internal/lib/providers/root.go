@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/log"
+	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
 )
 
@@ -271,6 +272,73 @@ func SyncAll() {
 	if generic, ok := genericProvider.(*GenericProvider); ok {
 		generic.Sync()
 	}
+}
+
+// ResolveVersion resolves the version for a given sourceID.
+// If version is empty or "latest", it will query the provider for the latest version.
+// Otherwise, it returns the provided version as-is.
+func ResolveVersion(sourceId string, version string) (string, error) {
+	if version != "" && version != "latest" {
+		return version, nil
+	}
+
+	provider := detectProvider(sourceId)
+	_, packageName := extractProviderAndPackage(normalizePackageID(sourceId))
+	if packageName == "" {
+		return version, nil
+	}
+
+	var pkgManager PackageManager
+	switch provider {
+	case ProviderNPM:
+		pkgManager = getNPMProvider()
+	case ProviderPyPi:
+		pkgManager = getPyPIProvider()
+	case ProviderGolang:
+		pkgManager = getGolangProvider()
+	case ProviderCargo:
+		pkgManager = getCargoProvider()
+	case ProviderGitHub:
+		pkgManager = getGitHubProvider()
+	case ProviderGitLab:
+		pkgManager = getGitLabProvider()
+	case ProviderCodeberg:
+		pkgManager = getCodebergProvider()
+	case ProviderGem:
+		pkgManager = getGemProvider()
+	case ProviderComposer:
+		pkgManager = getComposerProvider()
+	case ProviderLuaRocks:
+		pkgManager = getLuaRocksProvider()
+	case ProviderNuGet:
+		pkgManager = getNuGetProvider()
+	case ProviderOpam:
+		pkgManager = getOpamProvider()
+	case ProviderOpenVSX:
+		pkgManager = getOpenVSXProvider()
+	case ProviderGeneric:
+		// Generic provider gets version from registry
+		registry := registry_parser.NewDefaultRegistryParser()
+		registryItem := registry.GetBySourceId(sourceId)
+		if registryItem.Version != "" {
+			return registryItem.Version, nil
+		}
+		return "latest", nil
+	case ProviderUnsupported:
+		return version, nil
+	default:
+		return version, nil
+	}
+
+	if pkgManager != nil {
+		resolvedVersion, err := pkgManager.getLatestVersion(packageName)
+		if err != nil {
+			return version, err
+		}
+		return resolvedVersion, nil
+	}
+
+	return version, nil
 }
 
 func Install(sourceId string, version string) bool {

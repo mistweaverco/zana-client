@@ -3,8 +3,6 @@ package log
 import (
 	"log/slog"
 	"os"
-
-	"github.com/mistweaverco/zana-client/internal/lib/version"
 )
 
 var logLevel slog.Level = slog.LevelDebug
@@ -14,10 +12,19 @@ func SetLogLevel(level slog.Level) {
 }
 
 func NewLogger() *slog.Logger {
-	// When running in a production environment,
-	// set the log level to Error
-	if version.VERSION != "" {
-		logLevel = slog.LevelError
+	logLevel = slog.LevelError
+	// If the ZANA_DEBUG environment variable is set,
+	if os.Getenv("ZANA_DEBUG") != "" {
+		switch os.Getenv("ZANA_DEBUG") {
+		case "debug":
+			logLevel = slog.LevelDebug
+		case "info":
+			logLevel = slog.LevelInfo
+		case "warn":
+			logLevel = slog.LevelWarn
+		case "error":
+			logLevel = slog.LevelError
+		}
 	}
 	return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel}))
 }

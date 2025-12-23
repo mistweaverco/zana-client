@@ -1,12 +1,11 @@
 package zana
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
 )
@@ -156,9 +155,10 @@ Examples:
 			// Check if this is a package name without provider
 			if !strings.Contains(baseID, ":") && !strings.HasPrefix(baseID, "pkg:") {
 				// Package name without provider - search registry and prompt user
+				// Always show confirmation for partial names (user didn't provide full provider:package-id)
 				matches := findPackagesByName(baseID)
 				if len(matches) == 0 {
-					fmt.Printf("✗ No packages found matching '%s'\n", baseID)
+					fmt.Printf("%s No packages found matching '%s'\n", IconClose(), baseID)
 					failureCount++
 					failures = append(failures, userPkgID)
 					continue
@@ -184,18 +184,57 @@ Examples:
 					matchesToShow = partialMatches
 				}
 
-				selectedSourceID, err := promptForProviderSelection(baseID, matchesToShow)
+				// Always show confirmation for partial names (isExactMatch = false)
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matchesToShow, false, "install")
 				if err != nil {
-					fmt.Printf("✗ Error selecting provider for '%s': %v\n", baseID, err)
+					fmt.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
 					failureCount++
 					failures = append(failures, userPkgID)
 					continue
 				}
 
-				internalID = selectedSourceID
-				displayID = userPkgID
+				// Process all selected packages
+				for _, selectedSourceID := range selectedSourceIDs {
+					internalID := selectedSourceID
+					// selectedSourceID is already in provider:package-id format, use it directly
+					displayID := selectedSourceID
+
+					// Resolve version before installing to show actual version in spinner
+					resolvedVersion, err := resolveVersionFn(internalID, version)
+					if err != nil {
+						fmt.Printf("%s Failed to resolve version for %s: %v\n", IconClose(), displayID, err)
+						failureCount++
+						failures = append(failures, displayID)
+						continue
+					}
+
+					// Install package with spinner showing package name and resolved version
+					var success bool
+					action := func() {
+						success = installPackageFn(internalID, resolvedVersion)
+					}
+
+					title := fmt.Sprintf("Installing %s@%s...", displayID, resolvedVersion)
+					if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+						failureCount++
+						failures = append(failures, displayID)
+						fmt.Printf("%s Failed to install %s@%s: %v\n", IconClose(), displayID, resolvedVersion, err)
+						continue
+					}
+
+					if success {
+						successCount++
+						fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
+					} else {
+						failureCount++
+						failures = append(failures, displayID)
+						fmt.Printf("%s Failed to install %s@%s\n", IconClose(), displayID, resolvedVersion)
+					}
+				}
+				continue // Skip the single package processing below
 			} else {
 				// Package with provider - parse normally
+				// Full provider:package-id provided, no confirmation needed
 				provider, pkgName, err := parseUserPackageID(baseID)
 				if err != nil {
 					// This shouldn't happen because Args validation already ran,
@@ -205,16 +244,40 @@ Examples:
 				}
 
 				internalID = toInternalPackageID(provider, pkgName)
-				displayID = userPkgID
+				// Construct displayID from provider and package name (will add resolved version later)
+				displayID = fmt.Sprintf("%s:%s", provider, pkgName)
 			}
 
-			if installPackageFn(internalID, version) {
+			// Resolve version before installing to show actual version in spinner
+			resolvedVersion, err := resolveVersionFn(internalID, version)
+			if err != nil {
+				fmt.Printf("%s Failed to resolve version for %s: %v\n", IconClose(), displayID, err)
+				failureCount++
+				failures = append(failures, displayID)
+				continue
+			}
+
+			// Install package with spinner showing package name and resolved version
+			var success bool
+			action := func() {
+				success = installPackageFn(internalID, resolvedVersion)
+			}
+
+			title := fmt.Sprintf("Installing %s@%s...", displayID, resolvedVersion)
+			if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+				failureCount++
+				failures = append(failures, displayID)
+				fmt.Printf("%s Failed to install %s@%s: %v\n", IconClose(), displayID, resolvedVersion, err)
+				continue
+			}
+
+			if success {
 				successCount++
-				fmt.Printf("✓ Successfully installed %s@%s\n", displayID, version)
+				fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
 			} else {
 				failureCount++
 				failures = append(failures, displayID)
-				fmt.Printf("✗ Failed to install %s@%s\n", displayID, version)
+				fmt.Printf("%s Failed to install %s@%s\n", IconClose(), displayID, resolvedVersion)
 			}
 		}
 
@@ -233,6 +296,7 @@ var (
 	isSupportedProviderFn = providers.IsSupportedProvider
 	availableProvidersFn  = func() []string { return providers.AvailableProviders }
 	installPackageFn      = providers.Install
+	resolveVersionFn      = providers.ResolveVersion
 )
 
 // isValidVersionString checks if a string looks like a valid version
@@ -330,49 +394,68 @@ func findPackagesByName(packageName string) []PackageMatch {
 	return matches
 }
 
+// capitalize capitalizes the first letter of a string
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
 // promptForProviderSelection prompts the user to select a provider when multiple
 // packages with the same name are found across different providers.
-func promptForProviderSelection(packageName string, matches []PackageMatch) (string, error) {
+// It uses huh confirm for single matches and multi-select for multiple matches.
+// isExactMatch should be false when user provided a partial name (without provider prefix),
+// in which case confirmation is always shown. When user provides full provider:package-id,
+// this function is not called at all.
+// action is the verb to use in prompts (e.g., "install", "remove", "update").
+// Returns a slice of selected source IDs (can be multiple if multi-select is used).
+func promptForProviderSelection(packageName string, matches []PackageMatch, isExactMatch bool, action string) ([]string, error) {
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no packages found matching '%s'", packageName)
+		return nil, fmt.Errorf("no packages found matching '%s'", packageName)
 	}
 
-	// Group matches by provider to show unique providers
-	providerMatches := make(map[string][]PackageMatch)
-	for _, match := range matches {
-		providerMatches[match.Provider] = append(providerMatches[match.Provider], match)
-	}
+	// Note: isExactMatch is always false for partial names, so we always show confirmation
+	// This ensures users confirm when they provide partial package names
 
-	// Create a list of unique providers with their first match
-	uniqueProviders := []string{}
-	providerToMatch := make(map[string]PackageMatch)
-	for provider, providerMatches := range providerMatches {
-		uniqueProviders = append(uniqueProviders, provider)
-		providerToMatch[provider] = providerMatches[0] // Use first match as representative
-	}
-
-	if len(uniqueProviders) == 1 {
-		// Only one provider, auto-select and show what was selected
-		selected := matches[0]
-		fmt.Printf("✓ Found '%s' in %s provider: %s\n", packageName, selected.Provider, selected.SourceID)
-		return selected.SourceID, nil
-	}
-
+	// If single match (but fuzzy), show confirm dialog
 	if len(matches) == 1 {
-		// Only one match total, auto-select
-		fmt.Printf("✓ Found '%s': %s\n", packageName, matches[0].SourceID)
-		return matches[0].SourceID, nil
+		match := matches[0]
+		displayName := fmt.Sprintf("%s:%s", match.Provider, match.PackageName)
+		if match.Name != "" && match.Name != match.PackageName {
+			displayName = fmt.Sprintf("%s (%s)", displayName, match.Name)
+		}
+
+		confirm := true // Default to "Yes"
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(fmt.Sprintf("Found '%s': %s", packageName, displayName)).
+					Description(fmt.Sprintf("%s this package? (Press Esc to cancel)", capitalize(action))).
+					Affirmative("Yes").
+					Negative("No").
+					Value(&confirm),
+			),
+		)
+
+		if err := form.Run(); err != nil {
+			// Form was cancelled (e.g., Escape key pressed)
+			return nil, fmt.Errorf("user cancelled %s", action)
+		}
+
+		if !confirm {
+			return nil, fmt.Errorf("user cancelled %s", action)
+		}
+
+		return []string{match.SourceID}, nil
 	}
 
-	// Multiple providers found, prompt user
-	fmt.Printf("\n🔍 Found '%s' in multiple providers:\n\n", packageName)
-
-	// Show options
-	for i, provider := range uniqueProviders {
-		match := providerToMatch[provider]
-		fmt.Printf("  %d. %s:%s", i+1, provider, match.PackageName)
+	// Multiple matches, show multi-select
+	options := make([]huh.Option[string], 0, len(matches))
+	for _, match := range matches {
+		displayName := fmt.Sprintf("%s:%s", match.Provider, match.PackageName)
 		if match.Name != "" && match.Name != match.PackageName {
-			fmt.Printf(" (%s)", match.Name)
+			displayName = fmt.Sprintf("%s (%s)", displayName, match.Name)
 		}
 		if match.Description != "" {
 			// Truncate description if too long
@@ -380,26 +463,31 @@ func promptForProviderSelection(packageName string, matches []PackageMatch) (str
 			if len(desc) > 60 {
 				desc = desc[:57] + "..."
 			}
-			fmt.Printf(" - %s", desc)
+			displayName = fmt.Sprintf("%s - %s", displayName, desc)
 		}
-		fmt.Println()
+		options = append(options, huh.NewOption(displayName, match.SourceID))
 	}
 
-	fmt.Printf("\nSelect provider (1-%d): ", len(uniqueProviders))
+	var selected []string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title(fmt.Sprintf("Found '%s' in multiple providers", packageName)).
+				Description(fmt.Sprintf("Select which packages to %s: (Press Esc to cancel)", action)).
+				Options(options...).
+				Value(&selected),
+		),
+	)
 
-	// Read user input
-	reader := bufio.NewReader(os.Stdin)
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return "", fmt.Errorf("failed to read input: %w", err)
+	if err := form.Run(); err != nil {
+		// Form was cancelled (e.g., Escape key pressed)
+		return nil, fmt.Errorf("user cancelled %s", action)
 	}
 
-	input = strings.TrimSpace(input)
-	choice, err := strconv.Atoi(input)
-	if err != nil || choice < 1 || choice > len(uniqueProviders) {
-		return "", fmt.Errorf("invalid selection: please choose a number between 1 and %d", len(uniqueProviders))
+	if len(selected) == 0 {
+		// No packages selected (could be Escape or just no selection)
+		return nil, fmt.Errorf("user cancelled %s", action)
 	}
 
-	selectedProvider := uniqueProviders[choice-1]
-	return providerToMatch[selectedProvider].SourceID, nil
+	return selected, nil
 }
