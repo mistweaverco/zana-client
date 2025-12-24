@@ -142,12 +142,16 @@ Examples:
 
 // findInstalledPackagesByName searches installed packages for packages matching the given name
 // (substring match, case-insensitive) and returns matches.
+// It matches both package names and aliases.
 func findInstalledPackagesByName(packageName string) []PackageMatch {
 	localPackagesRoot := newLocalPackagesParserFn()
 	installedPackages := localPackagesRoot.Packages
 
 	matches := []PackageMatch{}
 	packageNameLower := strings.ToLower(packageName)
+
+	// Get registry parser to lookup aliases
+	parser := newRegistryParserFn()
 
 	for _, pkg := range installedPackages {
 		sourceID := strings.TrimSpace(pkg.SourceID)
@@ -164,7 +168,22 @@ func findInstalledPackagesByName(packageName string) []PackageMatch {
 		displayIDLower := strings.ToLower(displayID)
 
 		// Check if package name contains the search term (substring match)
-		if strings.Contains(displayIDLower, packageNameLower) {
+		nameMatches := strings.Contains(displayIDLower, packageNameLower)
+
+		// Also check aliases from registry
+		aliasMatches := false
+		registryItem := parser.GetBySourceId(sourceID)
+		if registryItem.Source.ID != "" {
+			for _, alias := range registryItem.Aliases {
+				if strings.Contains(strings.ToLower(alias), packageNameLower) {
+					aliasMatches = true
+					break
+				}
+			}
+		}
+
+		// If either name or alias matches, include this package
+		if nameMatches || aliasMatches {
 			// Extract provider
 			var provider string
 			if strings.Contains(sourceID, ":") {
@@ -174,12 +193,18 @@ func findInstalledPackagesByName(packageName string) []PackageMatch {
 				}
 			}
 
+			// Use registry item name if available, otherwise use displayID
+			displayName := displayID
+			if registryItem.Source.ID != "" && registryItem.Name != "" {
+				displayName = registryItem.Name
+			}
+
 			matches = append(matches, PackageMatch{
 				SourceID:    sourceID,
 				Provider:    provider,
 				PackageName: displayID,
-				Name:        displayID, // Use package name as display name
-				Description: "",
+				Name:        displayName,
+				Description: registryItem.Description,
 				Version:     pkg.Version,
 			})
 		}

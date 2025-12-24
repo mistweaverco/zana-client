@@ -67,7 +67,7 @@ func packageIDCompletion(cmd *cobra.Command, args []string, toComplete string) (
 			}
 		}
 	} else {
-		// User is typing without provider prefix, match on package name
+		// User is typing without provider prefix, match on package name and aliases
 		//
 		// IMPORTANT: Shell completion filters returned strings by prefix.
 		// When user types "yaml", the shell filters out "npm:yaml-language-server"
@@ -84,8 +84,19 @@ func packageIDCompletion(cmd *cobra.Command, args []string, toComplete string) (
 			displayIDLower := strings.ToLower(displayID)
 
 			// Match if package name contains the typed text (substring match, case-insensitive)
-			// Return just the package name (without provider) so shell completion works
-			if toComplete == "" || strings.Contains(displayIDLower, toCompleteLower) {
+			nameMatches := toComplete == "" || strings.Contains(displayIDLower, toCompleteLower)
+
+			// Also check aliases
+			aliasMatches := false
+			for _, alias := range item.Aliases {
+				if toComplete == "" || strings.Contains(strings.ToLower(alias), toCompleteLower) {
+					aliasMatches = true
+					break
+				}
+			}
+
+			// If either name or alias matches, include in completions
+			if nameMatches || aliasMatches {
 				// Return package name without provider - install command will handle provider selection
 				completions = append(completions, displayID)
 			}
@@ -130,8 +141,9 @@ func installedPackageIDCompletion(cmd *cobra.Command, args []string, toComplete 
 			}
 		}
 	} else {
-		// User is typing without provider prefix, match on package name
+		// User is typing without provider prefix, match on package name and aliases
 		// Return package names WITHOUT provider prefix so shell completion works
+		parser := newRegistryParserFn()
 		for _, pkg := range installedPackages {
 			displayID := displayPackageNameFromRegistryID(strings.TrimSpace(pkg.SourceID))
 			if displayID == "" {
@@ -140,8 +152,25 @@ func installedPackageIDCompletion(cmd *cobra.Command, args []string, toComplete 
 			displayIDLower := strings.ToLower(displayID)
 
 			// Match if package name contains the typed text (substring match, case-insensitive)
-			// Return just the package name (without provider) so shell completion works
-			if toComplete == "" || strings.Contains(displayIDLower, toCompleteLower) {
+			nameMatches := toComplete == "" || strings.Contains(displayIDLower, toCompleteLower)
+
+			// Also check aliases from registry
+			aliasMatches := false
+			sourceID := strings.TrimSpace(pkg.SourceID)
+			if sourceID != "" {
+				registryItem := parser.GetBySourceId(sourceID)
+				if registryItem.Source.ID != "" {
+					for _, alias := range registryItem.Aliases {
+						if toComplete == "" || strings.Contains(strings.ToLower(alias), toCompleteLower) {
+							aliasMatches = true
+							break
+						}
+					}
+				}
+			}
+
+			// If either name or alias matches, include in completions
+			if nameMatches || aliasMatches {
 				// Return package name without provider - remove/update commands will handle provider selection
 				completions = append(completions, displayID)
 			}
