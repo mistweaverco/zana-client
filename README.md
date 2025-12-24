@@ -98,14 +98,6 @@ Zana will look for the `zana-lock.json` file in the default locations:
 If the file doesn't exist,
 Zana will create it for you (when you install a package).
 
-1. Start Zana by running `zana` in your terminal.
-2. Use the arrow keys (or hjkl) to navigate the packages.
-3. Use `enter` to install a package.
-4. Use `enter` to update a package.
-5. Use `backspace` to remove a package.
-6. Use `/` to filter packages.
-7. Use `q` to quit Zana.
-
 It's advised to keep the `zana-lock.json` file in version control.
 
 ### Modify environment path
@@ -184,6 +176,17 @@ zana completion powershell | Invoke-Expression
 ### CLI Options
 
 You can run `zana --help` to see the available CLI options.
+
+#### zana show
+
+`show/info/details` shows information about one or more packages.
+
+```sh
+zana show \
+  npm:@mistweavercokulala-ls@0.1.0 \
+  pypi:black \
+  golang:golangci-lint
+```
 
 #### zana install
 

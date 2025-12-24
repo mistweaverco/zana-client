@@ -50,6 +50,7 @@ func initColorConfig() {
 func init() {
 	rootCmd.AddCommand(envCmd)
 	rootCmd.AddCommand(healthCmd)
+	rootCmd.AddCommand(infoCmd)
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(removeCmd)
