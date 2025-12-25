@@ -46,14 +46,31 @@ Examples:
 					continue
 				}
 
-				// Filter matches to exact package name matches first (for better UX)
+				// Filter matches to exact package name or alias matches first (for better UX)
 				exactMatches := []PackageMatch{}
 				partialMatches := []PackageMatch{}
 				baseIDLower := strings.ToLower(baseID)
+				parserForExactMatch := newRegistryParserFn()
 
 				for _, match := range matches {
 					matchNameLower := strings.ToLower(match.PackageName)
-					if matchNameLower == baseIDLower {
+					// Check if package name matches exactly
+					isExactMatch := matchNameLower == baseIDLower
+
+					// Also check if any alias matches exactly
+					if !isExactMatch {
+						registryItem := parserForExactMatch.GetBySourceId(match.SourceID)
+						if registryItem.Source.ID != "" {
+							for _, alias := range registryItem.Aliases {
+								if strings.ToLower(alias) == baseIDLower {
+									isExactMatch = true
+									break
+								}
+							}
+						}
+					}
+
+					if isExactMatch {
 						exactMatches = append(exactMatches, match)
 					} else {
 						partialMatches = append(partialMatches, match)
@@ -117,6 +134,11 @@ func displayPackageInfo(item registry_parser.RegistryItem, sourceID string) {
 	markdown.WriteString(fmt.Sprintf("# %s\n\n", item.Name))
 	markdown.WriteString(fmt.Sprintf("**Package ID:** `%s`\n\n", sourceID))
 
+	// Aliases
+	if len(item.Aliases) > 0 {
+		markdown.WriteString(fmt.Sprintf("**Aliases:** %s\n\n", strings.Join(item.Aliases, ", ")))
+	}
+
 	// Version
 	if item.Version != "" {
 		markdown.WriteString(fmt.Sprintf("**Version:** `%s`\n\n", item.Version))
@@ -176,11 +198,6 @@ func displayPackageInfo(item registry_parser.RegistryItem, sourceID string) {
 		}
 	} else {
 		markdown.WriteString(fmt.Sprintf("**Status:** ⬜ Not installed\n\n"))
-	}
-
-	// Aliases
-	if len(item.Aliases) > 0 {
-		markdown.WriteString(fmt.Sprintf("**Aliases:** %s\n\n", strings.Join(item.Aliases, ", ")))
 	}
 
 	// Binaries

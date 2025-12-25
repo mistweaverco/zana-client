@@ -164,14 +164,31 @@ Examples:
 					continue
 				}
 
-				// Filter matches to exact package name matches first (for better UX)
+				// Filter matches to exact package name or alias matches first (for better UX)
 				exactMatches := []PackageMatch{}
 				partialMatches := []PackageMatch{}
 				baseIDLower := strings.ToLower(baseID)
+				parser := newRegistryParserFn()
 
 				for _, match := range matches {
 					matchNameLower := strings.ToLower(match.PackageName)
-					if matchNameLower == baseIDLower {
+					// Check if package name matches exactly
+					isExactMatch := matchNameLower == baseIDLower
+
+					// Also check if any alias matches exactly
+					if !isExactMatch {
+						registryItem := parser.GetBySourceId(match.SourceID)
+						if registryItem.Source.ID != "" {
+							for _, alias := range registryItem.Aliases {
+								if strings.ToLower(alias) == baseIDLower {
+									isExactMatch = true
+									break
+								}
+							}
+						}
+					}
+
+					if isExactMatch {
 						exactMatches = append(exactMatches, match)
 					} else {
 						partialMatches = append(partialMatches, match)
@@ -347,6 +364,7 @@ type PackageMatch struct {
 
 // findPackagesByName searches the registry for packages matching the given name
 // (substring match, case-insensitive) and returns matches grouped by provider.
+// It matches both package names and aliases.
 func findPackagesByName(packageName string) []PackageMatch {
 	parser := newRegistryParserFn()
 	items := parser.GetData(false)
@@ -370,7 +388,19 @@ func findPackagesByName(packageName string) []PackageMatch {
 		displayIDLower := strings.ToLower(displayID)
 
 		// Check if package name contains the search term (substring match)
-		if strings.Contains(displayIDLower, packageNameLower) {
+		nameMatches := strings.Contains(displayIDLower, packageNameLower)
+
+		// Also check aliases
+		aliasMatches := false
+		for _, alias := range item.Aliases {
+			if strings.Contains(strings.ToLower(alias), packageNameLower) {
+				aliasMatches = true
+				break
+			}
+		}
+
+		// If either name or alias matches, include this package
+		if nameMatches || aliasMatches {
 			// Extract provider
 			var provider string
 			if strings.Contains(sourceID, ":") {
