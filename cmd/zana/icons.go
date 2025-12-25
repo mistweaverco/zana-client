@@ -7,11 +7,8 @@ import (
 	"github.com/mistweaverco/zana-client/internal/config"
 )
 
-// Nerd Font icons
-// Using Font Awesome and Devicons which are stable and widely supported
-// Codepoints verified for Nerd Fonts v3.0+
-// Font Awesome range: U+E000-U+F8FF (Private Use Area)
-// Devicons range: U+E000-U+E7FF
+// Emoji icons
+// Centralized location for all emoji icons used throughout the application
 
 // getColorConfigFunc provides access to the color config from root.go
 // This is set in root.go's init() function
@@ -71,35 +68,34 @@ const (
 
 // Base icon constants (uncolored)
 const (
-	// Status icons (Font Awesome - solid style)
-	iconCheck       = "\uF00C" // nf-fa-check (U+F00C)
-	iconClose       = "\uF00D" // nf-fa-times (U+F00D)
-	iconCheckCircle = "\uF058" // nf-fa-check_circle (U+F058)
-	iconCancel      = "\uF057" // nf-fa-times_circle (U+F057)
+	// Status icons
+	iconCheck       = "✓"
+	iconClose       = "✗"
+	iconCheckCircle = "✅"
+	iconCancel      = "❌"
 
-	// Action icons (Font Awesome)
-	iconMagnify   = "\uF002" // nf-fa-search (U+F002)
-	iconAlert     = "\uF071" // nf-fa-exclamation_triangle (U+F071)
-	iconRefresh   = "\uF021" // nf-fa-refresh (U+F021)
-	iconLightbulb = "\uF0EB" // nf-fa-lightbulb_o (U+F0EB)
-	iconSummary   = "\uF080" // nf-fa-bar_chart (U+F080)
+	// Action icons
+	iconMagnify   = "🔍"
+	iconAlert     = "⚠️"
+	iconRefresh   = "🔄"
+	iconLightbulb = "💡"
+	iconSummary   = "📊"
 
-	// Provider icons (Devicons / Font Awesome)
-	// NOTE: Icons marked with "TODO" don't have specific Nerd Font icons yet and are using fallbacks
-	iconNPM      = "\uE71E"     // nf-dev-npm (U+E71E)
-	iconGolang   = "\uE627"     // nf-dev-go (U+E627)
-	iconPython   = "\uE63C"     // nf-dev-python (U+E63C)
-	iconCargo    = "\uE7A8"     // nf-dev-rust (U+E7A8)
-	iconGitHub   = "\uF09B"     // nf-fa-github (U+F09B)
-	iconGitLab   = "\uE65D"     // nf-dev-gitlab (U+E65D)
-	iconCodeberg = "\U000F1A9F" // nf-md-mountain (U+F1A9F) - using mountain icon for Codeberg
-	iconGem      = "\uE739"     // nf-dev-ruby (U+E739)
-	iconComposer = "\uE7D2"     // nf-dev-php (U+E7D2) - using PHP icon for Composer
-	iconLuaRocks = "\uE620"     // nf-dev-lua (U+E620) - using Lua icon for LuaRocks
-	iconNuGet    = "\uE77E"     // nf-dev-csharp (U+E77E) - using C# icon for NuGet
-	iconOpam     = "\uE7A1"     // nf-dev-ocaml (U+E7A1)
-	iconOpenVSX  = "\uE7C5"     // TODO: Using Visual Studio icon, no specific OpenVSX icon in Nerd Fonts
-	iconGeneric  = "\uF1C6"     // nf-fa-archive (U+F1C6)
+	// Provider icons
+	iconNPM      = "📦"
+	iconGolang   = "🐹"
+	iconPython   = "🐍"
+	iconCargo    = "🦀"
+	iconGitHub   = "🐙"
+	iconGitLab   = "🦊"
+	iconCodeberg = "🏔️"
+	iconGem      = "💎"
+	iconComposer = "🐘"
+	iconLuaRocks = "🌙"
+	iconNuGet    = "📦"
+	iconOpam     = "🐫"
+	iconOpenVSX  = "🔌"
+	iconGeneric  = "📦"
 )
 
 // Plain text alternatives for icons when not in TTY
