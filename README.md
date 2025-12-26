@@ -59,14 +59,14 @@ Easily install and manage LSP servers, DAP servers, linters, and formatters.
 
 ## Requirements
 
-Zana is a TUI, therefore you need to have a terminal emulator available.
+Zana is a CLI, therefore you need to have a terminal emulator available.
 
 Besides that, we shell out a lot to install packages.
 
 E.g. if you want to install `npm` packages,
 you need to have `npm` installed.
 
-For the packages to work in Neovim, you need to
+For the packages to work in Neovim, you either need to
 [zana.nvim] installed,
 or source the environment setup in your shell.
 
