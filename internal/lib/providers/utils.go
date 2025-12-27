@@ -2,40 +2,69 @@ package providers
 
 import "github.com/mistweaverco/zana-client/internal/lib/shell_out"
 
-type CheckRequirementsResult struct {
-	HasNPM             bool `json:"hasNPM"`
-	HasPython          bool `json:"hasPython"`
-	HasPythonDistutils bool `json:"hasPythonDistutils"`
-	HasGo              bool `json:"hasGo"`
-	HasCargo           bool `json:"hasCargo"`
+// ProviderHealthStatus represents the health status of a single provider
+type ProviderHealthStatus struct {
+	Provider     string `json:"provider"`
+	Available    bool   `json:"available"`
+	RequiredTool string `json:"required_tool,omitempty"`
+	Description  string `json:"description"`
 }
 
-// CheckRequirements checks if the system meets the requirements for running providers.
-func CheckRequirements() CheckRequirementsResult {
-	// Prefer python3 over python for modern Python installations
-	hasPython3 := shell_out.HasCommand("python3", []string{"--version"}, nil)
-	hasPython := shell_out.HasCommand("python", []string{"--version"}, nil)
-	hasPythonCmd := hasPython3 || hasPython
+// CheckAllProvidersHealth checks all providers and returns their health status
+func CheckAllProvidersHealth() []ProviderHealthStatus {
+	var statuses []ProviderHealthStatus
 
-	// Check for distutils or setuptools (distutils was deprecated in Python 3.10 and removed in 3.12+)
-	// setuptools includes a vendored distutils, so checking for setuptools covers both cases
-	var hasPythonDistutils bool
-	if hasPython3 {
-		// Try setuptools first (works with Python 3.12+), then distutils (works with older versions)
-		hasPythonDistutils = shell_out.HasCommand("python3", []string{"-c", "import setuptools"}, nil) ||
-			shell_out.HasCommand("python3", []string{"-c", "import distutils"}, nil)
-	} else if hasPython {
-		// Fallback to python command
-		hasPythonDistutils = shell_out.HasCommand("python", []string{"-c", "import setuptools"}, nil) ||
-			shell_out.HasCommand("python", []string{"-c", "import distutils"}, nil)
+	// Check each provider
+	providers := []struct {
+		name        string
+		requiredCmd []string // Command and args to check
+		description string
+	}{
+		{"npm", []string{"npm", "--version"}, "Node.js package manager for JavaScript packages"},
+		{"pypi", []string{"pip3", "--version"}, "Python package manager for Python packages"},
+		{"golang", []string{"go", "version"}, "Go programming language for Go packages"},
+		{"cargo", []string{"cargo", "--version"}, "Rust package manager for Rust packages"},
+		{"github", []string{"git", "--version"}, "Git for GitHub repository packages"},
+		{"gitlab", []string{"git", "--version"}, "Git for GitLab repository packages"},
+		{"codeberg", []string{"git", "--version"}, "Git for Codeberg repository packages"},
+		{"gem", []string{"gem", "--version"}, "RubyGems for Ruby packages"},
+		{"composer", []string{"composer", "--version"}, "Composer for PHP packages"},
+		{"luarocks", []string{"luarocks", "--version"}, "LuaRocks for Lua packages"},
+		{"nuget", []string{"dotnet", "--version"}, ".NET SDK for NuGet packages"},
+		{"opam", []string{"opam", "--version"}, "OPAM for OCaml packages"},
+		{"openvsx", []string{"code", "--version"}, "VS Code CLI for OpenVSX extensions"},
+		{"generic", nil, "Generic provider (no specific tools required)"},
 	}
 
-	result := CheckRequirementsResult{
-		HasNPM:             shell_out.HasCommand("npm", []string{"--version"}, nil),
-		HasPython:          hasPythonCmd,
-		HasPythonDistutils: hasPythonDistutils,
-		HasGo:              shell_out.HasCommand("go", []string{"version"}, nil),
-		HasCargo:           shell_out.HasCommand("cargo", []string{"--version"}, nil),
+	for _, p := range providers {
+		available := true
+		var requiredTool string
+		if len(p.requiredCmd) > 0 {
+			cmd := p.requiredCmd[0]
+			args := p.requiredCmd[1:]
+			available = shell_out.HasCommand(cmd, args, nil)
+			requiredTool = cmd
+			// Special handling for PyPI - check both pip3 and pip
+			if p.name == "pypi" && !available {
+				available = shell_out.HasCommand("pip", []string{"--version"}, nil)
+				if available {
+					requiredTool = "pip"
+				}
+			}
+		}
+
+		status := ProviderHealthStatus{
+			Provider:    p.name,
+			Available:   available,
+			Description: p.description,
+		}
+
+		if !available && requiredTool != "" {
+			status.RequiredTool = requiredTool
+		}
+
+		statuses = append(statuses, status)
 	}
-	return result
+
+	return statuses
 }

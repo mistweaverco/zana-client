@@ -25,35 +25,23 @@ var luarocksCmd = "luarocks"
 var luarocksShellOut = shell_out.ShellOut
 var luarocksShellOutCapture = shell_out.ShellOutCapture
 var luarocksHasCommand = shell_out.HasCommand
-var luarocksCreate = os.Create
-var luarocksReadDir = os.ReadDir
 var luarocksLstat = os.Lstat
 var luarocksRemove = os.Remove
 var luarocksChmod = os.Chmod
 var luarocksStat = os.Stat
-var luarocksMkdir = os.Mkdir
 var luarocksMkdirAll = os.MkdirAll
-var luarocksRemoveAll = os.RemoveAll
 var luarocksWriteFile = os.WriteFile
-var luarocksClose = func(f *os.File) error { return f.Close() }
 
 // Injectable local packages helpers for tests
 var lppLuarocksAdd = local_packages_parser.AddLocalPackage
 var lppLuarocksRemove = local_packages_parser.RemoveLocalPackage
 var lppLuarocksGetDataForProvider = local_packages_parser.GetDataForProvider
-var lppLuarocksGetData = local_packages_parser.GetData
 
 func NewProviderLuaRocks() *LuaRocksProvider {
 	p := &LuaRocksProvider{}
 	p.PROVIDER_NAME = "luarocks"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = p.PROVIDER_NAME + ":"
-
-	// Check for luarocks command
-	hasLuarocks := luarocksHasCommand("luarocks", []string{"--version"}, nil)
-	if !hasLuarocks {
-		Logger.Error("LuaRocks Provider: luarocks command not found. Please install LuaRocks to use the LuaRocksProvider.")
-	}
 	return p
 }
 
@@ -364,6 +352,12 @@ func (p *LuaRocksProvider) Sync() bool {
 
 	if len(localPackages) == 0 {
 		return true
+	}
+
+	// Check for luarocks command before proceeding
+	if !luarocksHasCommand("luarocks", []string{"--version"}, nil) {
+		Logger.Error("LuaRocks Sync: luarocks command not found. Please install LuaRocks.")
+		return false
 	}
 
 	allOk := true

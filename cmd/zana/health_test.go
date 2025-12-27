@@ -23,39 +23,19 @@ func TestHealthCommand(t *testing.T) {
 	})
 }
 
-func TestDisplayRequirement(t *testing.T) {
-	t.Run("prints expected output for met and missing", func(t *testing.T) {
-		// Capture stdout
-		old := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		// Execute
-		displayRequirement("NPM", true, "Node.js package manager for JavaScript packages")
-		displayRequirement("Python", false, "Python interpreter for Python packages")
-
-		// Restore stdout and read
-		w.Close()
-		os.Stdout = old
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-
-		out := buf.String()
-		assert.Contains(t, out, "✅ NPM: Available")
-		assert.Contains(t, out, "Node.js package manager for JavaScript packages")
-		assert.Contains(t, out, "❌ Python: Missing")
-		assert.Contains(t, out, "Python interpreter for Python packages")
-	})
-}
-
 func TestHealthCommandRun(t *testing.T) {
-	t.Run("prints all requirement statuses and overall", func(t *testing.T) {
-		// stub requirements
-		prev := checkRequirementsFn
-		checkRequirementsFn = func() (r providers.CheckRequirementsResult) {
-			return providers.CheckRequirementsResult{HasNPM: true, HasPython: false, HasPythonDistutils: true, HasGo: true, HasCargo: false}
+	t.Run("prints all provider statuses and overall", func(t *testing.T) {
+		// stub provider health checks
+		prev := checkAllProvidersHealthFn
+		checkAllProvidersHealthFn = func() []providers.ProviderHealthStatus {
+			return []providers.ProviderHealthStatus{
+				{Provider: "npm", Available: true, Description: "Node.js package manager"},
+				{Provider: "pypi", Available: false, RequiredTool: "pip3", Description: "Python package manager"},
+				{Provider: "golang", Available: true, Description: "Go programming language"},
+				{Provider: "generic", Available: true, Description: "Generic provider"},
+			}
 		}
-		defer func() { checkRequirementsFn = prev }()
+		defer func() { checkAllProvidersHealthFn = prev }()
 
 		// capture stdout
 		old := os.Stdout
@@ -70,21 +50,37 @@ func TestHealthCommandRun(t *testing.T) {
 		io.Copy(&buf, r)
 		out := buf.String()
 
+		// Check that all providers are listed
 		assert.Contains(t, out, "NPM")
-		assert.Contains(t, out, "Python")
-		assert.Contains(t, out, "Python Distutils")
-		assert.Contains(t, out, "Go")
-		assert.Contains(t, out, "Cargo")
-		assert.Contains(t, out, "Some requirements are not met")
+		assert.Contains(t, out, "PYPI")
+		assert.Contains(t, out, "GOLANG")
+		assert.Contains(t, out, "GENERIC")
+
+		// Check available providers show "Available"
+		assert.Contains(t, out, "NPM: Available")
+		assert.Contains(t, out, "GOLANG: Available")
+		assert.Contains(t, out, "GENERIC: Available")
+
+		// Check unavailable provider shows warning and missing tool
+		assert.Contains(t, out, "PYPI")
+		assert.Contains(t, out, "Not available (missing: pip3)")
+		assert.Contains(t, out, "Python package manager") // Description should be shown for unavailable
+
+		// Check overall warning message
+		assert.Contains(t, out, "Some providers are not available")
 	})
 
-	t.Run("prints success message when all requirements met", func(t *testing.T) {
-		// stub requirements - all met
-		prev := checkRequirementsFn
-		checkRequirementsFn = func() (r providers.CheckRequirementsResult) {
-			return providers.CheckRequirementsResult{HasNPM: true, HasPython: true, HasPythonDistutils: true, HasGo: true, HasCargo: true}
+	t.Run("prints success message when all providers available", func(t *testing.T) {
+		// stub provider health checks - all available
+		prev := checkAllProvidersHealthFn
+		checkAllProvidersHealthFn = func() []providers.ProviderHealthStatus {
+			return []providers.ProviderHealthStatus{
+				{Provider: "npm", Available: true, Description: "Node.js package manager"},
+				{Provider: "pypi", Available: true, Description: "Python package manager"},
+				{Provider: "generic", Available: true, Description: "Generic provider"},
+			}
 		}
-		defer func() { checkRequirementsFn = prev }()
+		defer func() { checkAllProvidersHealthFn = prev }()
 
 		// capture stdout
 		old := os.Stdout
@@ -99,7 +95,13 @@ func TestHealthCommandRun(t *testing.T) {
 		io.Copy(&buf, r)
 		out := buf.String()
 
-		assert.Contains(t, out, "✅ All requirements are met! Your system is ready to use Zana.")
-		assert.NotContains(t, out, "Some requirements are not met")
+		// When not in TTY (tests), icons use plain text format [✓]
+		assert.Contains(t, out, "[✓] All providers are available! Your system is ready to use Zana.")
+		assert.NotContains(t, out, "Some providers are not available")
+
+		// All providers should show as Available
+		assert.Contains(t, out, "NPM: Available")
+		assert.Contains(t, out, "PYPI: Available")
+		assert.Contains(t, out, "GENERIC: Available")
 	})
 }

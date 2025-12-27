@@ -25,36 +25,23 @@ var nugetCmd = "dotnet"
 var nugetShellOut = shell_out.ShellOut
 var nugetShellOutCapture = shell_out.ShellOutCapture
 var nugetHasCommand = shell_out.HasCommand
-var nugetCreate = os.Create
-var nugetReadDir = os.ReadDir
-var nugetReadFile = os.ReadFile
 var nugetLstat = os.Lstat
 var nugetRemove = os.Remove
 var nugetChmod = os.Chmod
 var nugetStat = os.Stat
-var nugetMkdir = os.Mkdir
 var nugetMkdirAll = os.MkdirAll
-var nugetRemoveAll = os.RemoveAll
 var nugetWriteFile = os.WriteFile
-var nugetClose = func(f *os.File) error { return f.Close() }
 
 // Injectable local packages helpers for tests
 var lppNugetAdd = local_packages_parser.AddLocalPackage
 var lppNugetRemove = local_packages_parser.RemoveLocalPackage
 var lppNugetGetDataForProvider = local_packages_parser.GetDataForProvider
-var lppNugetGetData = local_packages_parser.GetData
 
 func NewProviderNuGet() *NuGetProvider {
 	p := &NuGetProvider{}
 	p.PROVIDER_NAME = "nuget"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = p.PROVIDER_NAME + ":"
-
-	// Check for dotnet command
-	hasDotnet := nugetHasCommand("dotnet", []string{"--version"}, nil)
-	if !hasDotnet {
-		Logger.Error("NuGet Provider: dotnet command not found. Please install .NET SDK to use the NuGetProvider.")
-	}
 	return p
 }
 
@@ -377,6 +364,12 @@ func (p *NuGetProvider) Sync() bool {
 
 	if len(localPackages) == 0 {
 		return true
+	}
+
+	// Check for dotnet command before proceeding
+	if !nugetHasCommand("dotnet", []string{"--version"}, nil) {
+		Logger.Error("NuGet Sync: dotnet command not found. Please install .NET SDK.")
+		return false
 	}
 
 	// Reinstall all tools

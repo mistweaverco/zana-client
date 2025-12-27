@@ -37,10 +37,43 @@ func (c *ColorMode) Type() string {
 	return "string"
 }
 
+type OutputMode string
+
+const (
+	OutputModeRich  OutputMode = "rich"  // Rich formatted output (default, human-readable)
+	OutputModePlain OutputMode = "plain" // Plain text output (no colors, no icons)
+	OutputModeJSON  OutputMode = "json"  // JSON output (machine-readable)
+)
+
+// String implements the flag.Value interface for OutputMode
+func (o *OutputMode) String() string {
+	if o == nil || *o == "" {
+		return string(OutputModeRich)
+	}
+	return string(*o)
+}
+
+// Set implements the flag.Value interface for OutputMode
+func (o *OutputMode) Set(value string) error {
+	switch value {
+	case "rich", "plain", "json":
+		*o = OutputMode(value)
+		return nil
+	default:
+		return fmt.Errorf("invalid output mode: %s (must be 'rich', 'plain', or 'json')", value)
+	}
+}
+
+// Type implements the flag.Value interface for OutputMode
+func (o *OutputMode) Type() string {
+	return "string"
+}
+
 type ConfigFlags struct {
 	Version     bool
 	CacheMaxAge time.Duration
 	Color       ColorMode
+	Output      OutputMode
 }
 
 type Config struct {

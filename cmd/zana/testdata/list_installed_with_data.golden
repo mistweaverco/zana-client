@@ -1,12 +1,12 @@
-📦 Locally Installed Packages
+[=] Locally Installed Packages
 
 Found 2 installed packages:
 
-🔹 NPM Packages:
-   📦 test-package (v1.0.0) 🔄 Update available: v1.1.0
+[*] NPM Packages:
+   [npm] pkg:npm/test-package (v1.0.0) [~] Update available: v1.1.0
 
-🔹 PYPI Packages:
-   🐍 black (v2.0.0) 🔄 Update available: v1.1.0
+[*] PYPI Packages:
+   [py] pkg:pypi/black (v2.0.0) [~] Update available: v1.1.0
 
-📊 Summary: 0 of 2 packages are up to date, 2 updates available
-💡 Use 'zana update --all' to update all packages
+[=] Summary: 0 of 2 packages are up to date, 2 updates available
+[*] Use 'zana update --all' to update all packages

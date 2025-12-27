@@ -1,10 +1,13 @@
 package zana
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/mistweaverco/zana-client/internal/lib/version"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,11 +17,11 @@ func TestRootCommand(t *testing.T) {
 	// Test that root command is properly configured
 	assert.Equal(t, "zana", rootCmd.Use)
 	assert.Contains(t, rootCmd.Short, "Zana is Mason.nvim, but not only for Neovim")
-	assert.Contains(t, rootCmd.Long, "Zana is a minimal CLI and TUI for managing LSP servers, DAP servers, linters, and formatters, for Neovim, but not limited to just Neovim.")
+	assert.Contains(t, rootCmd.Long, "Zana is a minimal CLI for managing LSP servers, DAP servers, linters, and formatters, for Neovim, but not limited to just Neovim.")
 
 	// Test that all expected subcommands are added
 	subcommands := rootCmd.Commands()
-	expectedCommands := []string{"env", "health", "install", "list", "remove", "update"}
+	expectedCommands := []string{"env", "health", "info", "install", "list", "remove", "sync", "update"}
 
 	// Check that all expected commands exist
 	for _, expected := range expectedCommands {
@@ -53,43 +56,30 @@ func TestRootCommandRun(t *testing.T) {
 	// Ensure Run exists
 	assert.NotNil(t, rootCmd.Run)
 
-	// Scenario 1: --version flag prints version path
-	prevShowHealth := showHealthCheckFn
-	prevBoot := bootStartFn
-	prevUI := uiShowFn
-	defer func() { showHealthCheckFn = prevShowHealth; bootStartFn = prevBoot; uiShowFn = prevUI }()
-
-	// Stub functions to ensure they are not called when --version true
-	calledHealth := false
-	calledBoot := false
-	calledUI := false
-	showHealthCheckFn = func() bool { calledHealth = true; return true }
-	bootStartFn = func(d time.Duration) { calledBoot = true }
-	uiShowFn = func() { calledUI = true }
+	// Scenario 1: --version flag prints version and returns early
+	// Capture stdout output
+	originalStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
 
 	cfg.Flags.Version = true
 	rootCmd.Run(rootCmd, []string{})
 	cfg.Flags.Version = false
 
-	assert.False(t, calledHealth)
-	assert.False(t, calledBoot)
-	assert.False(t, calledUI)
+	w.Close()
+	os.Stdout = originalStdout
 
-	// Scenario 2: health check returns false -> early return, no boot/ui
-	showHealthCheckFn = func() bool { return false }
-	calledBoot = false
-	calledUI = false
-	rootCmd.Run(rootCmd, []string{})
-	assert.False(t, calledBoot)
-	assert.False(t, calledUI)
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+	// Version should be printed (either empty string or actual version)
+	assert.Equal(t, version.VERSION+"\n", output, "Version should be printed when --version flag is set")
 
-	// Scenario 3: health ok -> boot and UI called
-	showHealthCheckFn = func() bool { return true }
-	calledBoot = false
-	calledUI = false
-	rootCmd.Run(rootCmd, []string{})
-	assert.True(t, calledBoot)
-	assert.True(t, calledUI)
+	// Scenario 2: no version flag -> help is shown
+	// We can't easily test help output without mocking, but we can verify the function doesn't panic
+	assert.NotPanics(t, func() {
+		rootCmd.Run(rootCmd, []string{})
+	})
 }
 
 func TestExecute(t *testing.T) {

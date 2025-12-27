@@ -312,7 +312,7 @@ the basepath will be `$ZANA_HOME/packages`.
 
 If `ZANA_HOME` isn't set, the basepath is:
 
-- Linux: `$XDG_CONFIG_HOME/zana/packages` or `$HOME/.config/zana/packages`
+- Linux: `$XDG_DATA_HOME/zana/packages` or `$HOME/.local/share/zana/packages`
 - macOS: `$HOME/Library/Application Support/zana/packages`
 - Windows: `%APPDATA%\zana\packages`
 

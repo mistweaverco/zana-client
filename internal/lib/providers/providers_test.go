@@ -94,7 +94,7 @@ func TestCheckIfUpdateIsAvailableReturnValue(t *testing.T) {
 
 func TestAvailableProviders(t *testing.T) {
 	// Test that all expected providers are available
-	expectedProviders := []string{"npm", "pypi", "golang", "cargo"}
+	expectedProviders := []string{"npm", "pypi", "golang", "cargo", "github", "gitlab", "codeberg", "gem", "composer", "luarocks", "nuget", "opam", "openvsx", "generic"}
 
 	assert.Len(t, AvailableProviders, len(expectedProviders))
 
@@ -109,7 +109,17 @@ func TestProviderConstants(t *testing.T) {
 	assert.Equal(t, Provider(1), ProviderPyPi)
 	assert.Equal(t, Provider(2), ProviderGolang)
 	assert.Equal(t, Provider(3), ProviderCargo)
-	assert.Equal(t, Provider(4), ProviderUnsupported)
+	assert.Equal(t, Provider(4), ProviderGitHub)
+	assert.Equal(t, Provider(5), ProviderGitLab)
+	assert.Equal(t, Provider(6), ProviderCodeberg)
+	assert.Equal(t, Provider(7), ProviderGem)
+	assert.Equal(t, Provider(8), ProviderComposer)
+	assert.Equal(t, Provider(9), ProviderLuaRocks)
+	assert.Equal(t, Provider(10), ProviderNuGet)
+	assert.Equal(t, Provider(11), ProviderOpam)
+	assert.Equal(t, Provider(12), ProviderOpenVSX)
+	assert.Equal(t, Provider(13), ProviderGeneric)
+	assert.Equal(t, Provider(14), ProviderUnsupported)
 }
 
 func TestInstallWithMockFactory(t *testing.T) {
@@ -337,4 +347,22 @@ func TestProviderDetectionEdgeCases(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+func TestFactoriesAndGithubProvider(t *testing.T) {
+	// Default factory creates providers
+	f := &DefaultProviderFactory{}
+	assert.NotNil(t, f.CreateNPMProvider())
+	assert.NotNil(t, f.CreatePyPIProvider())
+	assert.NotNil(t, f.CreateGolangProvider())
+	assert.NotNil(t, f.CreateCargoProvider())
+
+	// MockPackageManager getLatestVersion default path
+	m := &MockPackageManager{}
+	ver, err := m.getLatestVersion("anything")
+	assert.NoError(t, err)
+	assert.Equal(t, "", ver)
+
+	// GitHubProvider Install
+	g := &GitHubProvider{}
+	g.Install("pkg:github/owner/repo", "latest")
 }

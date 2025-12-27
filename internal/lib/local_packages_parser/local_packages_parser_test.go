@@ -167,7 +167,9 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		assert.NoError(t, err)
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(written, &saved)
-		assert.Equal(t, existingData, saved)
+		// IDs are normalized to new format, so pkg:npm/keep becomes npm:keep
+		expectedNormalized := LocalPackageRoot{Packages: []LocalPackageItem{{SourceID: "npm:keep", Version: "1.0.0"}}}
+		assert.Equal(t, expectedNormalized, saved)
 	})
 
 	t.Run("get data with existing file", func(t *testing.T) {
@@ -196,8 +198,11 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		result := parser.GetData(false)
 
 		assert.Len(t, result.Packages, 2)
-		assert.Equal(t, expectedData.Packages[0], result.Packages[0])
-		assert.Equal(t, expectedData.Packages[1], result.Packages[1])
+		// GetData normalizes IDs from pkg:provider/pkg to provider:pkg
+		assert.Equal(t, "npm:test-package", result.Packages[0].SourceID)
+		assert.Equal(t, "1.0.0", result.Packages[0].Version)
+		assert.Equal(t, "pypi:black", result.Packages[1].SourceID)
+		assert.Equal(t, "2.0.0", result.Packages[1].Version)
 	})
 
 	t.Run("get data for provider with no matches returns empty", func(t *testing.T) {
@@ -240,8 +245,9 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		result := parser.GetDataForProvider("npm")
 
 		assert.Len(t, result.Packages, 2)
-		assert.Equal(t, "pkg:npm/test-package", result.Packages[0].SourceID)
-		assert.Equal(t, "pkg:npm/another-package", result.Packages[1].SourceID)
+		// IDs are normalized to new format
+		assert.Equal(t, "npm:test-package", result.Packages[0].SourceID)
+		assert.Equal(t, "npm:another-package", result.Packages[1].SourceID)
 	})
 
 	t.Run("is package installed false when file exists but not present", func(t *testing.T) {
@@ -295,7 +301,8 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(written, &saved)
 		assert.Len(t, saved.Packages, 1)
-		assert.Equal(t, "pkg:npm/new-package", saved.Packages[0].SourceID)
+		// AddLocalPackage normalizes IDs to new format
+		assert.Equal(t, "npm:new-package", saved.Packages[0].SourceID)
 		assert.Equal(t, "1.0.0", saved.Packages[0].Version)
 	})
 
@@ -332,7 +339,8 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(written, &saved)
 		assert.Len(t, saved.Packages, 1)
-		assert.Equal(t, "pkg:npm/existing-package", saved.Packages[0].SourceID)
+		// AddLocalPackage normalizes IDs to new format
+		assert.Equal(t, "npm:existing-package", saved.Packages[0].SourceID)
 		assert.Equal(t, "2.0.0", saved.Packages[0].Version)
 	})
 
@@ -370,7 +378,8 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(written, &saved)
 		assert.Len(t, saved.Packages, 1)
-		assert.Equal(t, "pkg:npm/keep-this", saved.Packages[0].SourceID)
+		// IDs are normalized when reading from file, so pkg:npm/keep-this becomes npm:keep-this
+		assert.Equal(t, "npm:keep-this", saved.Packages[0].SourceID)
 	})
 
 	t.Run("get by source id found", func(t *testing.T) {
@@ -398,7 +407,8 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		parser := NewWithFileManager(mockFileManager)
 		result := parser.GetBySourceId("pkg:npm/test-package")
 
-		assert.Equal(t, "pkg:npm/test-package", result.SourceID)
+		// GetBySourceId normalizes IDs, and GetData also normalizes when reading from file
+		assert.Equal(t, "npm:test-package", result.SourceID)
 		assert.Equal(t, "1.0.0", result.Version)
 	})
 
@@ -555,7 +565,8 @@ func TestLegacyFunctions(t *testing.T) {
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(mem, &saved)
 		assert.Len(t, saved.Packages, 1)
-		assert.Equal(t, "pkg:npm/legacy", saved.Packages[0].SourceID)
+		// AddLocalPackage normalizes IDs to new format
+		assert.Equal(t, "npm:legacy", saved.Packages[0].SourceID)
 		assert.Equal(t, "1.0.0", saved.Packages[0].Version)
 
 		err = RemoveLocalPackage("pkg:npm/legacy")

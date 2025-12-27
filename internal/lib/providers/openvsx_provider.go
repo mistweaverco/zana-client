@@ -13,7 +13,6 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
-	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
 )
 
 type OpenVSXProvider struct {
@@ -24,17 +23,13 @@ type OpenVSXProvider struct {
 }
 
 // Injectable shell and OS helpers for tests
-var openvsxShellOut = shell_out.ShellOut
-var openvsxShellOutCapture = shell_out.ShellOutCapture
 var openvsxStat = os.Stat
-var openvsxMkdir = os.Mkdir
 var openvsxMkdirAll = os.MkdirAll
 var openvsxLstat = os.Lstat
 var openvsxRemove = os.Remove
 var openvsxRemoveAll = os.RemoveAll
 var openvsxSymlink = os.Symlink
 var openvsxReadDir = os.ReadDir
-var openvsxHasCommand = shell_out.HasCommand
 
 // Injectable local packages helpers for tests
 var lppOpenvsxAdd = local_packages_parser.AddLocalPackage
@@ -114,7 +109,7 @@ func (p *OpenVSXProvider) Install(sourceID, version string) bool {
 
 	// Get download file name from registry
 	var vsixFileName string
-	if registryItem.Source.Asset != nil && len(registryItem.Source.Asset) > 0 {
+	if len(registryItem.Source.Asset) > 0 {
 		// Use asset file from registry
 		asset := FindMatchingAsset(registryItem.Source.Asset)
 		if asset != nil {
@@ -239,7 +234,7 @@ func (p *OpenVSXProvider) getLatestVersion(repo string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch extension info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("OpenVSX API returned status %d", resp.StatusCode)
@@ -261,7 +256,7 @@ func (p *OpenVSXProvider) downloadFile(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP error: %d", resp.StatusCode)
@@ -271,7 +266,7 @@ func (p *OpenVSXProvider) downloadFile(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)

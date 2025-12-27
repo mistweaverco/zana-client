@@ -82,7 +82,7 @@ func (m model) unzipRegistry() tea.Cmd {
 func (m model) performUnzip() tea.Cmd {
 	return func() tea.Msg {
 		cachePath := files.GetRegistryCachePath()
-		if err := files.Unzip(cachePath, files.GetAppDataPath()); err != nil {
+		if err := files.Unzip(cachePath, files.GetCachePath()); err != nil {
 			return errMsg(err)
 		}
 		return unzipFinishedMsg{}

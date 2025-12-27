@@ -29,7 +29,7 @@ Examples:
 		// Ensure registry is available
 		_ = downloadAndUnzipRegistryFn()
 
-		parser := newRegistryParserFn()
+		parser := newRegistryParser()
 
 		// Process all packages
 		packagesToShow := make([]string, 0, len(args))
@@ -42,7 +42,11 @@ Examples:
 				// Package name without provider - search registry and prompt user
 				matches := findPackagesByName(baseID)
 				if len(matches) == 0 {
-					fmt.Printf("%s No packages found matching '%s'\n", IconClose(), baseID)
+					if ShouldUsePlainOutput() {
+						fmt.Printf("[✗] No packages found matching '%s'\n", baseID)
+					} else {
+						fmt.Printf("%s No packages found matching '%s'\n", IconClose(), baseID)
+					}
 					continue
 				}
 
@@ -50,7 +54,7 @@ Examples:
 				exactMatches := []PackageMatch{}
 				partialMatches := []PackageMatch{}
 				baseIDLower := strings.ToLower(baseID)
-				parserForExactMatch := newRegistryParserFn()
+				parserForExactMatch := newRegistryParser()
 
 				for _, match := range matches {
 					matchNameLower := strings.ToLower(match.PackageName)
@@ -84,9 +88,13 @@ Examples:
 				}
 
 				// Prompt for selection
-				selectedSourceIDs, err := promptForProviderSelection(baseID, matchesToShow, false, "view")
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matchesToShow, "view")
 				if err != nil {
-					fmt.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
+					if ShouldUsePlainOutput() {
+						fmt.Printf("[✗] Error selecting provider for '%s': %v\n", baseID, err)
+					} else {
+						fmt.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
+					}
 					continue
 				}
 
@@ -109,24 +117,54 @@ Examples:
 		}
 
 		// Display info for each package
-		for i, sourceID := range packagesToShow {
-			if i > 0 {
-				fmt.Println() // Add spacing between multiple packages
+		if ShouldUseJSONOutput() {
+			// Collect all packages for JSON output
+			packagesInfo := make([]map[string]interface{}, 0, len(packagesToShow))
+			for _, sourceID := range packagesToShow {
+				item := parser.GetBySourceId(sourceID)
+				if item.Source.ID == "" {
+					continue
+				}
+				packagesInfo = append(packagesInfo, buildPackageInfoJSON(item, sourceID))
 			}
-
-			item := parser.GetBySourceId(sourceID)
-			if item.Source.ID == "" {
-				fmt.Printf("%s Package '%s' not found in registry\n", IconClose(), sourceID)
-				continue
+			if len(packagesInfo) == 1 {
+				PrintJSON(packagesInfo[0])
+			} else {
+				PrintJSON(packagesInfo)
 			}
+		} else {
+			for i, sourceID := range packagesToShow {
+				if i > 0 {
+					fmt.Println() // Add spacing between multiple packages
+				}
 
-			displayPackageInfo(item, sourceID)
+				item := parser.GetBySourceId(sourceID)
+				if item.Source.ID == "" {
+					if ShouldUsePlainOutput() {
+						fmt.Printf("[✗] Package '%s' not found in registry\n", sourceID)
+					} else {
+						fmt.Printf("%s Package '%s' not found in registry\n", IconClose(), sourceID)
+					}
+					continue
+				}
+
+				displayPackageInfo(item, sourceID)
+			}
 		}
 	},
 }
 
-// displayPackageInfo renders package information as markdown using glamour
+// displayPackageInfo renders package information based on output mode
 func displayPackageInfo(item registry_parser.RegistryItem, sourceID string) {
+	if ShouldUsePlainOutput() {
+		displayPackageInfoPlain(item, sourceID)
+	} else {
+		displayPackageInfoRich(item, sourceID)
+	}
+}
+
+// displayPackageInfoRich renders package information as markdown using glamour
+func displayPackageInfoRich(item registry_parser.RegistryItem, sourceID string) {
 	// Build markdown content
 	var markdown strings.Builder
 
@@ -194,10 +232,10 @@ func displayPackageInfo(item registry_parser.RegistryItem, sourceID string) {
 		if installedVersion != "" {
 			markdown.WriteString(fmt.Sprintf("**Status:** ✅ Installed (version: `%s`)\n\n", installedVersion))
 		} else {
-			markdown.WriteString(fmt.Sprintf("**Status:** ✅ Installed\n\n"))
+			markdown.WriteString("**Status:** ✅ Installed\n\n")
 		}
 	} else {
-		markdown.WriteString(fmt.Sprintf("**Status:** ⬜ Not installed\n\n"))
+		markdown.WriteString("**Status:** ⬜ Not installed\n\n")
 	}
 
 	// Binaries
@@ -218,4 +256,145 @@ func displayPackageInfo(item registry_parser.RegistryItem, sourceID string) {
 	}
 
 	fmt.Print(rendered)
+}
+
+// displayPackageInfoPlain renders package information as plain text
+func displayPackageInfoPlain(item registry_parser.RegistryItem, sourceID string) {
+	fmt.Printf("Name: %s\n", item.Name)
+	fmt.Printf("Package ID: %s\n", sourceID)
+
+	if len(item.Aliases) > 0 {
+		fmt.Printf("Aliases: %s\n", strings.Join(item.Aliases, ", "))
+	}
+
+	if item.Version != "" {
+		fmt.Printf("Version: %s\n", item.Version)
+	}
+
+	if item.Description != "" {
+		fmt.Printf("Description: %s\n", item.Description)
+	}
+
+	if item.Homepage != "" {
+		fmt.Printf("Homepage: %s\n", item.Homepage)
+	}
+
+	if strings.Contains(sourceID, ":") {
+		parts := strings.SplitN(sourceID, ":", 2)
+		if len(parts) == 2 {
+			fmt.Printf("Provider: %s\n", parts[0])
+		}
+	}
+
+	if len(item.Licenses) > 0 {
+		fmt.Printf("Licenses: %s\n", strings.Join(item.Licenses, ", "))
+	}
+
+	if len(item.Languages) > 0 {
+		fmt.Printf("Languages: %s\n", strings.Join(item.Languages, ", "))
+	}
+
+	if len(item.Categories) > 0 {
+		fmt.Printf("Categories: %s\n", strings.Join(item.Categories, ", "))
+	}
+
+	// Installation status
+	localPackagesRoot := newLocalPackagesParserFn()
+	installedPackages := localPackagesRoot.Packages
+	isInstalled := false
+	installedVersion := ""
+	for _, pkg := range installedPackages {
+		if pkg.SourceID == sourceID {
+			isInstalled = true
+			installedVersion = pkg.Version
+			break
+		}
+	}
+
+	if isInstalled {
+		if installedVersion != "" {
+			fmt.Printf("Status: Installed (version: %s)\n", installedVersion)
+		} else {
+			fmt.Printf("Status: Installed\n")
+		}
+	} else {
+		fmt.Printf("Status: Not installed\n")
+	}
+
+	if len(item.Bin) > 0 {
+		fmt.Printf("Binaries:\n")
+		for binName, binPath := range item.Bin {
+			fmt.Printf("  %s: %s\n", binName, binPath)
+		}
+	}
+}
+
+// buildPackageInfoJSON builds a JSON representation of package info
+func buildPackageInfoJSON(item registry_parser.RegistryItem, sourceID string) map[string]interface{} {
+	result := make(map[string]interface{})
+	result["name"] = item.Name
+	result["package_id"] = sourceID
+
+	if len(item.Aliases) > 0 {
+		result["aliases"] = item.Aliases
+	}
+
+	if item.Version != "" {
+		result["version"] = item.Version
+	}
+
+	if item.Description != "" {
+		result["description"] = item.Description
+	}
+
+	if item.Homepage != "" {
+		result["homepage"] = item.Homepage
+	}
+
+	if strings.Contains(sourceID, ":") {
+		parts := strings.SplitN(sourceID, ":", 2)
+		if len(parts) == 2 {
+			result["provider"] = parts[0]
+		}
+	}
+
+	if len(item.Licenses) > 0 {
+		result["licenses"] = item.Licenses
+	}
+
+	if len(item.Languages) > 0 {
+		result["languages"] = item.Languages
+	}
+
+	if len(item.Categories) > 0 {
+		result["categories"] = item.Categories
+	}
+
+	// Installation status
+	localPackagesRoot := newLocalPackagesParserFn()
+	installedPackages := localPackagesRoot.Packages
+	isInstalled := false
+	installedVersion := ""
+	for _, pkg := range installedPackages {
+		if pkg.SourceID == sourceID {
+			isInstalled = true
+			installedVersion = pkg.Version
+			break
+		}
+	}
+
+	status := "not_installed"
+	if isInstalled {
+		status = "installed"
+		if installedVersion != "" {
+			result["installed_version"] = installedVersion
+		}
+	}
+	result["status"] = status
+
+	if len(item.Bin) > 0 {
+		result["binaries"] = item.Bin
+	}
+
+	return result
 }

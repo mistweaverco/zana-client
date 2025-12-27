@@ -25,35 +25,23 @@ var opamCmd = "opam"
 var opamShellOut = shell_out.ShellOut
 var opamShellOutCapture = shell_out.ShellOutCapture
 var opamHasCommand = shell_out.HasCommand
-var opamCreate = os.Create
-var opamReadDir = os.ReadDir
 var opamLstat = os.Lstat
 var opamRemove = os.Remove
 var opamChmod = os.Chmod
 var opamStat = os.Stat
-var opamMkdir = os.Mkdir
 var opamMkdirAll = os.MkdirAll
-var opamRemoveAll = os.RemoveAll
 var opamWriteFile = os.WriteFile
-var opamClose = func(f *os.File) error { return f.Close() }
 
 // Injectable local packages helpers for tests
 var lppOpamAdd = local_packages_parser.AddLocalPackage
 var lppOpamRemove = local_packages_parser.RemoveLocalPackage
 var lppOpamGetDataForProvider = local_packages_parser.GetDataForProvider
-var lppOpamGetData = local_packages_parser.GetData
 
 func NewProviderOpam() *OpamProvider {
 	p := &OpamProvider{}
 	p.PROVIDER_NAME = "opam"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = p.PROVIDER_NAME + ":"
-
-	// Check for opam command
-	hasOpam := opamHasCommand("opam", []string{"--version"}, nil)
-	if !hasOpam {
-		Logger.Error("OPAM Provider: opam command not found. Please install OPAM to use the OpamProvider.")
-	}
 	return p
 }
 
@@ -376,6 +364,12 @@ func (p *OpamProvider) Sync() bool {
 
 	if len(localPackages) == 0 {
 		return true
+	}
+
+	// Check for opam command before proceeding
+	if !opamHasCommand("opam", []string{"--version"}, nil) {
+		Logger.Error("OPAM Sync: opam command not found. Please install OPAM.")
+		return false
 	}
 
 	switchPath := filepath.Join(p.APP_PACKAGES_DIR, "switch")

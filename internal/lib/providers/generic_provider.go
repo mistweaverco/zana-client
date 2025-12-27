@@ -24,7 +24,6 @@ type GenericProvider struct {
 // Injectable shell and OS helpers for tests
 var genericShellOut = shell_out.ShellOut
 var genericStat = os.Stat
-var genericMkdir = os.Mkdir
 var genericMkdirAll = os.MkdirAll
 var genericLstat = os.Lstat
 var genericRemove = os.Remove
@@ -260,7 +259,7 @@ func (p *GenericProvider) downloadFile(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP error: %d", resp.StatusCode)
@@ -270,7 +269,7 @@ func (p *GenericProvider) downloadFile(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
@@ -313,14 +312,14 @@ func (p *GenericProvider) extractArchive(archivePath, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	destPath := filepath.Join(destDir, filepath.Base(archivePath))
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	if _, err := io.Copy(destFile, srcFile); err != nil {
 		return fmt.Errorf("failed to copy file: %w", err)

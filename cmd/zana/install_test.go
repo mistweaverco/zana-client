@@ -34,7 +34,7 @@ func TestInstallCommandArgs(t *testing.T) {
 		{"valid multiple packages", []string{"pkg:npm/test-package", "pkg:pypi/black"}, false},
 		{"valid packages with versions", []string{"pkg:npm/test-package@1.0.0", "pkg:pypi/black@22.3.0"}, false},
 		{"valid packages mixed with and without versions", []string{"pkg:npm/test-package", "pkg:pypi/black@22.3.0"}, false},
-		{"invalid format - no pkg prefix", []string{"npm/test-package"}, true},
+		{"package name without provider (allowed - will search registry)", []string{"test-package"}, false},
 		{"invalid format - no provider", []string{"pkg:/test-package"}, true},
 		{"invalid format - no package name", []string{"pkg:npm/"}, true},
 		{"empty args", []string{}, true},
@@ -111,11 +111,10 @@ func TestInstallCommandValidation(t *testing.T) {
 		assert.Contains(t, err.Error(), "Supported providers:")
 	})
 
-	t.Run("invalid package ID format", func(t *testing.T) {
-		// Test the validation function directly
+	t.Run("package name without provider (now allowed)", func(t *testing.T) {
+		// Test that package names without provider are allowed (will be handled in Run function)
 		err := validatePackageArgs([]string{"invalid-format"})
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid package ID format 'invalid-format': must start with 'pkg:'")
+		assert.NoError(t, err, "Package names without provider are now allowed and will be searched in registry")
 	})
 
 	t.Run("missing package name", func(t *testing.T) {
@@ -364,6 +363,7 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		// Stub functions
 		prevSupp := isSupportedProviderFn
 		prevInstall := installPackageFn
+		prevResolve := resolveVersionFn
 		isSupportedProviderFn = func(p string) bool { return true }
 		installPackageFn = func(id, v string) bool {
 			// First package succeeds, second fails
@@ -372,7 +372,12 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 			}
 			return false
 		}
-		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
+		resolveVersionFn = func(id, v string) (string, error) { return v, nil }
+		defer func() {
+			isSupportedProviderFn = prevSupp
+			installPackageFn = prevInstall
+			resolveVersionFn = prevResolve
+		}()
 
 		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "pkg:npm/prettier"})
 
@@ -384,12 +389,12 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		// Check for expected output
-		assert.Contains(t, out, "✓ Successfully installed pkg:npm/eslint@latest")
-		assert.Contains(t, out, "✗ Failed to install pkg:npm/prettier@latest")
+		assert.Contains(t, out, "[✓] Successfully installed npm:eslint@latest")
+		assert.Contains(t, out, "[✗] Failed to install npm:prettier@latest")
 		assert.Contains(t, out, "Installation Summary:")
 		assert.Contains(t, out, "Successfully installed: 1")
 		assert.Contains(t, out, "Failed to install: 1")
-		assert.Contains(t, out, "Failed packages: pkg:npm/prettier")
+		assert.Contains(t, out, "Failed packages: npm:prettier")
 	})
 
 	t.Run("multiple packages with versions", func(t *testing.T) {
@@ -401,9 +406,15 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		// Stub functions
 		prevSupp := isSupportedProviderFn
 		prevInstall := installPackageFn
+		prevResolve := resolveVersionFn
 		isSupportedProviderFn = func(p string) bool { return true }
 		installPackageFn = func(id, v string) bool { return true }
-		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
+		resolveVersionFn = func(id, v string) (string, error) { return v, nil }
+		defer func() {
+			isSupportedProviderFn = prevSupp
+			installPackageFn = prevInstall
+			resolveVersionFn = prevResolve
+		}()
 
 		installCmd.Run(installCmd, []string{"pkg:npm/eslint@2.0.0", "pkg:pypi/black@22.3.0"})
 
@@ -415,8 +426,8 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		// Check for expected output
-		assert.Contains(t, out, "✓ Successfully installed pkg:npm/eslint@2.0.0")
-		assert.Contains(t, out, "✓ Successfully installed pkg:pypi/black@22.3.0")
+		assert.Contains(t, out, "[✓] Successfully installed npm:eslint@2.0.0")
+		assert.Contains(t, out, "[✓] Successfully installed pypi:black@22.3.0")
 		assert.Contains(t, out, "Installation Summary:")
 		assert.Contains(t, out, "Successfully installed: 2")
 		assert.NotContains(t, out, "Failed to install:")
@@ -431,9 +442,15 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		// Stub functions
 		prevSupp := isSupportedProviderFn
 		prevInstall := installPackageFn
+		prevResolve := resolveVersionFn
 		isSupportedProviderFn = func(p string) bool { return true }
 		installPackageFn = func(id, v string) bool { return false }
-		defer func() { isSupportedProviderFn = prevSupp; installPackageFn = prevInstall }()
+		resolveVersionFn = func(id, v string) (string, error) { return v, nil }
+		defer func() {
+			isSupportedProviderFn = prevSupp
+			installPackageFn = prevInstall
+			resolveVersionFn = prevResolve
+		}()
 
 		installCmd.Run(installCmd, []string{"pkg:npm/eslint", "pkg:pypi/black"})
 
@@ -445,12 +462,12 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		// Check for expected output
-		assert.Contains(t, out, "✗ Failed to install pkg:npm/eslint@latest")
-		assert.Contains(t, out, "✗ Failed to install pkg:pypi/black@latest")
+		assert.Contains(t, out, "[✗] Failed to install npm:eslint@latest")
+		assert.Contains(t, out, "[✗] Failed to install pypi:black@latest")
 		assert.Contains(t, out, "Installation Summary:")
 		assert.Contains(t, out, "Successfully installed: 0")
 		assert.Contains(t, out, "Failed to install: 2")
-		assert.Contains(t, out, "Failed packages: pkg:npm/eslint, pkg:pypi/black")
+		assert.Contains(t, out, "Failed packages: npm:eslint, pypi:black")
 	})
 }
 

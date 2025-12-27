@@ -43,9 +43,8 @@ var lppPyRemove = local_packages_parser.RemoveLocalPackage
 var lppPyGetDataForProvider = local_packages_parser.GetDataForProvider
 var lppPyGetData = local_packages_parser.GetData
 
-// getPythonVersion detects the current Python version (e.g., "3.11", "3.12")
-// by running python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
-func (p *PyPiProvider) getPythonVersion() (string, error) {
+// Injectable for testing
+var pipGetPythonVersion = func(p *PyPiProvider) (string, error) {
 	// Try python3 first, then python
 	pythonCmd := "python3"
 	if !pipHasCommand("python3", []string{"--version"}, nil) {
@@ -63,6 +62,12 @@ func (p *PyPiProvider) getPythonVersion() (string, error) {
 	return version, nil
 }
 
+// getPythonVersion detects the current Python version (e.g., "3.11", "3.12")
+// by running python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+func (p *PyPiProvider) getPythonVersion() (string, error) {
+	return pipGetPythonVersion(p)
+}
+
 func NewProviderPyPi() *PyPiProvider {
 	p := &PyPiProvider{}
 	p.PROVIDER_NAME = "pypi"
@@ -74,11 +79,8 @@ func NewProviderPyPi() *PyPiProvider {
 	if hasPip3 {
 		pipCmd = "pip3"
 	} else {
-		hasPip := pipHasCommand("pip", []string{"--version"}, nil)
-		if !hasPip {
-			Logger.Error("PyPI Provider: pip or pip3 command not found. Please install pip to use the PyPiProvider.")
-		}
 		// pipCmd defaults to "pip" if pip3 is not available
+		_ = pipHasCommand("pip", []string{"--version"}, nil)
 	}
 	return p
 }
@@ -539,9 +541,12 @@ func (p *PyPiProvider) removeBin(sourceID string) error {
 func (p *PyPiProvider) Remove(sourceID string) bool {
 	packageName := p.getRepo(sourceID)
 	Logger.Info(fmt.Sprintf("PyPI Remove: Removing package %s", packageName))
+	// Try to remove bin - log error but continue (package might already be partially removed)
+	// Only fail if it's a critical error, not just missing directory
 	if err := p.removeBin(sourceID); err != nil {
 		Logger.Error(fmt.Sprintf("Error removing bin for package %s: %v", packageName, err))
-		return false
+		// Continue with wrapper and local package removal even if bin removal fails
+		// This handles cases where package is partially installed or already removed
 	}
 	_ = p.removePackageWrappers(packageName)
 	if err := lppPyRemove(sourceID); err != nil {

@@ -48,7 +48,6 @@ func shouldUseColors() bool {
 // ANSI color codes
 const (
 	colorReset   = "\033[0m"
-	colorBold    = "\033[1m"
 	colorRed     = "\033[31m"
 	colorGreen   = "\033[32m"
 	colorYellow  = "\033[33m"
@@ -56,14 +55,6 @@ const (
 	colorMagenta = "\033[35m"
 	colorCyan    = "\033[36m"
 	colorWhite   = "\033[37m"
-
-	// Bright colors
-	colorBrightRed     = "\033[91m"
-	colorBrightGreen   = "\033[92m"
-	colorBrightYellow  = "\033[93m"
-	colorBrightBlue    = "\033[94m"
-	colorBrightMagenta = "\033[95m"
-	colorBrightCyan    = "\033[96m"
 )
 
 // Base icon constants (uncolored)
@@ -80,6 +71,9 @@ const (
 	iconRefresh   = "🔄"
 	iconLightbulb = "💡"
 	iconSummary   = "📊"
+	iconBook      = "📚"
+	iconDiamond   = "🔹"
+	iconEmpty     = "⬜"
 
 	// Provider icons
 	iconNPM      = "📦"
@@ -109,6 +103,9 @@ const (
 	textRefresh     = "[~]"
 	textLightbulb   = "[*]"
 	textSummary     = "[=]"
+	textBook        = "[book]"
+	textDiamond     = "[*]"
+	textEmpty       = "[ ]"
 	textNPM         = "[npm]"
 	textGolang      = "[go]"
 	textPython      = "[py]"
@@ -140,6 +137,14 @@ func IconCheckCircle() string {
 		return textCheckCircle
 	}
 	return colorGreen + iconCheckCircle + colorReset
+}
+
+// IconCheckCirclePlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconCheckCirclePlain() string {
+	if !shouldUseColors() {
+		return textCheckCircle
+	}
+	return iconCheckCircle
 }
 
 // Error icons (red)
@@ -180,6 +185,14 @@ func IconRefresh() string {
 	return colorCyan + iconRefresh + colorReset
 }
 
+// IconRefreshPlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconRefreshPlain() string {
+	if !shouldUseColors() {
+		return textRefresh
+	}
+	return iconRefresh
+}
+
 func IconLightbulb() string {
 	if !shouldUseColors() {
 		return textLightbulb
@@ -187,11 +200,72 @@ func IconLightbulb() string {
 	return colorYellow + iconLightbulb + colorReset
 }
 
+// IconLightbulbPlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconLightbulbPlain() string {
+	if !shouldUseColors() {
+		return textLightbulb
+	}
+	return iconLightbulb
+}
+
 func IconSummary() string {
 	if !shouldUseColors() {
 		return textSummary
 	}
 	return colorBlue + iconSummary + colorReset
+}
+
+// IconSummaryPlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconSummaryPlain() string {
+	if !shouldUseColors() {
+		return textSummary
+	}
+	return iconSummary
+}
+
+func IconBook() string {
+	if !shouldUseColors() {
+		return textBook
+	}
+	return colorBlue + iconBook + colorReset
+}
+
+// IconBookPlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconBookPlain() string {
+	if !shouldUseColors() {
+		return textBook
+	}
+	return iconBook
+}
+
+func IconDiamond() string {
+	if !shouldUseColors() {
+		return textDiamond
+	}
+	return colorCyan + iconDiamond + colorReset
+}
+
+// IconDiamondPlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconDiamondPlain() string {
+	if !shouldUseColors() {
+		return textDiamond
+	}
+	return iconDiamond
+}
+
+func IconEmpty() string {
+	if !shouldUseColors() {
+		return textEmpty
+	}
+	return iconEmpty
+}
+
+// IconEmptyPlain returns the icon without ANSI codes (for use in markdown that will be rendered)
+func IconEmptyPlain() string {
+	if !shouldUseColors() {
+		return textEmpty
+	}
+	return iconEmpty
 }
 
 // Provider icons with brand colors
