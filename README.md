@@ -6,6 +6,8 @@
 
 [![Made with love][badge-made-with-love]][contributors]
 [![Go][badge-golang]][golang-website]
+[![Development status][badge-development-status]][development-status]
+[![Our manifesto][badge-our-manifesto]][our-manifesto]
 [![Latest release][badge-latest-release]][latest-release]
 
 [Terms used](#requirements) •
@@ -339,15 +341,19 @@ $basepath/$provider/$package-name/
 
 
 
-[golang-website]: https://golang.org
-[website]: https://getzana.net
-[registry-website]: https://registry.getzana.net
+[logo]: assets/logo.svg
 [badge-made-with-love]: assets/badge-made-with-love.svg
 [badge-golang]: assets/badge-golang.svg
-[contributors]: https://github.com/mistweaverco/zana-client/graphs/contributors
-[logo]: assets/logo.svg
-[swahili]: https://en.wikipedia.org/wiki/Swahili_language
+[badge-development-status]: assets/badge-development-status.svg
+[badge-our-manifesto]: assets/badge-our-manifesto.svg
 [badge-latest-release]: https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge
+[our-manifesto]: https://mistweaverco.com/manifesto
+[development-status]: https://github.com/orgs/mistweaverco/projects/5/views/1?filterQuery=repo%3Amistweaverco%2Fzana-client.nvim
+[registry-website]: https://registry.getzana.net
+[golang-website]: https://golang.org
+[website]: https://getzana.net
+[contributors]: https://github.com/mistweaverco/zana-client/graphs/contributors
+[swahili]: https://en.wikipedia.org/wiki/Swahili_language
 [latest-release]: https://github.com/mistweaverco/zana-client/releases/latest
 [download-website]: https://getzana.net/#download
 [zana-registry]: https://github.com/mistweaverco/zana-registry
