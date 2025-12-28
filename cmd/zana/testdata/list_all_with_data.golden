@@ -1,12 +1,12 @@
-📚 All Available Packages
+[book] All Available Packages
 
 Found 2 packages in the registry:
 
-🔹 NPM Packages (1):
-   📦 test-package (v1.0.0)
+[*] NPM Packages (1):
+   [npm] pkg:npm/test-package (v1.0.0)
       Test package
 
-🔹 PYPI Packages (1):
-   🐍 black (v2.0.0)
+[*] PYPI Packages (1):
+   [py] pkg:pypi/black (v2.0.0)
       Python formatter
 

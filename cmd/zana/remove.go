@@ -59,7 +59,7 @@ Examples:
 				}
 
 				// Always show confirmation for partial names (user didn't provide full provider:package-id)
-				selectedSourceIDs, err := promptForProviderSelection(baseID, matches, false, "remove")
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matches, "remove")
 				if err != nil {
 					fmt.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
 					return
@@ -128,14 +128,23 @@ Examples:
 		}
 
 		// Print summary
-		fmt.Printf("\nRemove Summary:\n")
-		fmt.Printf("  Successfully removed: %d\n", successCount)
-		fmt.Printf("  Failed to remove: %d\n", failedCount)
-
-		if allSuccess {
-			fmt.Printf("All packages removed successfully!\n")
+		if ShouldUseJSONOutput() {
+			result := map[string]interface{}{
+				"success_count": successCount,
+				"failure_count": failedCount,
+				"all_success":   allSuccess,
+			}
+			PrintJSON(result)
 		} else {
-			fmt.Printf("Some packages failed to remove.\n")
+			fmt.Printf("\nRemove Summary:\n")
+			fmt.Printf("  Successfully removed: %d\n", successCount)
+			fmt.Printf("  Failed to remove: %d\n", failedCount)
+
+			if allSuccess {
+				fmt.Printf("All packages removed successfully!\n")
+			} else {
+				fmt.Printf("Some packages failed to remove.\n")
+			}
 		}
 	},
 }
@@ -151,7 +160,7 @@ func findInstalledPackagesByName(packageName string) []PackageMatch {
 	packageNameLower := strings.ToLower(packageName)
 
 	// Get registry parser to lookup aliases
-	parser := newRegistryParserFn()
+	parser := newRegistryParser()
 
 	for _, pkg := range installedPackages {
 		sourceID := strings.TrimSpace(pkg.SourceID)

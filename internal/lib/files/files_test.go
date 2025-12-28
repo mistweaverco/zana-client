@@ -104,20 +104,6 @@ func createRealZipArchive(files map[string]string) (ZipArchive, error) {
 	}, nil
 }
 
-// mockFileInfo implements os.FileInfo for testing
-type mockFileInfo struct {
-	name  string
-	isDir bool
-	mode  os.FileMode
-}
-
-func (m *mockFileInfo) Name() string       { return m.name }
-func (m *mockFileInfo) Size() int64        { return 0 }
-func (m *mockFileInfo) Mode() os.FileMode  { return m.mode }
-func (m *mockFileInfo) ModTime() time.Time { return time.Now() }
-func (m *mockFileInfo) IsDir() bool        { return m.isDir }
-func (m *mockFileInfo) Sys() interface{}   { return nil }
-
 // ZipWriter interface for testing zip creation
 type ZipWriter interface {
 	Create(name string) (io.Writer, error)
@@ -164,6 +150,7 @@ type MockFileSystem struct {
 	OpenFileFunc      func(name string, flag int, perm os.FileMode) (afero.File, error)
 	StatFunc          func(name string) (os.FileInfo, error)
 	UserConfigDirFunc func() (string, error)
+	UserHomeDirFunc   func() (string, error)
 	TempDirFunc       func() string
 	GetenvFunc        func(key string) string
 	WriteStringFunc   func(file afero.File, s string) (int, error)
@@ -203,6 +190,13 @@ func (m *MockFileSystem) UserConfigDir() (string, error) {
 		return m.UserConfigDirFunc()
 	}
 	return "/tmp/zana_test", nil
+}
+
+func (m *MockFileSystem) UserHomeDir() (string, error) {
+	if m.UserHomeDirFunc != nil {
+		return m.UserHomeDirFunc()
+	}
+	return "/home/testuser", nil
 }
 
 func (m *MockFileSystem) TempDir() string {
@@ -344,35 +338,7 @@ func TestEnsureDirExists(t *testing.T) {
 	assert.True(t, info.IsDir())
 }
 
-// TestGenerateZanaGitIgnore for testing file creation and writing
-func TestGenerateZanaGitIgnore(t *testing.T) {
-	// Create an in-memory filesystem for testing
-	mockFS := &MockFileSystem{
-		fs: afero.NewMemMapFs(),
-	}
-	SetFileSystem(mockFS)
-	defer ResetDependencies()
-
-	// Test generating .gitignore
-	result := GenerateZanaGitIgnore()
-	assert.True(t, result)
-
-	// Verify .gitignore was created in the in-memory filesystem
-	_, err := mockFS.fs.Stat("/tmp/zana_test/.gitignore")
-	require.NoError(t, err)
-	// If we get here, the file exists
-
-	// Verify content
-	content, err := afero.ReadFile(mockFS.fs, "/tmp/zana_test/.gitignore")
-	require.NoError(t, err)
-	assert.Contains(t, string(content), "*.zip")
-	assert.Contains(t, string(content), "/bin")
-	assert.Contains(t, string(content), "zana-registry.json")
-
-	// Test calling again (should return true without error)
-	result = GenerateZanaGitIgnore()
-	assert.True(t, result)
-}
+// TestGenerateZanaGitIgnore removed - function no longer needed since registry files are in cache folder
 
 // TestDownloadWithCache for testing download operations
 func TestDownloadWithCache(t *testing.T) {
@@ -869,68 +835,7 @@ func TestUnzipComprehensive(t *testing.T) {
 	})
 }
 
-// TestGenerateZanaGitIgnoreComprehensive tests all branches of GenerateZanaGitIgnore
-func TestGenerateZanaGitIgnoreComprehensive(t *testing.T) {
-	t.Run("generate gitignore with existing file", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Create the .gitignore file first
-		gitignorePath := "/tmp/zana_test/.gitignore"
-		file, err := mockFS.fs.Create(gitignorePath)
-		require.NoError(t, err)
-		file.Close()
-
-		// Test that it returns true when file already exists
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-
-	t.Run("generate gitignore with file creation error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test with invalid path (should fail)
-		// We need to make the Create function fail
-		// Since we can't easily make Afero fail, we'll test the success case
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-
-	t.Run("generate gitignore with write error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test generating .gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-
-	t.Run("generate gitignore with file close error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test generating .gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-}
+// TestGenerateZanaGitIgnoreComprehensive removed - function no longer needed since registry files are in cache folder
 
 // TestGetAppDataPathComprehensive tests all branches of GetAppDataPath
 func TestGetAppDataPathComprehensive(t *testing.T) {
@@ -1480,56 +1385,7 @@ func TestRealZipFileOpener(t *testing.T) {
 	})
 }
 
-// TestGenerateZanaGitIgnoreErrorPaths tests error paths in GenerateZanaGitIgnore
-func TestGenerateZanaGitIgnoreErrorPaths(t *testing.T) {
-	t.Run("generate gitignore with file creation error", func(t *testing.T) {
-		// Create a mock file system that fails on Create
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-			CreateFunc: func(name string) (afero.File, error) {
-				return nil, errors.New("create error")
-			},
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test that it returns false when file creation fails
-		result := GenerateZanaGitIgnore()
-		assert.False(t, result)
-	})
-
-	t.Run("generate gitignore with write error", func(t *testing.T) {
-		// Create a mock file system that fails on WriteString
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-			WriteStringFunc: func(file afero.File, s string) (int, error) {
-				return 0, errors.New("write error")
-			},
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test that it returns false when write fails
-		result := GenerateZanaGitIgnore()
-		assert.False(t, result)
-	})
-
-	t.Run("generate gitignore with file close error", func(t *testing.T) {
-		// Create a mock file system that fails on Close
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-			CloseFunc: func(file afero.File) error {
-				return errors.New("close error")
-			},
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test that it still succeeds even with close error
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
-	})
-}
+// TestGenerateZanaGitIgnoreErrorPaths removed - function no longer needed since registry files are in cache folder
 
 // TestEnsureDirExistsErrorPaths tests error paths in EnsureDirExists
 func TestEnsureDirExistsErrorPaths(t *testing.T) {
@@ -1925,13 +1781,10 @@ func TestIntegration(t *testing.T) {
 		binPath := GetAppBinPath()
 		assert.NotEmpty(t, binPath)
 
-		// 3. Generate gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
+		// 3. Generate gitignore - removed since registry files are in cache folder
+		// (No longer needed)
 
-		// 4. Check file exists
-		exists := FileExists("/tmp/zana_test/.gitignore")
-		assert.True(t, exists)
+		// 4. Check file exists - removed test for .gitignore
 	})
 }
 
@@ -2044,30 +1897,12 @@ func TestSpecificBranches(t *testing.T) {
 
 // TestErrorHandling tests various error handling scenarios
 func TestErrorHandling(t *testing.T) {
-	t.Run("generate gitignore with write error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test generating .gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
+	t.Run("generate gitignore with write error - removed", func(t *testing.T) {
+		t.Skip("Test removed - GenerateZanaGitIgnore function no longer exists")
 	})
 
-	t.Run("generate gitignore with file close error", func(t *testing.T) {
-		// Create an in-memory filesystem for testing
-		mockFS := &MockFileSystem{
-			fs: afero.NewMemMapFs(),
-		}
-		SetFileSystem(mockFS)
-		defer ResetDependencies()
-
-		// Test generating .gitignore
-		result := GenerateZanaGitIgnore()
-		assert.True(t, result)
+	t.Run("generate gitignore with file close error - removed", func(t *testing.T) {
+		t.Skip("Test removed - GenerateZanaGitIgnore function no longer exists")
 	})
 
 	t.Run("ensure dir exists with mkdir error", func(t *testing.T) {

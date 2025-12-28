@@ -28,13 +28,30 @@ var syncRegistryCmd = &cobra.Command{
 This command downloads the registry file and extracts it to the app data directory.
 The registry URL can be overridden using the ZANA_REGISTRY_URL environment variable.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Downloading registry...")
+		if !ShouldUseJSONOutput() && !ShouldUsePlainOutput() {
+			fmt.Println("Downloading registry...")
+		}
 		if err := syncRegistryFn(); err != nil {
-			fmt.Printf("%s Failed to sync registry: %v\n", IconClose(), err)
+			if ShouldUseJSONOutput() {
+				result := map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+				PrintJSON(result)
+			} else {
+				fmt.Printf("%s Failed to sync registry: %v\n", IconClose(), err)
+			}
 			osExit(1)
 			return
 		}
-		fmt.Printf("%s Registry synced successfully\n", IconCheck())
+		if ShouldUseJSONOutput() {
+			result := map[string]interface{}{
+				"success": true,
+			}
+			PrintJSON(result)
+		} else {
+			fmt.Printf("%s Registry synced successfully\n", IconCheck())
+		}
 	},
 }
 
@@ -46,9 +63,18 @@ var syncPackagesCmd = &cobra.Command{
 This command reads the zana-lock.json file and ensures that all packages
 are installed with their exact versions as specified in the lock file.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Syncing packages from zana-lock.json...")
+		if !ShouldUseJSONOutput() && !ShouldUsePlainOutput() {
+			fmt.Println("Syncing packages from zana-lock.json...")
+		}
 		syncPackagesFn()
-		fmt.Printf("%s Packages sync completed\n", IconCheck())
+		if ShouldUseJSONOutput() {
+			result := map[string]interface{}{
+				"success": true,
+			}
+			PrintJSON(result)
+		} else {
+			fmt.Printf("%s Packages sync completed\n", IconCheck())
+		}
 	},
 }
 
@@ -80,8 +106,8 @@ func downloadAndUnzipRegistryForced() error {
 		return fmt.Errorf("failed to download registry: %w", downloadErr)
 	}
 
-	// Unzip the registry
-	if err := files.Unzip(cachePath, files.GetAppDataPath()); err != nil {
+	// Unzip the registry to the cache directory
+	if err := files.Unzip(cachePath, files.GetCachePath()); err != nil {
 		return fmt.Errorf("failed to unzip registry: %w", err)
 	}
 

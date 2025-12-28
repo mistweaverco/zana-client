@@ -12,8 +12,9 @@ import (
 
 var cfg = config.NewConfig(config.Config{
 	Flags: config.ConfigFlags{
-		CacheMaxAge: 24 * time.Hour,       // Default to 24 hours
-		Color:       config.ColorModeAuto, // Default to auto (respect TTY)
+		CacheMaxAge: 24 * time.Hour,        // Default to 24 hours
+		Color:       config.ColorModeAuto,  // Default to auto (respect TTY)
+		Output:      config.OutputModeRich, // Default to rich output
 	},
 })
 
@@ -40,13 +41,6 @@ func Execute() {
 	}
 }
 
-// initColorConfig sets up the color config accessor for icons.go
-// This must be called after flags are parsed
-func initColorConfig() {
-	// This function will be called from commands that use icons
-	// We'll update the getColorConfig function in icons.go to return the actual config
-}
-
 func init() {
 	rootCmd.AddCommand(envCmd)
 	rootCmd.AddCommand(healthCmd)
@@ -60,6 +54,22 @@ func init() {
 	rootCmd.PersistentFlags().DurationVar(&cfg.Flags.CacheMaxAge, "cache-max-age", 24*time.Hour, "maximum age of registry cache (e.g., 1h, 24h, 7d)")
 	colorFlag := rootCmd.PersistentFlags().VarPF(&cfg.Flags.Color, "color", "", "when to use colors and icons: always, auto (default), never")
 	colorFlag.NoOptDefVal = string(config.ColorModeAlways) // If --color is used without value, default to "always"
+
+	// Use StringVarP for output flag so it properly consumes the next argument as value
+	var outputFlagValue string
+	rootCmd.PersistentFlags().StringVarP(&outputFlagValue, "output", "o", string(config.OutputModeRich), "output format: rich (default), plain, json")
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		// Parse output mode from flag value
+		if outputFlagValue != "" {
+			var outputMode config.OutputMode
+			if err := outputMode.Set(outputFlagValue); err != nil {
+				// Invalid value, use default
+				cfg.Flags.Output = config.OutputModeRich
+			} else {
+				cfg.Flags.Output = outputMode
+			}
+		}
+	}
 
 	// Set up the color config accessor for icons.go
 	SetColorConfigFunc(func() config.ConfigFlags {

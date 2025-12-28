@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ type FileSystem interface {
 	OpenFile(name string, flag int, perm os.FileMode) (afero.File, error)
 	Stat(name string) (os.FileInfo, error)
 	UserConfigDir() (string, error)
+	UserHomeDir() (string, error)
 	TempDir() string
 	Getenv(key string) string
 	WriteString(file afero.File, s string) (int, error)
@@ -67,6 +69,10 @@ func (d *defaultFileSystem) Stat(name string) (os.FileInfo, error) {
 
 func (d *defaultFileSystem) UserConfigDir() (string, error) {
 	return os.UserConfigDir()
+}
+
+func (d *defaultFileSystem) UserHomeDir() (string, error) {
+	return os.UserHomeDir()
 }
 
 func (d *defaultFileSystem) TempDir() string {
@@ -192,54 +198,6 @@ func FileExists(path string) bool {
 	return err == nil
 }
 
-// GenerateZanaGitIgnore creates a .gitignore file at the top level of the zana config directory
-// if it doesn't exist. The .gitignore ignores *.zip files and the /bin directory.
-func GenerateZanaGitIgnore() bool {
-	configDir := GetAppDataPath()
-	gitignorePath := configDir + string(os.PathSeparator) + ".gitignore"
-
-	if FileExists(gitignorePath) {
-		return true
-	}
-
-	contents := `# Zana configuration directory .gitignore
-# Ignore zip files
-*.zip
-
-# Ignore zana-registry file
-zana-registry.json
-
-# Ignore bin directory
-/bin
-
-# Ignore packages directory
-/packages
-
-# Ignore other common temporary files
-*.tmp
-*.log
-`
-
-	file, err := fileSystem.Create(gitignorePath)
-	if err != nil {
-		fmt.Println("Error creating .gitignore:", err)
-		return false
-	}
-	defer func() {
-		if closeErr := fileSystem.Close(file); closeErr != nil {
-			fmt.Printf("Warning: failed to close .gitignore file: %v\n", closeErr)
-		}
-	}()
-
-	_, err = fileSystem.WriteString(file, contents)
-	if err != nil {
-		fmt.Println("Error writing to .gitignore:", err)
-		return false
-	}
-
-	return true
-}
-
 // GetAppDataPath returns the path to the app data directory
 // If the ZANA_HOME environment variable is set, it will use that path
 // otherwise it will use the user's config directory
@@ -262,22 +220,70 @@ func GetTempPath() string {
 }
 
 // GetAppRegistryFilePath returns the path to the registry file
-// e.g. /home/user/.config/zana/zana-registry.json
+// e.g. /home/user/.cache/zana/zana-registry.json
 func GetAppRegistryFilePath() string {
-	return GetAppDataPath() + string(os.PathSeparator) + "zana-registry.json"
+	return GetCachePath() + string(os.PathSeparator) + "zana-registry.json"
 }
 
 // GetAppPackagesPath returns the path to the packages directory
-// e.g. /home/user/.config/zana/packages
+// If ZANA_HOME is set, it will use $ZANA_HOME/packages
+// Otherwise:
+//   - Linux: ~/.local/share/zana/packages
+//   - macOS: ~/Library/Application Support/zana/packages
+//   - Windows: %APPDATA%\zana\packages
 func GetAppPackagesPath() string {
-	return EnsureDirExists(GetAppDataPath() + string(os.PathSeparator) + "packages")
+	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
+		return EnsureDirExists(zanaHome + string(os.PathSeparator) + "packages")
+	}
+	return EnsureDirExists(GetAppDataSharePath() + string(os.PathSeparator) + "packages")
+}
+
+// GetAppDataSharePath returns the path to the app data share directory
+// This is separate from the config directory and follows XDG Base Directory spec
+// If ZANA_HOME is set, it will use that path
+// Otherwise:
+//   - Linux: ~/.local/share/zana
+//   - macOS: ~/Library/Application Support/zana (same as config)
+//   - Windows: %APPDATA%\zana (same as config)
+func GetAppDataSharePath() string {
+	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
+		return EnsureDirExists(zanaHome)
+	}
+
+	// On Linux, use ~/.local/share, otherwise use config dir (macOS/Windows)
+	userConfigDir, err := fileSystem.UserConfigDir()
+	if err != nil {
+		panic(err)
+	}
+
+	// Check if we're on Linux by checking if config dir ends with .config
+	// On Linux: ~/.config, on macOS: ~/Library/Application Support, on Windows: %APPDATA%
+	if strings.Contains(userConfigDir, ".config") {
+		// Linux: use ~/.local/share instead of ~/.config
+		userHomeDir, err := fileSystem.UserHomeDir()
+		if err != nil {
+			panic(err)
+		}
+		return EnsureDirExists(userHomeDir + string(os.PathSeparator) + ".local" + string(os.PathSeparator) + "share" + string(os.PathSeparator) + "zana")
+	}
+
+	// macOS and Windows: use config directory (same location)
+	return EnsureDirExists(userConfigDir + string(os.PathSeparator) + "zana")
 }
 
 // GetAppBinPath returns the path to the bin directory
-// e.g. /home/user/.config/zana/bin
+// If ZANA_HOME is set, it will use $ZANA_HOME/bin
+// Otherwise:
+//   - Linux: ~/.local/share/zana/bin
+//   - macOS: ~/Library/Application Support/zana/bin
+//   - Windows: %APPDATA%\zana\bin
+//
+// e.g. /home/user/.local/share/zana/bin
 func GetAppBinPath() string {
-	path := GetAppDataPath() + string(os.PathSeparator) + "bin"
-	return EnsureDirExists(path)
+	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
+		return EnsureDirExists(zanaHome + string(os.PathSeparator) + "bin")
+	}
+	return EnsureDirExists(GetAppDataSharePath() + string(os.PathSeparator) + "bin")
 }
 
 func EnsureDirExists(path string) string {
@@ -360,10 +366,57 @@ func Unzip(src, dest string) error {
 	return nil
 }
 
+// GetCachePath returns the path to the cache directory
+// If ZANA_CACHE is set, it will use that path
+// Otherwise:
+//   - Linux: ~/.cache/zana
+//   - macOS: ~/Library/Caches/zana
+//   - Windows: %LOCALAPPDATA%\zana\cache
+func GetCachePath() string {
+	if zanaCache := fileSystem.Getenv("ZANA_CACHE"); zanaCache != "" {
+		return EnsureDirExists(zanaCache)
+	}
+
+	userHomeDir, err := fileSystem.UserHomeDir()
+	if err != nil {
+		panic(err)
+	}
+
+	var cacheDir string
+	switch runtime.GOOS {
+	case "linux":
+		// Linux: ~/.cache/zana (XDG Base Directory spec)
+		cacheDir = userHomeDir + string(os.PathSeparator) + ".cache" + string(os.PathSeparator) + "zana"
+	case "darwin":
+		// macOS: ~/Library/Caches/zana
+		cacheDir = userHomeDir + string(os.PathSeparator) + "Library" + string(os.PathSeparator) + "Caches" + string(os.PathSeparator) + "zana"
+	case "windows":
+		// Windows: %LOCALAPPDATA%\zana\cache
+		// Try LOCALAPPDATA first, fallback to APPDATA if not set
+		localAppData := fileSystem.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			appData := fileSystem.Getenv("APPDATA")
+			if appData != "" {
+				cacheDir = appData + string(os.PathSeparator) + "zana" + string(os.PathSeparator) + "cache"
+			} else {
+				// Fallback to user home
+				cacheDir = userHomeDir + string(os.PathSeparator) + ".zana" + string(os.PathSeparator) + "cache"
+			}
+		} else {
+			cacheDir = localAppData + string(os.PathSeparator) + "zana" + string(os.PathSeparator) + "cache"
+		}
+	default:
+		// Default: use user home with .cache/zana
+		cacheDir = userHomeDir + string(os.PathSeparator) + ".cache" + string(os.PathSeparator) + "zana"
+	}
+
+	return EnsureDirExists(cacheDir)
+}
+
 // GetRegistryCachePath returns the path to the registry cache file
-// e.g. /home/user/.config/zana/registry-cache.json.zip
+// e.g. /home/user/.cache/zana/registry-cache.json.zip
 func GetRegistryCachePath() string {
-	return GetAppDataPath() + string(os.PathSeparator) + "registry-cache.json.zip"
+	return GetCachePath() + string(os.PathSeparator) + "registry-cache.json.zip"
 }
 
 // IsCacheValid checks if the cache file exists and is newer than the specified duration
@@ -422,10 +475,17 @@ func DownloadAndUnzipRegistry() error {
 	}
 
 	cachePath := GetRegistryCachePath()
+	registryJSONPath := GetAppRegistryFilePath()
 
 	// Check if cache is valid first
 	if IsCacheValid(cachePath, 24*time.Hour) {
-		// Cache is valid, just unzip if needed
+		// Cache is valid, check if JSON file exists and unzip if needed
+		if !FileExists(registryJSONPath) {
+			// Zip exists but JSON doesn't, unzip it
+			if err := Unzip(cachePath, GetCachePath()); err != nil {
+				return fmt.Errorf("failed to unzip registry: %w", err)
+			}
+		}
 		return nil
 	}
 
@@ -443,8 +503,8 @@ func DownloadAndUnzipRegistry() error {
 		return fmt.Errorf("failed to download registry: %w", downloadErr)
 	}
 
-	// Unzip the registry
-	if err := Unzip(cachePath, GetAppDataPath()); err != nil {
+	// Unzip the registry to the cache directory
+	if err := Unzip(cachePath, GetCachePath()); err != nil {
 		return fmt.Errorf("failed to unzip registry: %w", err)
 	}
 

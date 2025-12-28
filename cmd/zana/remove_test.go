@@ -105,7 +105,7 @@ func TestRemoveCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		assert.Contains(t, out, "Removing 1 package(s)")
-		assert.Contains(t, out, "✓ Successfully removed pkg:npm/eslint")
+		assert.Contains(t, out, "[✓] Successfully removed npm:eslint")
 		assert.Contains(t, out, "All packages removed successfully!")
 	})
 
@@ -132,8 +132,8 @@ func TestRemoveCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		assert.Contains(t, out, "Removing 2 package(s)")
-		assert.Contains(t, out, "✓ Successfully removed pkg:npm/eslint")
-		assert.Contains(t, out, "✓ Successfully removed pkg:pypi/black")
+		assert.Contains(t, out, "[✓] Successfully removed npm:eslint")
+		assert.Contains(t, out, "[✓] Successfully removed pypi:black")
 		assert.Contains(t, out, "All packages removed successfully!")
 	})
 
@@ -160,7 +160,7 @@ func TestRemoveCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		assert.Contains(t, out, "Removing 1 package(s)")
-		assert.Contains(t, out, "✗ Failed to remove pkg:npm/eslint")
+		assert.Contains(t, out, "[✗] Failed to remove npm:eslint")
 		assert.Contains(t, out, "Some packages failed to remove.")
 	})
 
@@ -176,7 +176,7 @@ func TestRemoveCommandFullOutputGolden(t *testing.T) {
 		isSupportedProviderFn = func(p string) bool { return true }
 		removePackageFn = func(id string) bool {
 			// First package succeeds, second fails
-			if id == "pkg:npm/eslint" {
+			if id == "npm:eslint" {
 				return true
 			}
 			return false
@@ -193,8 +193,8 @@ func TestRemoveCommandFullOutputGolden(t *testing.T) {
 		out := buf.String()
 
 		assert.Contains(t, out, "Removing 2 package(s)")
-		assert.Contains(t, out, "✓ Successfully removed pkg:npm/eslint")
-		assert.Contains(t, out, "✗ Failed to remove pkg:pypi/black")
+		assert.Contains(t, out, "[✓] Successfully removed npm:eslint")
+		assert.Contains(t, out, "[✗] Failed to remove pypi:black")
 		assert.Contains(t, out, "Some packages failed to remove.")
 	})
 }

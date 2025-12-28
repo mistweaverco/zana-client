@@ -9,6 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// MockRegistryProvider and MockUpdateChecker are defined in list_test.go
+// They are available in this package for use in update tests
+
 func TestUpdateAllPackagesGolden(t *testing.T) {
 	t.Run("update all packages with empty data", func(t *testing.T) {
 		out := &MockOutputWriter{}
@@ -20,6 +23,8 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 						return local_packages_parser.LocalPackageRoot{Packages: []local_packages_parser.LocalPackageItem{}}
 					},
 				},
+				&MockRegistryProvider{},
+				&MockUpdateChecker{},
 				out,
 			)
 		}
@@ -63,6 +68,17 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 						}
 					},
 				},
+				&MockRegistryProvider{
+					GetLatestVersionFunc: func(sourceID string) string {
+						// Return a newer version to indicate updates are available
+						return "2.0.0"
+					},
+				},
+				&MockUpdateChecker{
+					CheckIfUpdateIsAvailableFunc: func(currentVersion, latestVersion string) (bool, string) {
+						return true, "Update available"
+					},
+				},
 				out,
 			)
 		}
@@ -75,8 +91,8 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 		// Join all output and check for content
 		allOutput := strings.Join(out.Output, "\n")
 		assert.Contains(t, allOutput, "Found 2 installed packages")
-		assert.Contains(t, allOutput, "✓ Successfully updated pkg:npm/test-package")
-		assert.Contains(t, allOutput, "✓ Successfully updated pkg:pypi/black")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pkg:npm/test-package")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pkg:pypi/black")
 		assert.Contains(t, allOutput, "Successfully updated: 2")
 		assert.Contains(t, allOutput, "Failed to update: 0")
 	})
@@ -112,6 +128,16 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 						}
 					},
 				},
+				&MockRegistryProvider{
+					GetLatestVersionFunc: func(sourceID string) string {
+						return "2.0.0"
+					},
+				},
+				&MockUpdateChecker{
+					CheckIfUpdateIsAvailableFunc: func(currentVersion, latestVersion string) (bool, string) {
+						return true, "Update available"
+					},
+				},
 				out,
 			)
 		}
@@ -124,8 +150,8 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 		// Join all output and check for content
 		allOutput := strings.Join(out.Output, "\n")
 		assert.Contains(t, allOutput, "Found 2 installed packages")
-		assert.Contains(t, allOutput, "✓ Successfully updated pkg:npm/success-package")
-		assert.Contains(t, allOutput, "✗ Failed to update pkg:pypi/failed-package")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pkg:npm/success-package")
+		assert.Contains(t, allOutput, "[✗] Failed to update pkg:pypi/failed-package")
 		assert.Contains(t, allOutput, "Successfully updated: 1")
 		assert.Contains(t, allOutput, "Failed to update: 1")
 	})
@@ -161,6 +187,16 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 						}
 					},
 				},
+				&MockRegistryProvider{
+					GetLatestVersionFunc: func(sourceID string) string {
+						return "2.0.0"
+					},
+				},
+				&MockUpdateChecker{
+					CheckIfUpdateIsAvailableFunc: func(currentVersion, latestVersion string) (bool, string) {
+						return true, "Update available"
+					},
+				},
 				out,
 			)
 		}
@@ -172,8 +208,8 @@ func TestUpdateAllPackagesGolden(t *testing.T) {
 
 		allOutput := strings.Join(out.Output, "\n")
 		assert.Contains(t, allOutput, "Found 2 installed packages")
-		assert.Contains(t, allOutput, "✗ Failed to update pkg:npm/eslint")
-		assert.Contains(t, allOutput, "✗ Failed to update pkg:pypi/black")
+		assert.Contains(t, allOutput, "[✗] Failed to update pkg:npm/eslint")
+		assert.Contains(t, allOutput, "[✗] Failed to update pkg:pypi/black")
 		assert.Contains(t, allOutput, "Successfully updated: 0")
 		assert.Contains(t, allOutput, "Failed to update: 2")
 	})
@@ -201,7 +237,7 @@ func TestUpdateCommandRunPaths(t *testing.T) {
 		captured := &MockOutputWriter{}
 		prevFactory := newUpdateService
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, captured)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, captured)
 		}
 		defer func() { newUpdateService = prevFactory }()
 
@@ -217,23 +253,23 @@ func TestUpdateCommandRunPaths(t *testing.T) {
 		// Invalid prefix
 		out1 := &MockOutputWriter{}
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out1)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out1)
 		}
 		updateCmd.Run(updateCmd, []string{"invalid:id"})
-		assert.Contains(t, strings.Join(out1.Output, "\n"), "Invalid package ID format")
+		assert.Contains(t, strings.Join(out1.Output, "\n"), "Unsupported provider")
 
 		// Missing provider/package
 		out2 := &MockOutputWriter{}
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out2)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out2)
 		}
 		updateCmd.Run(updateCmd, []string{"pkg:only"})
-		assert.Contains(t, strings.Join(out2.Output, "\n"), "Expected 'pkg:provider/package-name'")
+		assert.Contains(t, strings.Join(out2.Output, "\n"), "invalid package ID format")
 
 		// Unsupported provider
 		out3 := &MockOutputWriter{}
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out3)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out3)
 		}
 		updateCmd.Run(updateCmd, []string{"pkg:unknown/pkg"})
 		assert.Contains(t, strings.Join(out3.Output, "\n"), "Unsupported provider")
@@ -253,10 +289,10 @@ func TestUpdateCommandRunPaths(t *testing.T) {
 
 		out := &MockOutputWriter{}
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out)
 		}
 		updateCmd.Run(updateCmd, []string{"pkg:npm/eslint"})
-		assert.Contains(t, strings.Join(out.Output, "\n"), "Successfully updated pkg:npm/eslint")
+		assert.Contains(t, strings.Join(out.Output, "\n"), "[✓] Successfully updated npm:eslint")
 	})
 
 	t.Run("updates multiple packages successfully", func(t *testing.T) {
@@ -278,12 +314,12 @@ func TestUpdateCommandRunPaths(t *testing.T) {
 
 		out := &MockOutputWriter{}
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out)
 		}
 		updateCmd.Run(updateCmd, []string{"pkg:npm/eslint", "pkg:pypi/black"})
 		allOutput := strings.Join(out.Output, "\n")
-		assert.Contains(t, allOutput, "Successfully updated pkg:npm/eslint")
-		assert.Contains(t, allOutput, "Successfully updated pkg:pypi/black")
+		assert.Contains(t, allOutput, "[✓] Successfully updated npm:eslint")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pypi:black")
 		assert.Contains(t, allOutput, "Successfully updated: 2")
 		assert.Contains(t, allOutput, "Failed to update: 0")
 	})
@@ -295,6 +331,8 @@ func TestUpdateCommandRunPaths(t *testing.T) {
 				&MockLocalPackagesProvider{GetDataFunc: func(force bool) local_packages_parser.LocalPackageRoot {
 					return local_packages_parser.LocalPackageRoot{Packages: []local_packages_parser.LocalPackageItem{}}
 				}},
+				&MockRegistryProvider{},
+				&MockUpdateChecker{},
 				out,
 			)
 		}
@@ -376,6 +414,16 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 						}
 					},
 				},
+				&MockRegistryProvider{
+					GetLatestVersionFunc: func(sourceID string) string {
+						return "2.0.0"
+					},
+				},
+				&MockUpdateChecker{
+					CheckIfUpdateIsAvailableFunc: func(currentVersion, latestVersion string) (bool, string) {
+						return true, "Update available"
+					},
+				},
 				out,
 			)
 		}
@@ -387,9 +435,9 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 
 		allOutput := strings.Join(out.Output, "\n")
 		assert.Contains(t, allOutput, "Found 3 installed packages")
-		assert.Contains(t, allOutput, "✓ Successfully updated pkg:npm/eslint")
-		assert.Contains(t, allOutput, "✗ Failed to update pkg:pypi/black")
-		assert.Contains(t, allOutput, "✓ Successfully updated pkg:golang/gopls")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pkg:npm/eslint")
+		assert.Contains(t, allOutput, "[✗] Failed to update pkg:pypi/black")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pkg:golang/gopls")
 		assert.Contains(t, allOutput, "Successfully updated: 2")
 		assert.Contains(t, allOutput, "Failed to update: 1")
 	})
@@ -425,6 +473,16 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 						}
 					},
 				},
+				&MockRegistryProvider{
+					GetLatestVersionFunc: func(sourceID string) string {
+						return "2.0.0"
+					},
+				},
+				&MockUpdateChecker{
+					CheckIfUpdateIsAvailableFunc: func(currentVersion, latestVersion string) (bool, string) {
+						return true, "Update available"
+					},
+				},
 				out,
 			)
 		}
@@ -436,8 +494,8 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 
 		allOutput := strings.Join(out.Output, "\n")
 		assert.Contains(t, allOutput, "Found 2 installed packages")
-		assert.Contains(t, allOutput, "✗ Failed to update pkg:npm/eslint")
-		assert.Contains(t, allOutput, "✗ Failed to update pkg:pypi/black")
+		assert.Contains(t, allOutput, "[✗] Failed to update pkg:npm/eslint")
+		assert.Contains(t, allOutput, "[✗] Failed to update pkg:pypi/black")
 		assert.Contains(t, allOutput, "Successfully updated: 0")
 		assert.Contains(t, allOutput, "Failed to update: 2")
 	})
@@ -467,6 +525,16 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 						}
 					},
 				},
+				&MockRegistryProvider{
+					GetLatestVersionFunc: func(sourceID string) string {
+						return "2.0.0"
+					},
+				},
+				&MockUpdateChecker{
+					CheckIfUpdateIsAvailableFunc: func(currentVersion, latestVersion string) (bool, string) {
+						return true, "Update available"
+					},
+				},
 				out,
 			)
 		}
@@ -478,7 +546,7 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 
 		allOutput := strings.Join(out.Output, "\n")
 		assert.Contains(t, allOutput, "Found 1 installed packages")
-		assert.Contains(t, allOutput, "✓ Successfully updated pkg:npm/eslint")
+		assert.Contains(t, allOutput, "[✓] Successfully updated pkg:npm/eslint")
 		assert.Contains(t, allOutput, "Successfully updated: 1")
 		assert.Contains(t, allOutput, "Failed to update: 0")
 	})
@@ -498,14 +566,14 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 		out := &MockOutputWriter{}
 		prevUpdateService := newUpdateService
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out)
 		}
 		defer func() { newUpdateService = prevUpdateService }()
 
 		updateCmd.Run(updateCmd, []string{"pkg:npm/eslint"})
 
 		allOutput := strings.Join(out.Output, "\n")
-		assert.Contains(t, allOutput, "Failed to update pkg:npm/eslint")
+		assert.Contains(t, allOutput, "[✗] Failed to update npm:eslint")
 	})
 
 	t.Run("update single package success", func(t *testing.T) {
@@ -523,14 +591,14 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 		out := &MockOutputWriter{}
 		prevUpdateService := newUpdateService
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out)
 		}
 		defer func() { newUpdateService = prevUpdateService }()
 
 		updateCmd.Run(updateCmd, []string{"pkg:npm/eslint"})
 
 		allOutput := strings.Join(out.Output, "\n")
-		assert.Contains(t, allOutput, "Successfully updated pkg:npm/eslint")
+		assert.Contains(t, allOutput, "[✓] Successfully updated npm:eslint")
 	})
 
 	t.Run("update multiple packages with mixed results", func(t *testing.T) {
@@ -553,15 +621,15 @@ func TestUpdateCommandFullOutputGolden(t *testing.T) {
 		out := &MockOutputWriter{}
 		prevUpdateService := newUpdateService
 		newUpdateService = func() *UpdateService {
-			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, out)
+			return NewUpdateServiceWithDependencies(&MockLocalPackagesProvider{}, &MockRegistryProvider{}, &MockUpdateChecker{}, out)
 		}
 		defer func() { newUpdateService = prevUpdateService }()
 
 		updateCmd.Run(updateCmd, []string{"pkg:npm/eslint", "pkg:pypi/black"})
 
 		allOutput := strings.Join(out.Output, "\n")
-		assert.Contains(t, allOutput, "Successfully updated pkg:npm/eslint")
-		assert.Contains(t, allOutput, "Failed to update pkg:pypi/black")
+		assert.Contains(t, allOutput, "[✓] Successfully updated npm:eslint")
+		assert.Contains(t, allOutput, "[✗] Failed to update pypi:black")
 		assert.Contains(t, allOutput, "Some packages failed to update.")
 	})
 }

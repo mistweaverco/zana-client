@@ -21,9 +21,27 @@ func trimVersion(version string) string {
 func IsGreater(v1, v2 string) bool {
 	v1 = trimVersion(v1)
 	v2 = trimVersion(v2)
+
+	// Handle empty versions - if either is empty, return false
+	if v1 == "" || v2 == "" {
+		return false
+	}
+
 	// Split version strings into parts (major, minor, patch)
 	v1Parts := strings.Split(v1, ".")
 	v2Parts := strings.Split(v2, ".")
+
+	// Normalize empty parts to "0" before padding
+	for i := range v1Parts {
+		if v1Parts[i] == "" {
+			v1Parts[i] = "0"
+		}
+	}
+	for i := range v2Parts {
+		if v2Parts[i] == "" {
+			v2Parts[i] = "0"
+		}
+	}
 
 	// Ensure both versions have exactly 3 parts (major.minor.patch)
 	for len(v1Parts) < 3 {

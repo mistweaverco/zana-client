@@ -33,8 +33,8 @@ func displayPackageNameFromRegistryID(sourceID string) string {
 	return packageName
 }
 
-// newRegistryParserFn is an indirection for tests.
-var newRegistryParserFn = registry_parser.NewDefaultRegistryParser
+// newRegistryParser is an indirection for tests.
+var newRegistryParser = registry_parser.NewDefaultRegistryParser
 
 // packageIDCompletion provides shell completion for package IDs based on the
 // locally available registry data. It matches package names (without provider prefix)
@@ -45,7 +45,7 @@ var newRegistryParserFn = registry_parser.NewDefaultRegistryParser
 // that contain the typed text and returns the full "provider:package" format.
 // When the user types with a provider prefix (e.g., "npm:yaml"), it matches the full ID.
 func packageIDCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	parser := newRegistryParserFn()
+	parser := newRegistryParser()
 	items := parser.GetData(false)
 
 	completions := make([]string, 0, len(items))
@@ -143,7 +143,7 @@ func installedPackageIDCompletion(cmd *cobra.Command, args []string, toComplete 
 	} else {
 		// User is typing without provider prefix, match on package name and aliases
 		// Return package names WITHOUT provider prefix so shell completion works
-		parser := newRegistryParserFn()
+		parser := newRegistryParser()
 		for _, pkg := range installedPackages {
 			displayID := displayPackageNameFromRegistryID(strings.TrimSpace(pkg.SourceID))
 			if displayID == "" {

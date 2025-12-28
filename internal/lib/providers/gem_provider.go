@@ -27,13 +27,11 @@ var gemShellOutCapture = shell_out.ShellOutCapture
 var gemHasCommand = shell_out.HasCommand
 var gemCreate = os.Create
 var gemReadDir = os.ReadDir
-var gemReadFile = os.ReadFile
 var gemLstat = os.Lstat
 var gemRemove = os.Remove
 var gemChmod = os.Chmod
 var gemStat = os.Stat
 var gemMkdir = os.Mkdir
-var gemRemoveAll = os.RemoveAll
 var gemWriteFile = os.WriteFile
 var gemClose = func(f *os.File) error { return f.Close() }
 
@@ -43,33 +41,11 @@ var lppGemRemove = local_packages_parser.RemoveLocalPackage
 var lppGemGetDataForProvider = local_packages_parser.GetDataForProvider
 var lppGemGetData = local_packages_parser.GetData
 
-// getRubyVersion detects the current Ruby version (e.g., "3.2", "3.3")
-func (p *GemProvider) getRubyVersion() (string, error) {
-	// Try ruby first
-	rubyCmd := "ruby"
-	if !gemHasCommand("ruby", []string{"--version"}, nil) {
-		return "", fmt.Errorf("ruby command not found")
-	}
-
-	code, output, err := gemShellOutCapture(rubyCmd, []string{"-e", "puts RUBY_VERSION.split('.')[0..1].join('.')"}, "", nil)
-	if err != nil || code != 0 {
-		return "", fmt.Errorf("failed to detect Ruby version: %v, output: %s", err, output)
-	}
-	version := strings.TrimSpace(output)
-	return version, nil
-}
-
 func NewProviderGem() *GemProvider {
 	p := &GemProvider{}
 	p.PROVIDER_NAME = "gem"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = p.PROVIDER_NAME + ":"
-
-	// Check for gem command
-	hasGem := gemHasCommand("gem", []string{"--version"}, nil)
-	if !hasGem {
-		Logger.Error("Gem Provider: gem command not found. Please install Ruby and RubyGems to use the GemProvider.")
-	}
 	// gemCmd defaults to "gem"
 	return p
 }
@@ -468,6 +444,12 @@ func (p *GemProvider) Sync() bool {
 
 	if len(localPackages) == 0 {
 		return true
+	}
+
+	// Check for gem command before proceeding
+	if !gemHasCommand("gem", []string{"--version"}, nil) {
+		Logger.Error("Gem Sync: gem command not found. Please install Ruby and RubyGems.")
+		return false
 	}
 
 	// Regenerate Gemfile

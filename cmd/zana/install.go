@@ -64,20 +64,6 @@ func toInternalPackageID(provider, pkgID string) string {
 	return provider + ":" + pkgID
 }
 
-// normalizePackageID converts a package ID from legacy format (pkg:provider/pkg)
-// to the new format (provider:pkg), or returns it unchanged if already in new format.
-// This is used for backward compatibility when reading zana-lock.json.
-func normalizePackageID(sourceID string) string {
-	if strings.HasPrefix(sourceID, "pkg:") {
-		rest := strings.TrimPrefix(sourceID, "pkg:")
-		parts := strings.SplitN(rest, "/", 2)
-		if len(parts) == 2 {
-			return parts[0] + ":" + parts[1]
-		}
-	}
-	return sourceID
-}
-
 // validatePackageArgs validates the package arguments (for cobra)
 // and ensures that all providers are supported.
 // It allows package names without providers (they will be handled in Run function).
@@ -168,7 +154,7 @@ Examples:
 				exactMatches := []PackageMatch{}
 				partialMatches := []PackageMatch{}
 				baseIDLower := strings.ToLower(baseID)
-				parser := newRegistryParserFn()
+				parser := newRegistryParser()
 
 				for _, match := range matches {
 					matchNameLower := strings.ToLower(match.PackageName)
@@ -201,8 +187,8 @@ Examples:
 					matchesToShow = partialMatches
 				}
 
-				// Always show confirmation for partial names (isExactMatch = false)
-				selectedSourceIDs, err := promptForProviderSelection(baseID, matchesToShow, false, "install")
+				// Always show confirmation for partial names
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matchesToShow, "install")
 				if err != nil {
 					fmt.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
 					failureCount++
@@ -299,11 +285,21 @@ Examples:
 		}
 
 		// Print summary
-		fmt.Printf("\nInstallation Summary:\n")
-		fmt.Printf("  Successfully installed: %d\n", successCount)
-		if failureCount > 0 {
-			fmt.Printf("  Failed to install: %d\n", failureCount)
-			fmt.Printf("  Failed packages: %s\n", strings.Join(failures, ", "))
+		if ShouldUseJSONOutput() {
+			result := map[string]interface{}{
+				"success_count": successCount,
+				"failure_count": failureCount,
+				"successful":    successCount,
+				"failed":        failures,
+			}
+			PrintJSON(result)
+		} else {
+			fmt.Printf("\nInstallation Summary:\n")
+			fmt.Printf("  Successfully installed: %d\n", successCount)
+			if failureCount > 0 {
+				fmt.Printf("  Failed to install: %d\n", failureCount)
+				fmt.Printf("  Failed packages: %s\n", strings.Join(failures, ", "))
+			}
 		}
 	},
 }
@@ -366,7 +362,7 @@ type PackageMatch struct {
 // (substring match, case-insensitive) and returns matches grouped by provider.
 // It matches both package names and aliases.
 func findPackagesByName(packageName string) []PackageMatch {
-	parser := newRegistryParserFn()
+	parser := newRegistryParser()
 	items := parser.GetData(false)
 
 	matches := []PackageMatch{}
@@ -435,17 +431,17 @@ func capitalize(s string) string {
 // promptForProviderSelection prompts the user to select a provider when multiple
 // packages with the same name are found across different providers.
 // It uses huh confirm for single matches and multi-select for multiple matches.
-// isExactMatch should be false when user provided a partial name (without provider prefix),
+// This is called when user provided a partial name (without provider prefix),
 // in which case confirmation is always shown. When user provides full provider:package-id,
 // this function is not called at all.
 // action is the verb to use in prompts (e.g., "install", "remove", "update").
 // Returns a slice of selected source IDs (can be multiple if multi-select is used).
-func promptForProviderSelection(packageName string, matches []PackageMatch, isExactMatch bool, action string) ([]string, error) {
+func promptForProviderSelection(packageName string, matches []PackageMatch, action string) ([]string, error) {
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("no packages found matching '%s'", packageName)
 	}
 
-	// Note: isExactMatch is always false for partial names, so we always show confirmation
+	// Always show confirmation for partial names
 	// This ensures users confirm when they provide partial package names
 
 	// If single match (but fuzzy), show confirm dialog

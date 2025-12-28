@@ -27,15 +27,12 @@ var composerShellOut = shell_out.ShellOut
 var composerShellOutCapture = shell_out.ShellOutCapture
 var composerHasCommand = shell_out.HasCommand
 var composerCreate = os.Create
-var composerReadDir = os.ReadDir
 var composerReadFile = os.ReadFile
 var composerLstat = os.Lstat
 var composerRemove = os.Remove
 var composerChmod = os.Chmod
 var composerStat = os.Stat
-var composerMkdir = os.Mkdir
 var composerMkdirAll = os.MkdirAll
-var composerRemoveAll = os.RemoveAll
 var composerWriteFile = os.WriteFile
 var composerClose = func(f *os.File) error { return f.Close() }
 
@@ -50,12 +47,6 @@ func NewProviderComposer() *ComposerProvider {
 	p.PROVIDER_NAME = "composer"
 	p.APP_PACKAGES_DIR = filepath.Join(files.GetAppPackagesPath(), p.PROVIDER_NAME)
 	p.PREFIX = p.PROVIDER_NAME + ":"
-
-	// Check for composer command
-	hasComposer := composerHasCommand("composer", []string{"--version"}, nil)
-	if !hasComposer {
-		Logger.Error("Composer Provider: composer command not found. Please install Composer to use the ComposerProvider.")
-	}
 	return p
 }
 
@@ -435,6 +426,12 @@ func (p *ComposerProvider) Sync() bool {
 
 	if len(localPackages) == 0 {
 		return true
+	}
+
+	// Check for composer command before proceeding
+	if !composerHasCommand("composer", []string{"--version"}, nil) {
+		Logger.Error("Composer Sync: composer command not found. Please install Composer.")
+		return false
 	}
 
 	// Regenerate composer.json

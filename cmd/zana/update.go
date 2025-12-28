@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/huh/spinner"
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
 	"github.com/mistweaverco/zana-client/internal/lib/version"
@@ -21,6 +22,8 @@ import (
 // UpdateService handles update operations with dependency injection
 type UpdateService struct {
 	localPackages LocalPackagesProvider
+	registry      RegistryProvider
+	updateChecker UpdateChecker
 	output        OutputWriter
 }
 
@@ -98,6 +101,8 @@ func (m *MockOutputWriter) Printf(format string, args ...interface{}) {
 func NewUpdateService() *UpdateService {
 	return &UpdateService{
 		localPackages: &defaultLocalPackagesProvider{},
+		registry:      &defaultRegistryProvider{},
+		updateChecker: &defaultUpdateChecker{},
 		output:        &DefaultOutputWriter{},
 	}
 }
@@ -105,10 +110,14 @@ func NewUpdateService() *UpdateService {
 // NewUpdateServiceWithDependencies creates a new UpdateService with custom dependencies
 func NewUpdateServiceWithDependencies(
 	localPackages LocalPackagesProvider,
+	registry RegistryProvider,
+	updateChecker UpdateChecker,
 	output OutputWriter,
 ) *UpdateService {
 	return &UpdateService{
 		localPackages: localPackages,
+		registry:      registry,
+		updateChecker: updateChecker,
 		output:        output,
 	}
 }
@@ -194,7 +203,7 @@ Examples:
 				}
 
 				// Always show confirmation for partial names (user didn't provide full provider:package-id)
-				selectedSourceIDs, err := promptForProviderSelection(baseID, matches, false, "update")
+				selectedSourceIDs, err := promptForProviderSelection(baseID, matches, "update")
 				if err != nil {
 					service := newUpdateService()
 					service.output.Printf("%s Error selecting provider for '%s': %v\n", IconClose(), baseID, err)
@@ -288,6 +297,7 @@ func init() {
 var newUpdateService = NewUpdateService
 
 // UpdateAllPackages updates all installed packages to their latest versions
+// Only updates packages that have updates available according to the registry data
 func (us *UpdateService) UpdateAllPackages() bool {
 	// Get all installed packages
 	localPackages := us.localPackages.GetData(true).Packages
@@ -299,11 +309,31 @@ func (us *UpdateService) UpdateAllPackages() bool {
 
 	us.output.Printf("Found %d installed packages\n", len(localPackages))
 
+	// Check which packages have updates available
+	packagesToUpdate := make([]local_packages_parser.LocalPackageItem, 0)
+	skippedCount := 0
+
+	for _, pkg := range localPackages {
+		hasUpdate := us.checkUpdateAvailability(pkg.SourceID, pkg.Version)
+		if hasUpdate {
+			packagesToUpdate = append(packagesToUpdate, pkg)
+		} else {
+			skippedCount++
+		}
+	}
+
+	if len(packagesToUpdate) == 0 {
+		us.output.Printf("All %d packages are up to date\n", len(localPackages))
+		return true
+	}
+
+	us.output.Printf("Updating %d package(s) with available updates (skipping %d up-to-date package(s))\n", len(packagesToUpdate), skippedCount)
+
 	allSuccess := true
 	successCount := 0
 	failedCount := 0
 
-	for _, pkg := range localPackages {
+	for _, pkg := range packagesToUpdate {
 		// Update the package with spinner showing package name
 		var success bool
 		action := func() {
@@ -331,8 +361,24 @@ func (us *UpdateService) UpdateAllPackages() bool {
 	us.output.Printf("\nUpdate Summary:\n")
 	us.output.Printf("  Successfully updated: %d\n", successCount)
 	us.output.Printf("  Failed to update: %d\n", failedCount)
+	us.output.Printf("  Skipped (up to date): %d\n", skippedCount)
 
 	return allSuccess
+}
+
+// checkUpdateAvailability checks if an update is available for a package
+func (us *UpdateService) checkUpdateAvailability(sourceID, currentVersion string) bool {
+	latestVersion := us.registry.GetLatestVersion(sourceID)
+	if latestVersion == "" {
+		// No registry info available - skip update check (conservative: don't update)
+		return false
+	}
+	// If local version is unknown or set to "latest", always show update to the concrete remote version
+	if currentVersion == "" || currentVersion == "latest" {
+		return true
+	}
+	updateAvailable, _ := us.updateChecker.CheckIfUpdateIsAvailable(currentVersion, latestVersion)
+	return updateAvailable
 }
 
 // GitHubRelease represents a GitHub release

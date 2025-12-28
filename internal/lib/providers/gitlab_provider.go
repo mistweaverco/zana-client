@@ -28,7 +28,6 @@ type GitLabProvider struct {
 var gitlabShellOut = shell_out.ShellOut
 var gitlabShellOutCapture = shell_out.ShellOutCapture
 var gitlabStat = os.Stat
-var gitlabMkdir = os.Mkdir
 var gitlabMkdirAll = os.MkdirAll
 var gitlabLstat = os.Lstat
 var gitlabRemove = os.Remove
@@ -112,7 +111,7 @@ func (p *GitLabProvider) installFromRelease(sourceID, repo, version string, regi
 	// Find matching asset for current platform
 	asset := FindMatchingAsset(registryItem.Source.Asset)
 	if asset == nil {
-		Logger.Error(fmt.Sprintf("GitLab Install: No matching asset found for current platform"))
+		Logger.Error("GitLab Install: No matching asset found for current platform")
 		return false
 	}
 
@@ -381,7 +380,7 @@ func (p *GitLabProvider) getDefaultBranch(repoPath string) string {
 	return "main"
 }
 
-func (p *GitLabProvider) createSymlinks(repo, repoPath string) error {
+func (p *GitLabProvider) createSymlinks(_ string, repoPath string) error {
 	zanaBinDir := files.GetAppBinPath()
 
 	// Look for common binary locations
@@ -506,7 +505,7 @@ func (p *GitLabProvider) getLatestReleaseTag(repo string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch release info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("GitLab API returned status %d", resp.StatusCode)
@@ -532,7 +531,7 @@ func (p *GitLabProvider) downloadAsset(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP error: %d", resp.StatusCode)
@@ -542,7 +541,7 @@ func (p *GitLabProvider) downloadAsset(url, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
@@ -585,14 +584,14 @@ func (p *GitLabProvider) extractArchive(archivePath, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	destPath := filepath.Join(destDir, filepath.Base(archivePath))
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	if _, err := io.Copy(destFile, srcFile); err != nil {
 		return fmt.Errorf("failed to copy file: %w", err)
@@ -652,13 +651,13 @@ func (p *GitLabProvider) copyFile(src, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	destFile, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() { _ = destFile.Close() }()
 
 	_, err = io.Copy(destFile, srcFile)
 	return err
@@ -686,7 +685,7 @@ func (p *GitLabProvider) findBinaryInDir(dir, name string) string {
 }
 
 // createSymlinksFromRegistry creates symlinks based on registry bin configuration
-func (p *GitLabProvider) createSymlinksFromRegistry(repo, repoPath string, asset *registry_parser.RegistryItemSourceAsset, registryItem registry_parser.RegistryItem) error {
+func (p *GitLabProvider) createSymlinksFromRegistry(_ string, repoPath string, asset *registry_parser.RegistryItemSourceAsset, registryItem registry_parser.RegistryItem) error {
 	zanaBinDir := files.GetAppBinPath()
 
 	for binName, binTemplate := range registryItem.Bin {
