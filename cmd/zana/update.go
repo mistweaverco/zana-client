@@ -368,11 +368,12 @@ func (us *UpdateService) UpdateAllPackages() bool {
 
 // checkUpdateAvailability checks if an update is available for a package
 func (us *UpdateService) checkUpdateAvailability(sourceID, currentVersion string) bool {
-	latestVersion := us.registry.GetLatestVersion(sourceID)
-	if latestVersion == "" {
+	stable, prerelease := us.registry.GetLatestVersions(sourceID)
+	if stable == "" && prerelease == "" {
 		// No registry info available - skip update check (conservative: don't update)
 		return false
 	}
+	latestVersion := chooseBestRemoteVersion(currentVersion, stable, prerelease)
 	// If local version is unknown or set to "latest", always show update to the concrete remote version
 	if currentVersion == "" || currentVersion == "latest" {
 		return true

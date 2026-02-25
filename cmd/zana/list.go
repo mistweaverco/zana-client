@@ -667,10 +667,11 @@ func (ls *ListService) listAllPackagesJSON(filteredRegistry []registry_parser.Re
 
 // checkUpdateAvailability checks if an update is available for a package
 func (ls *ListService) checkUpdateAvailability(sourceID, currentVersion string) (string, bool) {
-	latestVersion := ls.registry.GetLatestVersion(sourceID)
-	if latestVersion == "" {
+	stable, prerelease := ls.registry.GetLatestVersions(sourceID)
+	if stable == "" && prerelease == "" {
 		return "", false // No registry info available
 	}
+	latestVersion := chooseBestRemoteVersion(currentVersion, stable, prerelease)
 	// If local version is unknown or set to "latest", always show update to the concrete remote version
 	if currentVersion == "" || currentVersion == "latest" {
 		return fmt.Sprintf("%s Update available: v%s", IconRefresh(), latestVersion), true
@@ -700,6 +701,11 @@ func (d *defaultRegistryProvider) GetData(force bool) []registry_parser.Registry
 func (d *defaultRegistryProvider) GetLatestVersion(sourceID string) string {
 	parser := registry_parser.NewDefaultRegistryParser()
 	return parser.GetLatestVersion(sourceID)
+}
+
+func (d *defaultRegistryProvider) GetLatestVersions(sourceID string) (string, string) {
+	parser := registry_parser.NewDefaultRegistryParser()
+	return parser.GetLatestVersions(sourceID)
 }
 
 func (d *defaultUpdateChecker) CheckIfUpdateIsAvailable(currentVersion, latestVersion string) (bool, string) {
