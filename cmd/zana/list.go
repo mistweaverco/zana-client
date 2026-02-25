@@ -193,16 +193,16 @@ func (ls *ListService) listInstalledPackagesRich(filteredPackages []local_packag
 				statusText := strings.ReplaceAll(updateInfo, IconRefresh(), "")
 				statusText = strings.ReplaceAll(statusText, IconCheckCircle(), "")
 				statusText = strings.TrimSpace(statusText)
-				if statusText == "" {
-					if hasUpdate {
-						// Use ANSI yellow color for update status
-						statusText = "\033[33mUpdate available\033[0m"
-					} else {
+				if hasUpdate {
+					if statusText == "" {
+						statusText = "Update available"
+					}
+					// Make updates pop in markdown (icon + bold)
+					statusText = fmt.Sprintf("%s **%s**", IconRefreshPlain(), statusText)
+				} else {
+					if statusText == "" {
 						statusText = "Up to date"
 					}
-				} else if hasUpdate {
-					// Wrap existing text in yellow ANSI codes
-					statusText = fmt.Sprintf("\033[33m%s\033[0m", statusText)
 				}
 
 				markdown.WriteString(fmt.Sprintf("| %s | %s | %s |\n", pkg.SourceID, pkg.Version, statusText))
@@ -499,12 +499,10 @@ func (ls *ListService) listAllPackagesRich(filteredRegistry []registry_parser.Re
 						statusText = strings.ReplaceAll(updateInfo, IconRefresh(), "")
 						statusText = strings.TrimSpace(statusText)
 						if statusText == "" {
-							// Use ANSI yellow color directly for update status
-							statusText = fmt.Sprintf("\033[33m%s Update available\033[0m", IconRefreshPlain())
-						} else {
-							// Wrap existing text in yellow ANSI codes
-							statusText = fmt.Sprintf("\033[33m%s\033[0m", statusText)
+							statusText = "Update available"
 						}
+						// Highlight updates in markdown (icon + bold)
+						statusText = fmt.Sprintf("%s **%s**", IconRefreshPlain(), statusText)
 					} else {
 						statusText = fmt.Sprintf("%s Installed, up to date", IconCheckCirclePlain())
 					}
