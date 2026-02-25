@@ -110,3 +110,40 @@ func TestIsGreaterVersionPadding(t *testing.T) {
 		})
 	}
 }
+
+func TestIsGreaterWithPreRelease(t *testing.T) {
+	tests := []struct {
+		name     string
+		v1       string
+		v2       string
+		expected bool
+	}{
+		// Basic pre-release vs release comparisons
+		// NOTE: When already on a non-numeric prerelease (e.g. dev/alpha),
+		// that prerelease should outrank the corresponding stable version,
+		// so there is no update.
+		{"dev outranks stable when already on dev", "1.0.0-dev.1", "1.0.0", false},
+		{"stable does not outrank dev", "1.0.0", "1.0.0-dev.1", false},
+		{"same dev build", "1.0.0-dev.1", "1.0.0-dev.1", false},
+
+		// Purely numeric prerelease should behave like standard SemVer:
+		// prerelease is lower than the corresponding stable.
+		{"numeric prerelease less than stable", "1.0.0-1", "1.0.0", true},
+		{"stable greater than numeric prerelease", "1.0.0", "1.0.0-1", false},
+
+		// More complex pre-release identifiers
+		{"dev date build smaller", "7.0.0-dev.20260225.1", "7.0.0-dev.20260226.1", true},
+		{"dev date build greater", "7.0.0-dev.20260226.1", "7.0.0-dev.20260225.1", false},
+
+		// With v prefix and build metadata
+		{"with v prefix and build meta", "v1.2.3-dev.1+build.1", "v1.2.3-dev.2+build.5", true},
+		{"ignores build metadata when equal", "1.2.3+build.1", "1.2.3+build.2", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsGreater(tt.v1, tt.v2)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

@@ -162,16 +162,17 @@ type RegistryItemSource struct {
 }
 
 type RegistryItem struct {
-	Name        string             `json:"name"`
-	Version     string             `json:"version"`
-	Description string             `json:"description"`
-	Homepage    string             `json:"homepage"`
-	Licenses    []string           `json:"licenses"`
-	Languages   []string           `json:"languages"`
-	Categories  []string           `json:"categories"`
-	Aliases     []string           `json:"aliases,omitempty"`
-	Source      RegistryItemSource `json:"source"`
-	Bin         map[string]string  `json:"bin"`
+	Name              string             `json:"name"`
+	Version           string             `json:"version"`
+	PrereleaseVersion string             `json:"prerelease_version,omitempty"`
+	Description       string             `json:"description"`
+	Homepage          string             `json:"homepage"`
+	Licenses          []string           `json:"licenses"`
+	Languages         []string           `json:"languages"`
+	Categories        []string           `json:"categories"`
+	Aliases           []string           `json:"aliases,omitempty"`
+	Source            RegistryItemSource `json:"source"`
+	Bin               map[string]string  `json:"bin"`
 }
 
 type RegistryRoot []RegistryItem
@@ -209,6 +210,14 @@ func (rp *RegistryParser) GetBySourceId(sourceId string) RegistryItem {
 func (rp *RegistryParser) GetLatestVersion(sourceId string) string {
 	item := rp.GetBySourceId(sourceId)
 	return item.Version
+}
+
+// GetLatestVersions gets the latest stable and prerelease versions for a given source ID.
+// The stable version is always returned as the first value (which may be empty),
+// and the prerelease version (if any) as the second.
+func (rp *RegistryParser) GetLatestVersions(sourceId string) (string, string) {
+	item := rp.GetBySourceId(sourceId)
+	return item.Version, item.PrereleaseVersion
 }
 
 // GetByNameOrAlias finds a registry item by its name or any of its aliases.

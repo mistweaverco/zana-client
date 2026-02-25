@@ -14,6 +14,10 @@ type LocalPackagesProvider interface {
 type RegistryProvider interface {
 	GetData(force bool) []registry_parser.RegistryItem
 	GetLatestVersion(sourceID string) string
+	// GetLatestVersions returns the latest stable and prerelease versions
+	// for the given source ID. Implementations may return empty strings when
+	// no data is available.
+	GetLatestVersions(sourceID string) (stable string, prerelease string)
 }
 
 // UpdateChecker defines the interface for checking if updates are available

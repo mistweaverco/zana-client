@@ -29,8 +29,9 @@ func (m *MockLocalPackagesProvider) GetData(force bool) local_packages_parser.Lo
 }
 
 type MockRegistryProvider struct {
-	GetDataFunc          func(force bool) []registry_parser.RegistryItem
-	GetLatestVersionFunc func(sourceID string) string
+	GetDataFunc           func(force bool) []registry_parser.RegistryItem
+	GetLatestVersionFunc  func(sourceID string) string
+	GetLatestVersionsFunc func(sourceID string) (string, string)
 }
 
 func (m *MockRegistryProvider) GetData(force bool) []registry_parser.RegistryItem {
@@ -45,6 +46,16 @@ func (m *MockRegistryProvider) GetLatestVersion(sourceID string) string {
 		return m.GetLatestVersionFunc(sourceID)
 	}
 	return ""
+}
+
+func (m *MockRegistryProvider) GetLatestVersions(sourceID string) (string, string) {
+	if m.GetLatestVersionsFunc != nil {
+		return m.GetLatestVersionsFunc(sourceID)
+	}
+	if m.GetLatestVersionFunc != nil {
+		return m.GetLatestVersionFunc(sourceID), ""
+	}
+	return "", ""
 }
 
 type MockUpdateChecker struct {
