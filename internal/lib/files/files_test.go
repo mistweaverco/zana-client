@@ -1688,6 +1688,58 @@ func TestDownloadAndUnzipRegistryErrorPaths(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to download registry")
 	})
+
+	t.Run("uses cache zip to refresh stale json", func(t *testing.T) {
+		// Create an in-memory filesystem for testing
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Create cache directory and files in the real cache path the code uses
+		cacheDir := GetCachePath()
+		cachePath := cacheDir + "/registry-cache.json.zip"
+		jsonPath := cacheDir + "/zana-registry.json"
+
+		// Create an older JSON file
+		jsonFile, err := mockFS.fs.Create(jsonPath)
+		require.NoError(t, err)
+		require.NoError(t, jsonFile.Close())
+
+		// Create a newer cache file
+		cacheFile, err := mockFS.fs.Create(cachePath)
+		require.NoError(t, err)
+		require.NoError(t, cacheFile.Close())
+
+		// Ensure cache is considered valid
+		assert.True(t, IsCacheValid(cachePath, 24*time.Hour))
+
+		// Mock zip opener that records when Unzip is called
+		called := false
+		mockZipOpener := &MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				called = true
+				return nil, errors.New("unzip error")
+			},
+		}
+		SetZipFileOpener(mockZipOpener)
+		defer ResetDependencies()
+
+		// Mock HTTP client should not be used when cache is valid
+		mockClient := &MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return nil, errors.New("should not download when cache is valid")
+			},
+		}
+		SetHTTPClient(mockClient)
+		defer ResetDependencies()
+
+		err = DownloadAndUnzipRegistry()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to unzip registry")
+		assert.True(t, called, "expected unzip to be called when cache is newer than JSON")
+	})
 }
 
 // TestGetAppDataPathErrorPaths tests error paths in GetAppDataPath function
