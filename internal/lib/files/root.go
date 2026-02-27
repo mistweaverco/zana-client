@@ -479,9 +479,18 @@ func DownloadAndUnzipRegistry() error {
 
 	// Check if cache is valid first
 	if IsCacheValid(cachePath, 24*time.Hour) {
-		// Cache is valid, check if JSON file exists and unzip if needed
-		if !FileExists(registryJSONPath) {
-			// Zip exists but JSON doesn't, unzip it
+		// Cache is valid. Ensure the JSON file is at least as fresh as the cache.
+		// If the JSON file is missing or older than the cache, unzip again.
+		jsonInfo, jsonErr := fileSystem.Stat(registryJSONPath)
+		cacheInfo, cacheErr := fileSystem.Stat(cachePath)
+
+		// If we can't stat either file, treat it as needing a fresh unzip.
+		needsUnzip := jsonErr != nil || cacheErr != nil
+		if !needsUnzip {
+			needsUnzip = jsonInfo.ModTime().Before(cacheInfo.ModTime())
+		}
+
+		if needsUnzip {
 			if err := Unzip(cachePath, GetCachePath()); err != nil {
 				return fmt.Errorf("failed to unzip registry: %w", err)
 			}
