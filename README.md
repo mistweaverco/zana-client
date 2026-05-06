@@ -224,6 +224,26 @@ zana sync registry
 The registry data is cached locally,
 but with the `sync registry` command you can force an update.
 
+You can control how long `zana` considers the downloaded registry zip "fresh":
+
+- via `config.yaml` (recommended)
+
+The optional `config.yaml` lives next to `zana-lock.json` in your Zana config dir
+(usually `~/.config/zana/config.yaml`, or `$ZANA_HOME/config.yaml`).
+
+Example:
+
+```yaml
+registry:
+  cacheMaxAge: 6h
+  # url: https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip
+ui:
+  color: auto
+  output: rich
+```
+
+A JSON Schema is provided at `schemas/config.schema.json`.
+
 #### zana list
 
 `list`/`ls` list all installed packages.

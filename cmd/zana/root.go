@@ -59,6 +59,22 @@ func init() {
 	var outputFlagValue string
 	rootCmd.PersistentFlags().StringVarP(&outputFlagValue, "output", "o", string(config.OutputModeRich), "output format: rich (default), plain, json")
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		// Load optional config.yaml (next to zana-lock.json) and apply defaults
+		// only when the user didn't explicitly set flags.
+		if fileCfg, ok, err := config.LoadFileConfig(); err == nil && ok {
+			if !cmd.Flags().Changed("cache-max-age") {
+				if d := fileCfg.RegistryCacheMaxAgeOrZero(); d > 0 {
+					cfg.Flags.CacheMaxAge = d
+				}
+			}
+			if !cmd.Flags().Changed("color") && fileCfg.UI.Color != "" {
+				_ = cfg.Flags.Color.Set(fileCfg.UI.Color) // ignore invalid values, keep defaults
+			}
+			if !cmd.Flags().Changed("output") && fileCfg.UI.Output != "" {
+				outputFlagValue = fileCfg.UI.Output
+			}
+		}
+
 		// Parse output mode from flag value
 		if outputFlagValue != "" {
 			var outputMode config.OutputMode

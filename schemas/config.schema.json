@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mistweaverco.github.io/zana-client/schemas/config.schema.json",
+  "title": "Zana config.yaml schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Registry zip URL (overrides the default GitHub release URL).",
+          "minLength": 1
+        },
+        "cacheMaxAge": {
+          "type": "string",
+          "description": "How long the downloaded registry zip is considered fresh. Go duration string (e.g. 30m, 6h, 24h, 0).",
+          "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$|^0$"
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "When to use colors/icons.",
+          "enum": ["auto", "always", "never"]
+        },
+        "output": {
+          "type": "string",
+          "description": "Output format.",
+          "enum": ["rich", "plain", "json"]
+        }
+      }
+    }
+  }
+}
+
