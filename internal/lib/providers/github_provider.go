@@ -115,6 +115,13 @@ func (p *GitHubProvider) installFromRelease(sourceID, repo, version string, regi
 
 	// Resolve version
 	resolvedVersion := version
+	// Branch-like versions don't map to GitHub Releases. Treat them as "latest" for
+	// release-asset installs so we don't fall back to cloning and pollute the bin dir.
+	switch resolvedVersion {
+	case "main", "master", "trunk":
+		resolvedVersion = "latest"
+	}
+
 	if resolvedVersion == "" || resolvedVersion == "latest" {
 		resolvedVersion = registryItem.Version
 		if resolvedVersion == "" {
@@ -180,6 +187,11 @@ func (p *GitHubProvider) installFromRelease(sourceID, repo, version string, regi
 		Logger.Error(fmt.Sprintf("GitHub Install: Error copying binaries: %v", err))
 		return false
 	}
+
+	// Clean up any legacy symlinks from prior git installs.
+	// (Those used relative symlinks into the repo dir, which must be removed before
+	// we create the curated bin links from the registry.)
+	_ = p.removeSymlinks(repo)
 
 	// Create symlinks
 	if err := p.createSymlinksFromRegistry(repo, repoPath, asset, registryItem); err != nil {
@@ -331,8 +343,11 @@ func (p *GitHubProvider) Update(sourceID string) bool {
 }
 
 func (p *GitHubProvider) getLatestVersion(repo string) (string, error) {
-	// This is called before cloning, so we can't use the repo path
-	// Just return default branch - actual version will be resolved after clone
+	// Prefer the latest GitHub release tag (works for binary release installs).
+	// If a repo doesn't publish releases, fall back to the default branch.
+	if tag, err := p.getLatestReleaseTag(repo); err == nil && strings.TrimSpace(tag) != "" {
+		return strings.TrimSpace(tag), nil
+	}
 	return p.getDefaultBranch(""), nil
 }
 
@@ -385,7 +400,6 @@ func (p *GitHubProvider) createSymlinks(_ string, repoPath string) error {
 		filepath.Join(repoPath, "bin"),
 		filepath.Join(repoPath, "target", "release"),
 		filepath.Join(repoPath, "dist"),
-		repoPath, // Root directory
 	}
 
 	for _, binDir := range binDirs {
@@ -394,9 +408,12 @@ func (p *GitHubProvider) createSymlinks(_ string, repoPath string) error {
 				if entry.IsDir() {
 					continue
 				}
-				// Check if it's executable or looks like a binary
+				// Only symlink executables to avoid polluting the bin dir.
 				binPath := filepath.Join(binDir, entry.Name())
 				if info, err := githubStat(binPath); err == nil {
+					if info.Mode()&0111 == 0 {
+						continue
+					}
 					// Skip hidden files and common non-binary files
 					if strings.HasPrefix(entry.Name(), ".") {
 						continue
@@ -418,9 +435,7 @@ func (p *GitHubProvider) createSymlinks(_ string, repoPath string) error {
 						Logger.Info(fmt.Sprintf("GitHub: Created symlink %s -> %s", symlink, relPath))
 					}
 					// Only process first executable found per directory to avoid clutter
-					if info.Mode()&0111 != 0 {
-						break
-					}
+					break
 				}
 			}
 		}
@@ -431,6 +446,7 @@ func (p *GitHubProvider) createSymlinks(_ string, repoPath string) error {
 
 func (p *GitHubProvider) removeSymlinks(repo string) error {
 	repoPath := p.getRepoPath(repo)
+	repoPath = filepath.Clean(repoPath) + string(os.PathSeparator)
 	zanaBinDir := files.GetAppBinPath()
 
 	// Find and remove symlinks that point to this repo
@@ -452,6 +468,7 @@ func (p *GitHubProvider) removeSymlinks(repo string) error {
 				if !filepath.IsAbs(target) {
 					target = filepath.Join(zanaBinDir, target)
 				}
+				target = filepath.Clean(target) + string(os.PathSeparator)
 				// Check if target is in our repo path
 				if strings.HasPrefix(target, repoPath) {
 					if err := githubRemove(symlink); err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 )
@@ -177,6 +178,22 @@ type RegistryItem struct {
 
 type RegistryRoot []RegistryItem
 
+func normalizeSourceID(id string) string {
+	// New format: "<provider>:<id>"
+	if strings.Contains(id, ":") && !strings.HasPrefix(id, "pkg:") {
+		return id
+	}
+	// Legacy format: "pkg:<provider>/<id>"
+	if strings.HasPrefix(id, "pkg:") {
+		withoutPrefix := strings.TrimPrefix(id, "pkg:")
+		parts := strings.SplitN(withoutPrefix, "/", 2)
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			return parts[0] + ":" + parts[1]
+		}
+	}
+	return id
+}
+
 // GetData retrieves registry data, optionally forcing a refresh
 func (rp *RegistryParser) GetData(force bool) RegistryRoot {
 	if rp.hasData && !force {
@@ -198,8 +215,9 @@ func (rp *RegistryParser) GetData(force bool) RegistryRoot {
 // GetBySourceId finds a registry item by its source ID
 func (rp *RegistryParser) GetBySourceId(sourceId string) RegistryItem {
 	registryRoot := rp.GetData(false)
+	want := normalizeSourceID(sourceId)
 	for _, item := range registryRoot {
-		if item.Source.ID == sourceId {
+		if item.Source.ID == sourceId || normalizeSourceID(item.Source.ID) == want {
 			return item
 		}
 	}

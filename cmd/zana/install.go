@@ -320,6 +320,26 @@ func isValidVersionString(version string) bool {
 		return true
 	}
 
+	// Common git branch names users pass explicitly (mainly for VCS providers)
+	switch strings.ToLower(version) {
+	case "main", "master", "trunk", "head":
+		return true
+	}
+
+	// Git commit SHA (short or full)
+	isHex := true
+	if len(version) >= 7 && len(version) <= 40 {
+		for _, char := range version {
+			isHex = (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f') || (char >= 'A' && char <= 'F')
+			if !isHex {
+				break
+			}
+		}
+		if isHex {
+			return true
+		}
+	}
+
 	// Check if it contains at least one digit
 	for _, char := range version {
 		if char >= '0' && char <= '9' {
@@ -344,8 +364,9 @@ func parsePackageIDAndVersion(pkgId string) (string, string) {
 			return packageName, lastPart
 		}
 	}
-	// No valid version found, return the full package ID with "latest"
-	return pkgId, "latest"
+	// No valid version found, return the full package ID with empty version.
+	// Empty version means "use the registry default if present, otherwise provider default".
+	return pkgId, ""
 }
 
 // PackageMatch represents a package found in the registry
