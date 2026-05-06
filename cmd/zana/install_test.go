@@ -60,15 +60,15 @@ func TestParsePackageIDAndVersion(t *testing.T) {
 		expectedVersion string
 	}{
 		// Basic packages without versions
-		{"basic npm package", "pkg:npm/eslint", "pkg:npm/eslint", "latest"},
-		{"basic pypi package", "pkg:pypi/black", "pkg:pypi/black", "latest"},
-		{"basic golang package", "pkg:golang/golang.org/x/tools/gopls", "pkg:golang/golang.org/x/tools/gopls", "latest"},
-		{"basic cargo package", "pkg:cargo/ripgrep", "pkg:cargo/ripgrep", "latest"},
+		{"basic npm package", "pkg:npm/eslint", "pkg:npm/eslint", ""},
+		{"basic pypi package", "pkg:pypi/black", "pkg:pypi/black", ""},
+		{"basic golang package", "pkg:golang/golang.org/x/tools/gopls", "pkg:golang/golang.org/x/tools/gopls", ""},
+		{"basic cargo package", "pkg:cargo/ripgrep", "pkg:cargo/ripgrep", ""},
 
 		// NPM organization packages (these should NOT treat @org as version)
-		{"npm org package", "pkg:npm/@mistweaverco/kulala-fmt", "pkg:npm/@mistweaverco/kulala-fmt", "latest"},
-		{"npm org package with @", "pkg:npm/@prisma/language-server", "pkg:npm/@prisma/language-server", "latest"},
-		{"npm org package with @", "pkg:npm/@tailwindcss/language-server", "pkg:npm/@tailwindcss/language-server", "latest"},
+		{"npm org package", "pkg:npm/@mistweaverco/kulala-fmt", "pkg:npm/@mistweaverco/kulala-fmt", ""},
+		{"npm org package with @", "pkg:npm/@prisma/language-server", "pkg:npm/@prisma/language-server", ""},
+		{"npm org package with @", "pkg:npm/@tailwindcss/language-server", "pkg:npm/@tailwindcss/language-server", ""},
 
 		// Packages with versions
 		{"npm package with version", "pkg:npm/eslint@1.0.0", "pkg:npm/eslint", "1.0.0"},
@@ -88,9 +88,9 @@ func TestParsePackageIDAndVersion(t *testing.T) {
 		{"package with rc version", "pkg:npm/eslint@1.0.0-rc.1", "pkg:npm/eslint", "1.0.0-rc.1"},
 
 		// Edge cases
-		{"package with @ in name but no version", "pkg:npm/@mistweaverco/kulala-fmt", "pkg:npm/@mistweaverco/kulala-fmt", "latest"},
+		{"package with @ in name but no version", "pkg:npm/@mistweaverco/kulala-fmt", "pkg:npm/@mistweaverco/kulala-fmt", ""},
 		{"package with multiple @ symbols", "pkg:npm/@org@suborg/package@1.0.0", "pkg:npm/@org@suborg/package", "1.0.0"},
-		{"package with @ at end but no version", "pkg:npm/package@", "pkg:npm/package@", "latest"},
+		{"package with @ at end but no version", "pkg:npm/package@", "pkg:npm/package@", ""},
 	}
 
 	for _, tc := range testCases {
@@ -372,7 +372,12 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 			}
 			return false
 		}
-		resolveVersionFn = func(id, v string) (string, error) { return v, nil }
+		resolveVersionFn = func(id, v string) (string, error) {
+			if v == "" {
+				return "latest", nil
+			}
+			return v, nil
+		}
 		defer func() {
 			isSupportedProviderFn = prevSupp
 			installPackageFn = prevInstall
@@ -445,7 +450,12 @@ func TestInstallCommandFullOutputGolden(t *testing.T) {
 		prevResolve := resolveVersionFn
 		isSupportedProviderFn = func(p string) bool { return true }
 		installPackageFn = func(id, v string) bool { return false }
-		resolveVersionFn = func(id, v string) (string, error) { return v, nil }
+		resolveVersionFn = func(id, v string) (string, error) {
+			if v == "" {
+				return "latest", nil
+			}
+			return v, nil
+		}
 		defer func() {
 			isSupportedProviderFn = prevSupp
 			installPackageFn = prevInstall

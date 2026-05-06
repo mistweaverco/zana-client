@@ -234,6 +234,22 @@ func TestGetBySourceId(t *testing.T) {
 		assert.Equal(t, "2.0.0", item.Version)
 	})
 
+	t.Run("matches legacy and new source ID formats", func(t *testing.T) {
+		mockReader := &mockFileReader{}
+		parser := NewRegistryParser(mockReader)
+
+		jsonData := `[
+			{"name": "yq", "version": "v1.0.0", "source": {"id": "pkg:github/mikefarah/yq"}}
+		]`
+
+		err := parser.LoadFromBytes([]byte(jsonData))
+		require.NoError(t, err)
+
+		item := parser.GetBySourceId("github:mikefarah/yq")
+		assert.Equal(t, "yq", item.Name)
+		assert.Equal(t, "v1.0.0", item.Version)
+	})
+
 	t.Run("returns empty item when source ID not found", func(t *testing.T) {
 		mockReader := &mockFileReader{}
 		parser := NewRegistryParser(mockReader)

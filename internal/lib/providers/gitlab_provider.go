@@ -434,6 +434,7 @@ func (p *GitLabProvider) createSymlinks(_ string, repoPath string) error {
 
 func (p *GitLabProvider) removeSymlinks(repo string) error {
 	repoPath := p.getRepoPath(repo)
+	repoPath = filepath.Clean(repoPath) + string(os.PathSeparator)
 	zanaBinDir := files.GetAppBinPath()
 
 	// Find and remove symlinks that point to this repo
@@ -455,6 +456,7 @@ func (p *GitLabProvider) removeSymlinks(repo string) error {
 				if !filepath.IsAbs(target) {
 					target = filepath.Join(zanaBinDir, target)
 				}
+				target = filepath.Clean(target) + string(os.PathSeparator)
 				// Check if target is in our repo path
 				if strings.HasPrefix(target, repoPath) {
 					if err := gitlabRemove(symlink); err != nil {
