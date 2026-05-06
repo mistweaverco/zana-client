@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/huh/spinner"
 	"github.com/spf13/afero"
+	"gopkg.in/yaml.v3"
 )
 
 // FileSystem interface for filesystem operations
@@ -466,6 +467,56 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 	return err
 }
 
+type zanaConfigFile struct {
+	Registry struct {
+		URL         string `yaml:"url"`
+		CacheMaxAge string `yaml:"cacheMaxAge"`
+	} `yaml:"registry"`
+}
+
+func getConfigFilePath() string {
+	return GetAppDataPath() + string(os.PathSeparator) + "config.yaml"
+}
+
+func readZanaConfigFile() (zanaConfigFile, bool) {
+	path := getConfigFilePath()
+	f, err := fileSystem.OpenFile(path, os.O_RDONLY, 0)
+	if err != nil {
+		return zanaConfigFile{}, false
+	}
+	defer func() { _ = fileSystem.Close(f) }()
+
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return zanaConfigFile{}, true
+	}
+
+	var cfg zanaConfigFile
+	if err := yaml.Unmarshal(b, &cfg); err != nil {
+		return zanaConfigFile{}, true
+	}
+	return cfg, true
+}
+
+func getRegistryCacheMaxAge() time.Duration {
+	// Default is intentionally short to reduce the chance of users seeing stale registry data
+	// without having to manually `zana sync registry`.
+	maxAge := 6 * time.Hour
+
+	if cfg, ok := readZanaConfigFile(); ok {
+		if raw := strings.TrimSpace(cfg.Registry.CacheMaxAge); raw != "" {
+			if parsed, err := time.ParseDuration(raw); err == nil {
+				if parsed < 0 {
+					return 0
+				}
+				return parsed
+			}
+		}
+	}
+
+	return maxAge
+}
+
 // DownloadAndUnzipRegistry downloads the registry from the default URL and unzips it
 // This is used to ensure the registry is available for commands that need it
 func DownloadAndUnzipRegistry() error {
@@ -473,12 +524,20 @@ func DownloadAndUnzipRegistry() error {
 	if override := fileSystem.Getenv("ZANA_REGISTRY_URL"); override != "" {
 		registryURL = override
 	}
+	if registryURL == "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip" {
+		if cfg, ok := readZanaConfigFile(); ok {
+			if u := strings.TrimSpace(cfg.Registry.URL); u != "" {
+				registryURL = u
+			}
+		}
+	}
 
 	cachePath := GetRegistryCachePath()
 	registryJSONPath := GetAppRegistryFilePath()
+	cacheMaxAge := getRegistryCacheMaxAge()
 
 	// Check if cache is valid first
-	if IsCacheValid(cachePath, 24*time.Hour) {
+	if IsCacheValid(cachePath, cacheMaxAge) {
 		// Cache is valid. Ensure the JSON file is at least as fresh as the cache.
 		// If the JSON file is missing or older than the cache, unzip again.
 		jsonInfo, jsonErr := fileSystem.Stat(registryJSONPath)
@@ -501,7 +560,7 @@ func DownloadAndUnzipRegistry() error {
 	// Download the registry with spinner
 	var downloadErr error
 	action := func() {
-		downloadErr = DownloadWithCache(registryURL, cachePath, 24*time.Hour)
+		downloadErr = DownloadWithCache(registryURL, cachePath, cacheMaxAge)
 	}
 
 	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
