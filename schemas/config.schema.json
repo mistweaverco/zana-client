@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mistweaverco.github.io/zana-client/schemas/config.schema.json",
-  "title": "Zana config.yaml schema",
+  "$id": "https://getzana.net/client-config.schema.json",
+  "title": "Zana client config.yaml schema",
   "type": "object",
   "additionalProperties": false,
   "properties": {
