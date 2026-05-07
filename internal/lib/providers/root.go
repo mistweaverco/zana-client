@@ -282,10 +282,13 @@ func ResolveVersion(sourceId string, version string) (string, error) {
 		return version, nil
 	}
 
-	// If the user didn't specify a version, prefer the registry version when present.
+	// Prefer the registry version when present for both:
+	// - version == "" (user omitted a version)
+	// - version == "latest" (user asked for "latest")
+	//
 	// This keeps installs consistent with the curated registry, instead of always
-	// deferring to provider "latest" logic.
-	if version == "" {
+	// deferring to provider "latest" logic (e.g. GitHub release/tag lookups).
+	if version == "" || version == "latest" {
 		registry := registry_parser.NewDefaultRegistryParser()
 		registryItem := registry.GetBySourceId(sourceId)
 		if registryItem.Version != "" {
