@@ -25,8 +25,6 @@
 Zana 🌈 aims to be an editor-agnostic 🫶 package manager 📦 for
 Tree-sitter parsers, LSP servers, DAP servers,
 linters and formatters and more.
-but with the goal of supporting  not only Neovim,
-but rather any other editor .
 
 Zana is [swahili] for "tools" or "tooling."
 
