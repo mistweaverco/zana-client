@@ -36,7 +36,9 @@ func SharedLibExt() string {
 var (
 	treeSitterHasCommand = shell_out.HasCommand
 	treeSitterShellOut   = shell_out.ShellOut
+	treeSitterShellOutCapture = shell_out.ShellOutCapture
 	osMkdirAll           = func(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+	treeSitterStat       = os.Stat
 )
 
 func HasTreeSitterCLI() bool {
@@ -90,9 +92,35 @@ func BuildTreeSitterParsersToCache(
 		}
 
 		fullGrammarDir := filepath.Join(repoPath, filepath.FromSlash(grammarDir))
-		code, err := treeSitterShellOut("tree-sitter", []string{"build", "-o", outPath, fullGrammarDir}, "", nil)
+
+		// Some upstream grammars (including tree-sitter-sql v0.3.11) do not ship generated
+		// sources in `src/` (parser.c/grammar.json) and require `tree-sitter generate` first.
+		// Newer tree-sitter versions also expect `src/grammar.json` to exist during build.
+		parserC := filepath.Join(fullGrammarDir, "src", "parser.c")
+		grammarJSON := filepath.Join(fullGrammarDir, "src", "grammar.json")
+		needsGenerate := false
+		if _, err := treeSitterStat(parserC); err != nil {
+			needsGenerate = true
+		}
+		if _, err := treeSitterStat(grammarJSON); err != nil {
+			needsGenerate = true
+		}
+		if needsGenerate {
+			code, output, err := treeSitterShellOutCapture("tree-sitter", []string{"generate"}, fullGrammarDir, nil)
+			if err != nil || code != 0 {
+				if strings.TrimSpace(output) == "" {
+					return nil, fmt.Errorf("tree-sitter generate failed for %s in %s", lang, grammarDir)
+				}
+				return nil, fmt.Errorf("tree-sitter generate failed for %s in %s: %s", lang, grammarDir, strings.TrimSpace(output))
+			}
+		}
+
+		code, output, err := treeSitterShellOutCapture("tree-sitter", []string{"build", "-o", outPath, fullGrammarDir}, "", nil)
 		if err != nil || code != 0 {
-			return nil, fmt.Errorf("tree-sitter build failed for %s in %s", lang, grammarDir)
+			if strings.TrimSpace(output) == "" {
+				return nil, fmt.Errorf("tree-sitter build failed for %s in %s", lang, grammarDir)
+			}
+			return nil, fmt.Errorf("tree-sitter build failed for %s in %s: %s", lang, grammarDir, strings.TrimSpace(output))
 		}
 
 		built = append(built, lang)
