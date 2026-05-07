@@ -20,10 +20,14 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "url": {
-          "type": "string",
-          "description": "Registry zip URL (overrides the default GitHub release URL).",
-          "minLength": 1
+        "urls": {
+          "type": "array",
+          "description": "Registry zip URLs. Gets merged. Later entries take precedence over earlier ones.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
         },
         "cacheMaxAge": {
           "type": "string",

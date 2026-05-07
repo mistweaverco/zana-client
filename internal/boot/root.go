@@ -39,10 +39,11 @@ func initialModel(cacheMaxAge time.Duration) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	// Use the same resolution logic as the rest of the client (supports multi-URL config).
+	// For the TUI we just display/use the first URL; the download itself will try all.
 	registryURL := DEFAULT_REGISTRY_URL
-	override := os.Getenv("ZANA_REGISTRY_URL")
-	if override != "" {
-		registryURL = override
+	if urls := files.ResolveRegistryURLs(); len(urls) > 0 {
+		registryURL = urls[0]
 	}
 	return model{
 		spinner:     s,
@@ -64,8 +65,7 @@ func (m model) checkCache() tea.Cmd {
 
 func (m model) performDownload() tea.Cmd {
 	return func() tea.Msg {
-		cachePath := files.GetRegistryCachePath()
-		err := files.DownloadWithCache(m.registryURL, cachePath, m.cacheMaxAge)
+		err := files.DownloadRegistryZipWithCache(m.cacheMaxAge)
 		if err != nil {
 			return errMsg(err)
 		}

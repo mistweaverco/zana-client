@@ -101,7 +101,7 @@ If the file doesn't exist,
 Zana will create it for you (when you install a package).
 
 Zana's cache directory is controlled separately via `ZANA_CACHE`.
-If `ZANA_CACHE` is not set, Zana uses OS defaults:
+If `ZANA_CACHE` isn't set, Zana uses OS defaults:
 
 ```
 - Linux: `~/.cache/zana`
@@ -243,12 +243,13 @@ The optional `config.yaml` lives next to `zana-lock.json` in your Zana config di
 Example:
 
 ```yaml
+# yaml-language-server: $schema=https://getzana.net/client-config.schema.json
 paths:
-  # optional: cache directory (overridden by $ZANA_CACHE if set)
   cacheDir: ~/.cache/zana
 registry:
   cacheMaxAge: 6h
-  # url: https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip
+  urls:
+    - https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip
 ui:
   color: auto
   output: rich
