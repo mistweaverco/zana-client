@@ -398,6 +398,36 @@ func TestListInstalledPackagesGolden(t *testing.T) {
 	})
 }
 
+func TestListFiltersUseSubstringMatching(t *testing.T) {
+	t.Run("installed list filters match substrings (case-insensitive)", func(t *testing.T) {
+		mockLocalPackages := &MockLocalPackagesProvider{
+			GetDataFunc: func(force bool) local_packages_parser.LocalPackageRoot {
+				return local_packages_parser.LocalPackageRoot{
+					Packages: []local_packages_parser.LocalPackageItem{
+						{SourceID: "pkg:npm/test-package", Version: "1.0.0"},
+						{SourceID: "pkg:pypi/black", Version: "2.0.0"},
+					},
+				}
+			},
+		}
+
+		service := NewListServiceWithDependencies(
+			mockLocalPackages,
+			&MockRegistryProvider{},
+			&MockUpdateChecker{},
+			&MockFileDownloader{},
+		)
+
+		out := captureOutput(t, func() {
+			service.ListInstalledPackages([]string{"PACK"})
+		})
+
+		// With substring matching, "PACK" should match "test-package".
+		assert.Contains(t, out, "pkg:npm/test-package")
+		assert.NotContains(t, out, "pkg:pypi/black")
+	})
+}
+
 func TestListAllPackagesGolden(t *testing.T) {
 	t.Run("list all packages with empty registry", func(t *testing.T) {
 		mockRegistry := &MockRegistryProvider{
