@@ -162,6 +162,15 @@ type RegistryItemSource struct {
 	Download RegistryItemSourceDownloadList `json:"download,omitempty"`
 }
 
+type RegistryItemTreeSitterBuild struct {
+	Language  string `json:"language"`
+	GrammarDir string `json:"grammar_dir"`
+}
+
+type RegistryItemTreeSitter struct {
+	Build []RegistryItemTreeSitterBuild `json:"build,omitempty"`
+}
+
 type RegistryItem struct {
 	Name              string             `json:"name"`
 	Version           string             `json:"version"`
@@ -174,6 +183,7 @@ type RegistryItem struct {
 	Aliases           []string           `json:"aliases,omitempty"`
 	Source            RegistryItemSource `json:"source"`
 	Bin               map[string]string  `json:"bin"`
+	TreeSitter        *RegistryItemTreeSitter `json:"treesitter,omitempty"`
 }
 
 type RegistryRoot []RegistryItem

@@ -126,6 +126,9 @@ Examples:
 	// Enable shell completion for package IDs based on the local registry.
 	ValidArgsFunction: packageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Configure optional integrations (editor backends).
+		providers.SetRequestedIntegrations(installIntegrations)
+
 		// Install all packages
 		successCount := 0
 		failureCount := 0
@@ -228,6 +231,9 @@ Examples:
 					if success {
 						successCount++
 						fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
+						for _, line := range providers.ConsumeIntegrationReport(internalID, resolvedVersion) {
+							fmt.Printf("  %s\n", line)
+						}
 					} else {
 						failureCount++
 						failures = append(failures, displayID)
@@ -277,6 +283,9 @@ Examples:
 			if success {
 				successCount++
 				fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
+				for _, line := range providers.ConsumeIntegrationReport(internalID, resolvedVersion) {
+					fmt.Printf("  %s\n", line)
+				}
 			} else {
 				failureCount++
 				failures = append(failures, displayID)
@@ -302,6 +311,12 @@ Examples:
 			}
 		}
 	},
+}
+
+var installIntegrations []string
+
+func init() {
+	installCmd.Flags().StringSliceVar(&installIntegrations, "integrate", nil, "run integration backends after install (e.g. --integrate neovim)")
 }
 
 // indirections for testability

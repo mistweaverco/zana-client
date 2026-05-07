@@ -56,6 +56,57 @@ func TestPathFunctions(t *testing.T) {
 
 // TestPathFunctionsComprehensive tests comprehensive path scenarios
 func TestPathFunctionsComprehensive(t *testing.T) {
+	t.Run("get cache path precedence env over config", func(t *testing.T) {
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			GetenvFunc: func(key string) string {
+				if key == "ZANA_HOME" {
+					return "/cfg"
+				}
+				if key == "ZANA_CACHE" {
+					return "/envcache"
+				}
+				return ""
+			},
+			UserHomeDirFunc: func() (string, error) { return "/home/user", nil },
+			UserConfigDirFunc: func() (string, error) {
+				return "/home/user/.config", nil
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		// Even if config.yaml requests a different cache dir, env var must win.
+		_ = mockFS.fs.MkdirAll("/cfg", 0o755)
+		_ = afero.WriteFile(mockFS.fs, "/cfg/config.yaml", []byte("paths:\n  cacheDir: /cfgcache\n"), 0o644)
+
+		assert.Equal(t, "/envcache", GetCachePath())
+	})
+
+	t.Run("get cache path uses config when env not set", func(t *testing.T) {
+		mockFS := &MockFileSystem{
+			fs: afero.NewMemMapFs(),
+			GetenvFunc: func(key string) string {
+				if key == "ZANA_HOME" {
+					return "/cfg"
+				}
+				return ""
+			},
+			UserHomeDirFunc: func() (string, error) { return "/home/user", nil },
+			UserConfigDirFunc: func() (string, error) {
+				return "/home/user/.config", nil
+			},
+		}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		_ = mockFS.fs.MkdirAll("/cfg", 0o755)
+		_ = afero.WriteFile(mockFS.fs, "/cfg/config.yaml", []byte("paths:\n  cacheDir: rel/cache\n"), 0o644)
+
+		// relative paths should be resolved relative to $HOME
+		assert.Equal(t, "/home/user/rel/cache", GetCachePath())
+	})
+
 	t.Run("get app data path with ZANA_HOME set", func(t *testing.T) {
 		// Create an in-memory filesystem for testing
 		mockFS := &MockFileSystem{

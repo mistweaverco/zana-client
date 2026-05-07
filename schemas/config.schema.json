@@ -5,6 +5,17 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cacheDir": {
+          "type": "string",
+          "description": "Cache directory (used when ZANA_CACHE env var is not set). Supports absolute paths, ~, or paths relative to $HOME.",
+          "minLength": 1
+        }
+      }
+    },
     "registry": {
       "type": "object",
       "additionalProperties": false,

@@ -17,13 +17,24 @@ import (
 // helper to set ZANA_HOME to a temp dir
 func withTempZanaHome(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("ZANA_HOME", dir)
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ZANA_HOME", t.TempDir())
+	t.Setenv("ZANA_CACHE", t.TempDir())
+
+	// Most provider tests assume the toolchain is available and stub shell outs.
+	// In CI/dev environments where e.g. cargo isn't installed, make availability checks
+	// deterministic by default (individual tests can override as needed).
+	oldCargoHas := cargoHasCommand
+	cargoHasCommand = func(string, []string, []string) bool { return true }
+	t.Cleanup(func() { cargoHasCommand = oldCargoHas })
+
 	// Ensure dirs initialized
 	_ = files.GetAppDataPath()
 	_ = files.GetAppBinPath()
 	_ = files.GetAppPackagesPath()
-	return dir
+	_ = files.GetCachePath()
+	return homeDir
 }
 
 func writeRegistry(t *testing.T, items []registry_parser.RegistryItem) {
