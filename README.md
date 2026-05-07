@@ -22,16 +22,13 @@
 
 <p></p>
 
-Zana 📦 aims to be like Mason.nvim 🧱,
-but with the goal of supporting 🌈 not only Neovim,
-but rather any other editor 🫶.
+Zana 🌈 aims to be an editor-agnostic 🫶 package manager 📦 for
+Tree-sitter parsers, LSP servers, DAP servers,
+linters and formatters and more.
+but with the goal of supporting  not only Neovim,
+but rather any other editor .
 
 Zana is [swahili] for "tools" or "tooling."
-
-<p></p>
-
-Currently, Zana is in early development,
-but should be considered stable enough for general use.
 
 <p></p>
 
@@ -39,6 +36,7 @@ but should be considered stable enough for general use.
 
 ## Terms used
 
+- *Tree-sitter*: A parser generator tool and an incremental parsing library.
 - *Language Server Protocol* (LSP): A protocol that defines
   how code editors and IDEs communicate with language servers.
 - *Debug Adapter Protocol* (DAP): A protocol that defines
@@ -54,10 +52,12 @@ but should be considered stable enough for general use.
 - *Terminal User Interface* (TUI): A text-based user interface
   that runs in a terminal emulator.
 
-A minimal LSP/DAP/formatter/linter package manager
-uses the [Zana Registry][zana-registry] to install and manage packages.
-
-Easily install and manage LSP servers, DAP servers, linters, and formatters.
+> [!INFO]
+> The zana client defaults to the [Zana Registry][zana-registry] to
+> install and manage packages.
+> This can be configured to use other registries as well.
+> The client then merges all registries together and
+> deduplicates the packages by their package ID.
 
 ## Requirements
 
