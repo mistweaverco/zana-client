@@ -16,6 +16,10 @@ type FileConfig struct {
 		CacheMaxAge string `yaml:"cacheMaxAge"`
 	} `yaml:"registry"`
 
+	Paths struct {
+		CacheDir string `yaml:"cacheDir"`
+	} `yaml:"paths"`
+
 	UI struct {
 		Color  string `yaml:"color"`
 		Output string `yaml:"output"`

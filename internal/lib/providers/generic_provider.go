@@ -172,6 +172,13 @@ func (p *GenericProvider) Remove(sourceID string) bool {
 		return false
 	}
 
+	// Remove Neovim tree-sitter parser(s) if this package installed them.
+	registry := genericRegistryParser()
+	registryItem := registry.GetBySourceId(sourceID)
+	if err := removeNeovimTreeSitterParsers(registryItem); err != nil {
+		Logger.Info(fmt.Sprintf("Generic Remove: Warning removing Neovim tree-sitter parsers: %v", err))
+	}
+
 	Logger.Info(fmt.Sprintf("Generic Remove: Removing %s", packageName))
 
 	packageDir := filepath.Join(p.APP_PACKAGES_DIR, packageName)

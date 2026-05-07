@@ -86,8 +86,8 @@ grab it directtly from the [releases][latest-release].
 The heart of Zana is its `zana-lock.json` file.
 This file is used to keep track of the installed packages and their versions.
 
-You can tell Zana where to find the `zana-lock.json` and
-the packages by setting the environment variable `ZANA_HOME`.
+You can tell Zana where to find the `zana-lock.json` (and optional `config.yaml`)
+by setting the environment variable `ZANA_HOME`.
 
 If `ZANA_HOME` isn't set,
 Zana will look for the `zana-lock.json` file in the default locations:
@@ -99,6 +99,15 @@ Zana will look for the `zana-lock.json` file in the default locations:
 
 If the file doesn't exist,
 Zana will create it for you (when you install a package).
+
+Zana's cache directory is controlled separately via `ZANA_CACHE`.
+If `ZANA_CACHE` is not set, Zana uses OS defaults:
+
+```
+- Linux: `~/.cache/zana`
+- macOS: `~/Library/Caches/zana`
+- Windows: `%LOCALAPPDATA%\zana\cache`
+```
 
 It's advised to keep the `zana-lock.json` file in version control.
 
@@ -234,6 +243,9 @@ The optional `config.yaml` lives next to `zana-lock.json` in your Zana config di
 Example:
 
 ```yaml
+paths:
+  # optional: cache directory (overridden by $ZANA_CACHE if set)
+  cacheDir: ~/.cache/zana
 registry:
   cacheMaxAge: 6h
   # url: https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip
@@ -327,10 +339,7 @@ zana health
 
 Zana uses a basepath to install packages of different types.
 
-If you have set the `ZANA_HOME` environment variable,
-the basepath will be `$ZANA_HOME/packages`.
-
-If `ZANA_HOME` isn't set, the basepath is:
+The basepath is:
 
 - Linux: `$XDG_DATA_HOME/zana/packages` or `$HOME/.local/share/zana/packages`
 - macOS: `$HOME/Library/Application Support/zana/packages`
@@ -341,6 +350,37 @@ The packages are installed in the following directory structure:
 ```
 $basepath/$provider/$package-name/
 ```
+
+### Tree-sitter parsers for Neovim
+
+Parsers are written to Neovim's data directory under:
+
+```
+<stdpath("data")>/site/parser/<language>.<so|dylib|dll>
+```
+
+Zana builds parsers from upstream source using the `tree-sitter` CLI when a
+registry package declares `treesitter.build`.
+
+By default, Zana only builds and caches the parser artifacts under:
+
+```
+<zana-data-share>/artifacts/treesitter/<package>/<version>/<language>.<so|dylib|dll>
+```
+
+To install built parsers into Neovim, use:
+
+```sh
+zana install --integrate neovim <package>
+```
+
+Zana resolves `<stdpath("data")>` by running Neovim headless when available
+(`nvim --headless ...`). If `nvim` is not available, it falls back to common
+defaults:
+
+- Linux: `$XDG_DATA_HOME/nvim` or `~/.local/share/nvim`
+- macOS: `~/Library/Application Support/nvim`
+- Windows: `%LOCALAPPDATA%\\nvim-data`
 
 ## Supported providers
 

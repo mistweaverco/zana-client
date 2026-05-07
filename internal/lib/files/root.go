@@ -227,30 +227,21 @@ func GetAppRegistryFilePath() string {
 }
 
 // GetAppPackagesPath returns the path to the packages directory
-// If ZANA_HOME is set, it will use $ZANA_HOME/packages
 // Otherwise:
 //   - Linux: ~/.local/share/zana/packages
 //   - macOS: ~/Library/Application Support/zana/packages
 //   - Windows: %APPDATA%\zana\packages
 func GetAppPackagesPath() string {
-	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
-		return EnsureDirExists(zanaHome + string(os.PathSeparator) + "packages")
-	}
 	return EnsureDirExists(GetAppDataSharePath() + string(os.PathSeparator) + "packages")
 }
 
 // GetAppDataSharePath returns the path to the app data share directory
 // This is separate from the config directory and follows XDG Base Directory spec
-// If ZANA_HOME is set, it will use that path
 // Otherwise:
 //   - Linux: ~/.local/share/zana
 //   - macOS: ~/Library/Application Support/zana (same as config)
 //   - Windows: %APPDATA%\zana (same as config)
 func GetAppDataSharePath() string {
-	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
-		return EnsureDirExists(zanaHome)
-	}
-
 	// On Linux, use ~/.local/share, otherwise use config dir (macOS/Windows)
 	userConfigDir, err := fileSystem.UserConfigDir()
 	if err != nil {
@@ -273,7 +264,6 @@ func GetAppDataSharePath() string {
 }
 
 // GetAppBinPath returns the path to the bin directory
-// If ZANA_HOME is set, it will use $ZANA_HOME/bin
 // Otherwise:
 //   - Linux: ~/.local/share/zana/bin
 //   - macOS: ~/Library/Application Support/zana/bin
@@ -281,9 +271,6 @@ func GetAppDataSharePath() string {
 //
 // e.g. /home/user/.local/share/zana/bin
 func GetAppBinPath() string {
-	if zanaHome := fileSystem.Getenv("ZANA_HOME"); zanaHome != "" {
-		return EnsureDirExists(zanaHome + string(os.PathSeparator) + "bin")
-	}
 	return EnsureDirExists(GetAppDataSharePath() + string(os.PathSeparator) + "bin")
 }
 
@@ -376,6 +363,12 @@ func Unzip(src, dest string) error {
 func GetCachePath() string {
 	if zanaCache := fileSystem.Getenv("ZANA_CACHE"); zanaCache != "" {
 		return EnsureDirExists(zanaCache)
+	}
+
+	if cfg, ok := readZanaConfigFile(); ok {
+		if raw := strings.TrimSpace(cfg.Paths.CacheDir); raw != "" {
+			return EnsureDirExists(expandUserAndRelativePath(raw))
+		}
 	}
 
 	userHomeDir, err := fileSystem.UserHomeDir()
@@ -472,6 +465,38 @@ type zanaConfigFile struct {
 		URL         string `yaml:"url"`
 		CacheMaxAge string `yaml:"cacheMaxAge"`
 	} `yaml:"registry"`
+
+	Paths struct {
+		CacheDir string `yaml:"cacheDir"`
+	} `yaml:"paths"`
+}
+
+func expandUserAndRelativePath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+
+	// Expand "~" to the user's home directory.
+	if p == "~" || strings.HasPrefix(p, "~"+string(os.PathSeparator)) {
+		home, err := fileSystem.UserHomeDir()
+		if err == nil && home != "" {
+			if p == "~" {
+				return home
+			}
+			return filepath.Join(home, strings.TrimPrefix(p, "~"+string(os.PathSeparator)))
+		}
+	}
+
+	// If relative, make it relative to the user's home directory (safer than cwd).
+	if !filepath.IsAbs(p) {
+		home, err := fileSystem.UserHomeDir()
+		if err == nil && home != "" {
+			return filepath.Join(home, p)
+		}
+	}
+
+	return p
 }
 
 func getConfigFilePath() string {
@@ -517,20 +542,23 @@ func getRegistryCacheMaxAge() time.Duration {
 	return maxAge
 }
 
+func resolveRegistryURL() string {
+	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
+	if override := fileSystem.Getenv("ZANA_REGISTRY_URL"); strings.TrimSpace(override) != "" {
+		return strings.TrimSpace(override)
+	}
+	if cfg, ok := readZanaConfigFile(); ok {
+		if u := strings.TrimSpace(cfg.Registry.URL); u != "" {
+			return u
+		}
+	}
+	return registryURL
+}
+
 // DownloadAndUnzipRegistry downloads the registry from the default URL and unzips it
 // This is used to ensure the registry is available for commands that need it
 func DownloadAndUnzipRegistry() error {
-	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
-	if override := fileSystem.Getenv("ZANA_REGISTRY_URL"); override != "" {
-		registryURL = override
-	}
-	if registryURL == "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip" {
-		if cfg, ok := readZanaConfigFile(); ok {
-			if u := strings.TrimSpace(cfg.Registry.URL); u != "" {
-				registryURL = u
-			}
-		}
-	}
+	registryURL := resolveRegistryURL()
 
 	cachePath := GetRegistryCachePath()
 	registryJSONPath := GetAppRegistryFilePath()
@@ -561,6 +589,35 @@ func DownloadAndUnzipRegistry() error {
 	var downloadErr error
 	action := func() {
 		downloadErr = DownloadWithCache(registryURL, cachePath, cacheMaxAge)
+	}
+
+	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
+		return err
+	}
+
+	if downloadErr != nil {
+		return fmt.Errorf("failed to download registry: %w", downloadErr)
+	}
+
+	// Unzip the registry to the cache directory
+	if err := Unzip(cachePath, GetCachePath()); err != nil {
+		return fmt.Errorf("failed to unzip registry: %w", err)
+	}
+
+	return nil
+}
+
+// DownloadAndUnzipRegistryForced is like DownloadAndUnzipRegistry, but always forces a fresh download.
+// It still respects registry URL resolution (ZANA_REGISTRY_URL > config.yaml > default).
+func DownloadAndUnzipRegistryForced() error {
+	registryURL := resolveRegistryURL()
+
+	cachePath := GetRegistryCachePath()
+
+	// Force download by using 0 duration (cache is never valid) with spinner
+	var downloadErr error
+	action := func() {
+		downloadErr = DownloadWithCache(registryURL, cachePath, 0)
 	}
 
 	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {

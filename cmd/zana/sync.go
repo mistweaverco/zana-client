@@ -2,9 +2,7 @@ package zana
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
@@ -85,33 +83,7 @@ func init() {
 
 // downloadAndUnzipRegistryForced downloads and unzips the registry, forcing a fresh download
 func downloadAndUnzipRegistryForced() error {
-	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
-	if override := os.Getenv("ZANA_REGISTRY_URL"); override != "" {
-		registryURL = override
-	}
-
-	cachePath := files.GetRegistryCachePath()
-
-	// Force download by using 0 duration (cache is never valid) with spinner
-	var downloadErr error
-	action := func() {
-		downloadErr = files.DownloadWithCache(registryURL, cachePath, 0)
-	}
-
-	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
-		return err
-	}
-
-	if downloadErr != nil {
-		return fmt.Errorf("failed to download registry: %w", downloadErr)
-	}
-
-	// Unzip the registry to the cache directory
-	if err := files.Unzip(cachePath, files.GetCachePath()); err != nil {
-		return fmt.Errorf("failed to unzip registry: %w", err)
-	}
-
-	return nil
+	return files.DownloadAndUnzipRegistryForced()
 }
 
 // indirections for testability

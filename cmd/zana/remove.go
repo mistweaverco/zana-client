@@ -35,6 +35,10 @@ Examples:
 	// Enable shell completion for installed package IDs only.
 	ValidArgsFunction: installedPackageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Configure optional integrations (editor backends).
+		// This matters for cleanup (e.g. removing Neovim parser libs).
+		providers.SetRequestedIntegrations(removeIntegrations)
+
 		packages := args
 
 		// Process all packages
@@ -147,6 +151,12 @@ Examples:
 			}
 		}
 	},
+}
+
+var removeIntegrations []string
+
+func init() {
+	removeCmd.Flags().StringSliceVar(&removeIntegrations, "integrate", nil, "run integration backends cleanup when removing (e.g. --integrate neovim)")
 }
 
 // findInstalledPackagesByName searches installed packages for packages matching the given name

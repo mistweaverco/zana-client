@@ -216,6 +216,8 @@ func (p *GitHubProvider) installFromGit(sourceID, repo, version string) bool {
 
 	repoPath := p.getRepoPath(repo)
 	repoURL := p.getRepoURL(repo)
+	registry := githubRegistryParser()
+	registryItem := registry.GetBySourceId(sourceID)
 
 	// Ensure packages directory exists
 	if err := githubMkdir(p.APP_PACKAGES_DIR, 0755); err != nil && !os.IsExist(err) {
@@ -262,6 +264,12 @@ func (p *GitHubProvider) installFromGit(sourceID, repo, version string) bool {
 		return false
 	}
 
+	// If this is a Tree-sitter parser package, build artifacts and run requested integrations.
+	if err := buildAndMaybeIntegrateTreeSitter(repoPath, registryItem, resolvedVersion); err != nil {
+		Logger.Error(fmt.Sprintf("GitHub Install: Error building tree-sitter parsers: %v", err))
+		return false
+	}
+
 	// Add to local packages
 	if err := lppGithubAdd(sourceID, resolvedVersion); err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error adding package to local packages: %v", err))
@@ -283,6 +291,13 @@ func (p *GitHubProvider) Remove(sourceID string) bool {
 	if repo == "" {
 		Logger.Error("GitHub Remove: Invalid source ID format")
 		return false
+	}
+
+	// Remove Neovim tree-sitter parser(s) if this package installed them.
+	registry := githubRegistryParser()
+	registryItem := registry.GetBySourceId(sourceID)
+	if err := removeNeovimTreeSitterParsers(registryItem); err != nil {
+		Logger.Info(fmt.Sprintf("GitHub Remove: Warning removing Neovim tree-sitter parsers: %v", err))
 	}
 
 	repoPath := p.getRepoPath(repo)
