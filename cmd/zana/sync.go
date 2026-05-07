@@ -24,7 +24,7 @@ var syncRegistryCmd = &cobra.Command{
 	Long: `Download and unzip the latest registry file from the registry URL.
 
 This command downloads the registry file and extracts it to the app data directory.
-The registry URL can be overridden using the ZANA_REGISTRY_URL environment variable.`,
+The registry URL list can be overridden using the ZANA_REGISTRY_URLS environment variable (comma/space-separated).`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !ShouldUseJSONOutput() && !ShouldUsePlainOutput() {
 			fmt.Println("Downloading registry...")

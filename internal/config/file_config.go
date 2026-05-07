@@ -12,8 +12,8 @@ import (
 // It lives next to zana-lock.json in the Zana config directory.
 type FileConfig struct {
 	Registry struct {
-		URL         string `yaml:"url"`
-		CacheMaxAge string `yaml:"cacheMaxAge"`
+		URLs        []string `yaml:"urls"`
+		CacheMaxAge string   `yaml:"cacheMaxAge"`
 	} `yaml:"registry"`
 
 	Paths struct {

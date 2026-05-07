@@ -3,6 +3,7 @@ package files
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -534,9 +535,9 @@ func TestDownloadAndUnzipRegistry(t *testing.T) {
 		SetFileSystem(mockFS)
 		defer ResetDependencies()
 
-		// Set custom registry URL
-		os.Setenv("ZANA_REGISTRY_URL", "http://custom.example.com/registry.zip")
-		defer os.Unsetenv("ZANA_REGISTRY_URL")
+		// Set custom registry URL list
+		os.Setenv("ZANA_REGISTRY_URLS", "http://custom.example.com/registry.zip")
+		defer os.Unsetenv("ZANA_REGISTRY_URLS")
 
 		// Test that the function can be called (it will fail due to mock HTTP client)
 		// but we're testing the function structure
@@ -576,6 +577,62 @@ func TestDownloadAndUnzipRegistry(t *testing.T) {
 		// This will fail due to mock implementation, but we're testing the function structure
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to unzip registry")
+	})
+
+	t.Run("merges multiple registries with later override", func(t *testing.T) {
+		mockFS := &MockFileSystem{fs: afero.NewMemMapFs()}
+		SetFileSystem(mockFS)
+		defer ResetDependencies()
+
+		mockFS.GetenvFunc = func(key string) string {
+			if key == "ZANA_REGISTRY_URLS" {
+				return "http://registry-a.example/registry.zip, http://registry-b.example/registry.zip"
+			}
+			return ""
+		}
+
+		// HTTP fetch is irrelevant because zip open is mocked, but DownloadWithCache still needs a body.
+		SetHTTPClient(&MockHTTPClient{
+			GetFunc: func(url string) (*http.Response, error) {
+				return &http.Response{Body: &MockReadCloser{}}, nil
+			},
+		})
+		defer ResetDependencies()
+
+		zipA := `[{"name":"pkg","version":"1.0.0","description":"","homepage":"","licenses":[],"languages":[],"categories":[],"source":{"id":"npm:pkg"},"bin":{}}]`
+		zipB := `[{"name":"pkg","version":"2.0.0","description":"","homepage":"","licenses":[],"languages":[],"categories":[],"source":{"id":"npm:pkg"},"bin":{}}]`
+
+		SetZipFileOpener(&MockZipFileOpener{
+			OpenFunc: func(name string) (ZipArchive, error) {
+				// First registry uses the historical fixed cache filename.
+				if strings.Contains(name, "registry-cache.json.zip") {
+					return createRealZipArchive(map[string]string{
+						"zana-registry.json": zipA,
+					})
+				}
+				// Second registry uses hashed cache filename.
+				return createRealZipArchive(map[string]string{
+					"zana-registry.json": zipB,
+				})
+			},
+		})
+		defer ResetDependencies()
+
+		require.NoError(t, DownloadAndUnzipRegistry())
+
+		mergedBytes, err := afero.ReadFile(mockFS.fs, GetAppRegistryFilePath())
+		require.NoError(t, err)
+
+		var out []struct {
+			Version string `json:"version"`
+			Source  struct {
+				ID string `json:"id"`
+			} `json:"source"`
+		}
+		require.NoError(t, json.Unmarshal(mergedBytes, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "npm:pkg", out[0].Source.ID)
+		assert.Equal(t, "2.0.0", out[0].Version, "later registry should override earlier")
 	})
 }
 
@@ -1084,19 +1141,19 @@ func TestEnvironmentVariables(t *testing.T) {
 		assert.Equal(t, "/custom/zana/path", result)
 	})
 
-	t.Run("ZANA_REGISTRY_URL environment variable", func(t *testing.T) {
-		// Test that ZANA_REGISTRY_URL is respected
-		originalRegistryURL := os.Getenv("ZANA_REGISTRY_URL")
+	t.Run("ZANA_REGISTRY_URLS environment variable", func(t *testing.T) {
+		// Test that ZANA_REGISTRY_URLS is respected
+		originalRegistryURL := os.Getenv("ZANA_REGISTRY_URLS")
 		defer func() {
 			if originalRegistryURL != "" {
-				os.Setenv("ZANA_REGISTRY_URL", originalRegistryURL)
+				os.Setenv("ZANA_REGISTRY_URLS", originalRegistryURL)
 			} else {
-				os.Unsetenv("ZANA_REGISTRY_URL")
+				os.Unsetenv("ZANA_REGISTRY_URLS")
 			}
 		}()
 
-		// Set ZANA_REGISTRY_URL
-		os.Setenv("ZANA_REGISTRY_URL", "http://custom.example.com/registry.zip")
+		// Set ZANA_REGISTRY_URLS
+		os.Setenv("ZANA_REGISTRY_URLS", "http://custom.example.com/registry.zip")
 
 		// Create an in-memory filesystem for testing
 		mockFS := &MockFileSystem{
@@ -1664,7 +1721,7 @@ func TestDownloadAndUnzipRegistryErrorPaths(t *testing.T) {
 		mockFS := &MockFileSystem{
 			fs: afero.NewMemMapFs(),
 			GetenvFunc: func(key string) string {
-				if key == "ZANA_REGISTRY_URL" {
+				if key == "ZANA_REGISTRY_URLS" {
 					return "http://custom.example.com/registry.zip"
 				}
 				return ""
@@ -2389,9 +2446,9 @@ func TestAdditionalEdgeCases(t *testing.T) {
 		// Mock the zip opener to return a successful zip archive
 		mockZipOpener := &MockZipFileOpener{
 			OpenFunc: func(name string) (ZipArchive, error) {
-				return &MockZipArchive{
-					Files: []*zip.File{},
-				}, nil
+				return createRealZipArchive(map[string]string{
+					"zana-registry.json": `[]`,
+				})
 			},
 		}
 		SetZipFileOpener(mockZipOpener)
@@ -2682,9 +2739,9 @@ func TestUncoveredBranches(t *testing.T) {
 		// Mock the zip opener to return a successful zip archive
 		mockZipOpener := &MockZipFileOpener{
 			OpenFunc: func(name string) (ZipArchive, error) {
-				return &MockZipArchive{
-					Files: []*zip.File{},
-				}, nil
+				return createRealZipArchive(map[string]string{
+					"zana-registry.json": `[]`,
+				})
 			},
 		}
 		SetZipFileOpener(mockZipOpener)

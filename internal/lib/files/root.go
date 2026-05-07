@@ -2,7 +2,9 @@ package files
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"os"
@@ -462,7 +464,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 
 type zanaConfigFile struct {
 	Registry struct {
-		URL         string `yaml:"url"`
+		URLs        []string `yaml:"urls"`
 		CacheMaxAge string `yaml:"cacheMaxAge"`
 	} `yaml:"registry"`
 
@@ -542,53 +544,262 @@ func getRegistryCacheMaxAge() time.Duration {
 	return maxAge
 }
 
-func resolveRegistryURL() string {
-	registryURL := "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
-	if override := fileSystem.Getenv("ZANA_REGISTRY_URL"); strings.TrimSpace(override) != "" {
-		return strings.TrimSpace(override)
+func defaultRegistryURL() string {
+	return "https://github.com/mistweaverco/zana-registry/releases/latest/download/zana-registry.json.zip"
+}
+
+func splitRegistryURLs(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	// Accept comma-separated (common in env vars), but also tolerate whitespace/newlines.
+	raw = strings.ReplaceAll(raw, "\n", ",")
+	raw = strings.ReplaceAll(raw, "\t", ",")
+	raw = strings.ReplaceAll(raw, " ", ",")
+
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, p := range parts {
+		u := strings.TrimSpace(p)
+		if u == "" {
+			continue
+		}
+		if _, ok := seen[u]; ok {
+			continue
+		}
+		seen[u] = struct{}{}
+		out = append(out, u)
+	}
+	return out
+}
+
+// ResolveRegistryURLs returns registry URLs in priority order:
+// 1) ZANA_REGISTRY_URLS (comma/space-separated list)
+// 2) config.yaml registry.urls (array)
+// 3) built-in default
+func ResolveRegistryURLs() []string {
+	if override := splitRegistryURLs(fileSystem.Getenv("ZANA_REGISTRY_URLS")); len(override) > 0 {
+		return override
 	}
 	if cfg, ok := readZanaConfigFile(); ok {
-		if u := strings.TrimSpace(cfg.Registry.URL); u != "" {
-			return u
+		if len(cfg.Registry.URLs) > 0 {
+			urls := make([]string, 0, len(cfg.Registry.URLs))
+			for _, u := range cfg.Registry.URLs {
+				if s := strings.TrimSpace(u); s != "" {
+					urls = append(urls, s)
+				}
+			}
+			if len(urls) > 0 {
+				return urls
+			}
 		}
 	}
-	return registryURL
+	return []string{defaultRegistryURL()}
+}
+
+func downloadWithCacheFromURLs(urls []string, cachePath string, maxAge time.Duration) error {
+	// Check if cache is valid once
+	if IsCacheValid(cachePath, maxAge) {
+		return nil
+	}
+
+	if len(urls) == 0 {
+		urls = []string{defaultRegistryURL()}
+	}
+
+	var lastErr error
+	for _, url := range urls {
+		resp, err := httpClient.Get(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		func() {
+			defer func() { _ = resp.Body.Close() }()
+			out, err := fileSystem.Create(cachePath)
+			if err != nil {
+				lastErr = err
+				return
+			}
+			defer func() { _ = fileSystem.Close(out) }()
+
+			if _, err := io.Copy(out, resp.Body); err != nil {
+				lastErr = err
+				return
+			}
+
+			lastErr = nil
+		}()
+
+		if lastErr == nil {
+			return nil
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no registry urls configured")
+	}
+	return lastErr
+}
+
+func registryCachePathForURL(url string, index int) string {
+	// Keep the historical cache filename for the first registry to avoid breaking
+	// external assumptions/tests. Additional registries get deterministic hashed names.
+	if index == 0 {
+		return GetRegistryCachePath()
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(url))
+	return filepath.Join(GetCachePath(), fmt.Sprintf("registry-cache-%08x.json.zip", h.Sum32()))
+}
+
+// DownloadRegistryZipWithCache downloads all configured registry zips into cache,
+// one zip per registry URL.
+//
+// This is useful for UI flows that want to separate "download" and "unzip" steps.
+func DownloadRegistryZipWithCache(maxAge time.Duration) error {
+	urls := ResolveRegistryURLs()
+	if len(urls) == 0 {
+		urls = []string{defaultRegistryURL()}
+	}
+	for i, u := range urls {
+		cachePath := registryCachePathForURL(u, i)
+		if err := DownloadWithCache(u, cachePath, maxAge); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type registryItemKey struct {
+	Name   string `json:"name"`
+	Source struct {
+		ID string `json:"id"`
+	} `json:"source"`
+}
+
+func normalizeRegistrySourceID(id string) string {
+	// New format: "<provider>:<id>"
+	if strings.Contains(id, ":") && !strings.HasPrefix(id, "pkg:") {
+		return id
+	}
+	// Legacy format: "pkg:<provider>/<id>"
+	if strings.HasPrefix(id, "pkg:") {
+		withoutPrefix := strings.TrimPrefix(id, "pkg:")
+		parts := strings.SplitN(withoutPrefix, "/", 2)
+		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			return parts[0] + ":" + parts[1]
+		}
+	}
+	return id
+}
+
+func mergeRegistryJSONArrays(registryJSONs [][]byte) ([]byte, error) {
+	type entry struct {
+		key string
+		raw json.RawMessage
+	}
+
+	merged := map[string]json.RawMessage{}
+	order := make([]string, 0, 4096)
+	seen := map[string]struct{}{}
+
+	for _, b := range registryJSONs {
+		var items []json.RawMessage
+		if err := json.Unmarshal(b, &items); err != nil {
+			return nil, fmt.Errorf("failed to parse registry json array: %w", err)
+		}
+
+		for _, raw := range items {
+			var k registryItemKey
+			_ = json.Unmarshal(raw, &k) // best-effort; key fallback below
+
+			key := normalizeRegistrySourceID(strings.TrimSpace(k.Source.ID))
+			if key == "" {
+				key = strings.TrimSpace(k.Name)
+			}
+			if key == "" {
+				// Skip items that can't be identified deterministically.
+				continue
+			}
+
+			if _, ok := seen[key]; !ok {
+				seen[key] = struct{}{}
+				order = append(order, key)
+			}
+			// Later registries override earlier ones.
+			merged[key] = raw
+		}
+	}
+
+	out := make([]json.RawMessage, 0, len(order))
+	for _, k := range order {
+		if raw, ok := merged[k]; ok {
+			out = append(out, raw)
+		}
+	}
+
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode merged registry: %w", err)
+	}
+	return encoded, nil
 }
 
 // DownloadAndUnzipRegistry downloads the registry from the default URL and unzips it
 // This is used to ensure the registry is available for commands that need it
 func DownloadAndUnzipRegistry() error {
-	registryURL := resolveRegistryURL()
-
-	cachePath := GetRegistryCachePath()
+	registryURLs := ResolveRegistryURLs()
 	registryJSONPath := GetAppRegistryFilePath()
 	cacheMaxAge := getRegistryCacheMaxAge()
 
-	// Check if cache is valid first
-	if IsCacheValid(cachePath, cacheMaxAge) {
-		// Cache is valid. Ensure the JSON file is at least as fresh as the cache.
-		// If the JSON file is missing or older than the cache, unzip again.
-		jsonInfo, jsonErr := fileSystem.Stat(registryJSONPath)
-		cacheInfo, cacheErr := fileSystem.Stat(cachePath)
-
-		// If we can't stat either file, treat it as needing a fresh unzip.
-		needsUnzip := jsonErr != nil || cacheErr != nil
-		if !needsUnzip {
-			needsUnzip = jsonInfo.ModTime().Before(cacheInfo.ModTime())
-		}
-
-		if needsUnzip {
-			if err := Unzip(cachePath, GetCachePath()); err != nil {
-				return fmt.Errorf("failed to unzip registry: %w", err)
-			}
-		}
-		return nil
+	if len(registryURLs) == 0 {
+		registryURLs = []string{defaultRegistryURL()}
 	}
 
-	// Download the registry with spinner
+	// Determine which registry zips need downloading.
+	cachePaths := make([]string, 0, len(registryURLs))
+	cacheInfos := make([]os.FileInfo, 0, len(registryURLs))
+	needsDownload := false
+	for i, u := range registryURLs {
+		p := registryCachePathForURL(u, i)
+		cachePaths = append(cachePaths, p)
+		if !IsCacheValid(p, cacheMaxAge) {
+			needsDownload = true
+		}
+		if info, err := fileSystem.Stat(p); err == nil {
+			cacheInfos = append(cacheInfos, info)
+		}
+	}
+
+	// If zips are all fresh, and merged JSON exists and is newer than all zip files, we can skip.
+	if !needsDownload {
+		if jsonInfo, err := fileSystem.Stat(registryJSONPath); err == nil {
+			isNewerThanAll := true
+			for _, ci := range cacheInfos {
+				if ci != nil && jsonInfo.ModTime().Before(ci.ModTime()) {
+					isNewerThanAll = false
+					break
+				}
+			}
+			if isNewerThanAll {
+				return nil
+			}
+		}
+	}
+
+	// Download all zips with spinner (only those that need it).
 	var downloadErr error
 	action := func() {
-		downloadErr = DownloadWithCache(registryURL, cachePath, cacheMaxAge)
+		for i, u := range registryURLs {
+			p := cachePaths[i]
+			if err := DownloadWithCache(u, p, cacheMaxAge); err != nil {
+				downloadErr = err
+				return
+			}
+		}
 	}
 
 	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
@@ -599,25 +810,65 @@ func DownloadAndUnzipRegistry() error {
 		return fmt.Errorf("failed to download registry: %w", downloadErr)
 	}
 
-	// Unzip the registry to the cache directory
-	if err := Unzip(cachePath, GetCachePath()); err != nil {
-		return fmt.Errorf("failed to unzip registry: %w", err)
+	// Unzip each registry and merge them into a single zana-registry.json for consumers.
+	registryJSONName := filepath.Base(GetAppRegistryFilePath())
+	registryJSONs := make([][]byte, 0, len(cachePaths))
+	for i, cachePath := range cachePaths {
+		unzipDir := filepath.Join(GetCachePath(), fmt.Sprintf("registry-unzipped-%d", i))
+		if err := Unzip(cachePath, unzipDir); err != nil {
+			return fmt.Errorf("failed to unzip registry: %w", err)
+		}
+
+		f, err := fileSystem.OpenFile(filepath.Join(unzipDir, registryJSONName), os.O_RDONLY, 0)
+		if err != nil {
+			return fmt.Errorf("failed to read registry json: %w", err)
+		}
+		b, err := io.ReadAll(f)
+		_ = fileSystem.Close(f)
+		if err != nil {
+			return fmt.Errorf("failed to read registry json: %w", err)
+		}
+		registryJSONs = append(registryJSONs, b)
+	}
+
+	merged, err := mergeRegistryJSONArrays(registryJSONs)
+	if err != nil {
+		return err
+	}
+
+	out, err := fileSystem.Create(registryJSONPath)
+	if err != nil {
+		return fmt.Errorf("failed to write merged registry json: %w", err)
+	}
+	if _, err := out.Write(merged); err != nil {
+		_ = fileSystem.Close(out)
+		return fmt.Errorf("failed to write merged registry json: %w", err)
+	}
+	if err := fileSystem.Close(out); err != nil {
+		return fmt.Errorf("failed to write merged registry json: %w", err)
 	}
 
 	return nil
 }
 
 // DownloadAndUnzipRegistryForced is like DownloadAndUnzipRegistry, but always forces a fresh download.
-// It still respects registry URL resolution (ZANA_REGISTRY_URL > config.yaml > default).
+// It still respects registry URL resolution (ZANA_REGISTRY_URLS > config.yaml > default).
 func DownloadAndUnzipRegistryForced() error {
-	registryURL := resolveRegistryURL()
-
-	cachePath := GetRegistryCachePath()
+	registryURLs := ResolveRegistryURLs()
+	if len(registryURLs) == 0 {
+		registryURLs = []string{defaultRegistryURL()}
+	}
 
 	// Force download by using 0 duration (cache is never valid) with spinner
 	var downloadErr error
 	action := func() {
-		downloadErr = DownloadWithCache(registryURL, cachePath, 0)
+		for i, u := range registryURLs {
+			p := registryCachePathForURL(u, i)
+			if err := DownloadWithCache(u, p, 0); err != nil {
+				downloadErr = err
+				return
+			}
+		}
 	}
 
 	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
@@ -628,10 +879,7 @@ func DownloadAndUnzipRegistryForced() error {
 		return fmt.Errorf("failed to download registry: %w", downloadErr)
 	}
 
-	// Unzip the registry to the cache directory
-	if err := Unzip(cachePath, GetCachePath()); err != nil {
-		return fmt.Errorf("failed to unzip registry: %w", err)
-	}
-
-	return nil
+	// Reuse the non-forced merge/unzip path now that zips are fresh.
+	// (It will merge and write the final JSON.)
+	return DownloadAndUnzipRegistry()
 }
