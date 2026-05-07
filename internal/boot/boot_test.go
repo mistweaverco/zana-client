@@ -67,14 +67,10 @@ func TestModelMethods(t *testing.T) {
 	})
 
 	t.Run("model start function", func(t *testing.T) {
-		// Test that Start function exists and can be called
-		// We can't easily test the actual tea.Program execution in unit tests
-		// But we can verify the function exists
-		assert.NotPanics(t, func() {
-			// This will likely fail due to tea.Program execution, but we can test the function exists
-			// We'll use a very short cache age to minimize execution time
-			Start(1 * time.Nanosecond)
-		})
+		// Start runs an interactive Bubble Tea program and calls os.Exit(1) on failure.
+		// In unit tests (no TTY), running it would fail the whole test process.
+		// So we only assert the symbol exists and is callable in principle.
+		assert.NotNil(t, Start)
 	})
 }
 

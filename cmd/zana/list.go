@@ -60,7 +60,7 @@ var listCmd = &cobra.Command{
 
 By default, shows locally installed packages.
 Use --all to show all available packages from the registry.
-You can provide filter arguments to show only packages whose names start with the filter strings.`,
+You can provide filter arguments to show only packages whose names match the filter strings (case-insensitive substring match).`,
 	Args: cobra.ArbitraryArgs,
 	// Enable shell completion for package names
 	ValidArgsFunction: packageIDCompletion,
@@ -84,7 +84,7 @@ func init() {
 var newListService = NewListService
 
 // ListInstalledPackages lists locally installed packages
-// If filters are provided, only shows packages whose names start with any of the filter strings
+// If filters are provided, only shows packages whose IDs, names, or aliases contain any of the filter strings
 func (ls *ListService) ListInstalledPackages(filters []string) {
 	// Ensure the registry is up to date so that update checks
 	// for installed packages use the freshest available data.
@@ -104,12 +104,12 @@ func (ls *ListService) ListInstalledPackages(filters []string) {
 			packageNameLower := strings.ToLower(packageName)
 			sourceIDLower := strings.ToLower(pkg.SourceID)
 
-			// Check if package name, full sourceID, or aliases start with any of the filter strings
+			// Check if package name, full sourceID, or aliases contain any of the filter strings
 			matches := false
 			for _, filter := range filters {
 				filterLower := strings.ToLower(filter)
 				// Match against full sourceID (provider:package-id) or just package name
-				if strings.HasPrefix(sourceIDLower, filterLower) || strings.HasPrefix(packageNameLower, filterLower) {
+				if strings.Contains(sourceIDLower, filterLower) || strings.Contains(packageNameLower, filterLower) {
 					matches = true
 					break
 				}
@@ -119,7 +119,7 @@ func (ls *ListService) ListInstalledPackages(filters []string) {
 				if registryItem.Source.ID != "" {
 					for _, alias := range registryItem.Aliases {
 						aliasLower := strings.ToLower(alias)
-						if strings.HasPrefix(aliasLower, filterLower) {
+						if strings.Contains(aliasLower, filterLower) {
 							matches = true
 							break
 						}
@@ -327,7 +327,7 @@ func (ls *ListService) listInstalledPackagesJSON(filteredPackages []local_packag
 }
 
 // ListAllPackages lists all available packages from the registry
-// If filters are provided, only shows packages whose names start with any of the filter strings
+// If filters are provided, only shows packages whose IDs, names, or aliases contain any of the filter strings
 func (ls *ListService) ListAllPackages(filters []string) {
 	// Make sure we have an up-to-date registry before listing.
 	// This mirrors the behavior of the TUI boot process which
@@ -404,12 +404,12 @@ func (ls *ListService) ListAllPackages(filters []string) {
 			packageNameLower := strings.ToLower(packageName)
 			sourceIDLower := strings.ToLower(pkg.Source.ID)
 
-			// Check if package name, full sourceID, or aliases start with any of the filter strings
+			// Check if package name, full sourceID, or aliases contain any of the filter strings
 			matches := false
 			for _, filter := range filters {
 				filterLower := strings.ToLower(filter)
 				// Match against full sourceID (provider:package-id) or just package name
-				if strings.HasPrefix(sourceIDLower, filterLower) || strings.HasPrefix(packageNameLower, filterLower) {
+				if strings.Contains(sourceIDLower, filterLower) || strings.Contains(packageNameLower, filterLower) {
 					matches = true
 					break
 				}
@@ -417,7 +417,7 @@ func (ls *ListService) ListAllPackages(filters []string) {
 				// Also check aliases
 				for _, alias := range pkg.Aliases {
 					aliasLower := strings.ToLower(alias)
-					if strings.HasPrefix(aliasLower, filterLower) {
+					if strings.Contains(aliasLower, filterLower) {
 						matches = true
 						break
 					}
