@@ -50,7 +50,7 @@ Zana is [swahili] for "tools" or "tooling."
 - *Terminal User Interface* (TUI): A text-based user interface
   that runs in a terminal emulator.
 
-> [!INFO]
+> [!NOTE]
 > The zana client defaults to the [Zana Registry][zana-registry] to
 > install and manage packages.
 > This can be configured to use other registries as well.
