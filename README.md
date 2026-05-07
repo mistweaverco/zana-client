@@ -18,7 +18,7 @@
 
 <p></p>
 
-![Zana Demo Gif](assets/demo.gif)
+![Zana Demo](assets/demo.webp)
 
 <p></p>
 
