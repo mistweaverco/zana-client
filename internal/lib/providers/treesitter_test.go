@@ -23,14 +23,19 @@ func TestBuildTreeSitterParsersToCache_UsesShellOut(t *testing.T) {
 	// Arrange
 	oldHas := treeSitterHasCommand
 	oldShell := treeSitterShellOut
+	oldShellCapture := treeSitterShellOutCapture
 	oldMkdir := osMkdirAll
+	oldStat := treeSitterStat
 	t.Cleanup(func() {
 		treeSitterHasCommand = oldHas
 		treeSitterShellOut = oldShell
+		treeSitterShellOutCapture = oldShellCapture
 		osMkdirAll = oldMkdir
+		treeSitterStat = oldStat
 	})
 
 	treeSitterHasCommand = func(cmd string, args []string, env []string) bool { return true }
+	treeSitterStat = func(name string) (os.FileInfo, error) { return nil, nil }
 
 	var gotArgs []string
 	treeSitterShellOut = func(command string, args []string, dir string, env []string) (int, error) {
@@ -39,6 +44,13 @@ func TestBuildTreeSitterParsersToCache_UsesShellOut(t *testing.T) {
 		}
 		gotArgs = append([]string{}, args...)
 		return 0, nil
+	}
+	treeSitterShellOutCapture = func(command string, args []string, dir string, env []string) (int, string, error) {
+		if command != "tree-sitter" {
+			t.Fatalf("expected tree-sitter, got %q", command)
+		}
+		gotArgs = append([]string{}, args...)
+		return 0, "", nil
 	}
 
 	var mkdirPath string
