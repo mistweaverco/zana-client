@@ -28,4 +28,3 @@ func ConsumeIntegrationReport(sourceID, version string) []string {
 	delete(integrationReports, k)
 	return lines
 }
-

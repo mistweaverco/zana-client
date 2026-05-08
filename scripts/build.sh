@@ -10,7 +10,7 @@ build_wrapper() {
 }
 
 build_linux_debug() {
-  echo "Building for linux debug"
+  echo "Building for linux debug version $VERSION"
   GOOS=linux go build -gcflags "all=-N -l" -ldflags "-X 'github.com/mistweaverco/zana-client/lib/internal/version.VERSION=${VERSION}'" -o dist/zana-linux-debug
 }
 

@@ -13,4 +13,3 @@ func TestIntegrationReport_Consume(t *testing.T) {
 		t.Fatalf("expected empty after consume, got %#v", again)
 	}
 }
-

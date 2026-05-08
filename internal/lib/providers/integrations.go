@@ -28,4 +28,3 @@ func integrationEnabled(name string) bool {
 	}
 	return false
 }
-

@@ -465,7 +465,7 @@ func DownloadWithCache(url string, cachePath string, maxAge time.Duration) error
 type zanaConfigFile struct {
 	Registry struct {
 		URLs        []string `yaml:"urls"`
-		CacheMaxAge string `yaml:"cacheMaxAge"`
+		CacheMaxAge string   `yaml:"cacheMaxAge"`
 	} `yaml:"registry"`
 
 	Paths struct {
