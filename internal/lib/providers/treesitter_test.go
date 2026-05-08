@@ -97,4 +97,3 @@ func TestBuildTreeSitterParsersToCache_FailsWithoutCLI(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
-

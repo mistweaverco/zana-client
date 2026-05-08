@@ -163,7 +163,7 @@ type RegistryItemSource struct {
 }
 
 type RegistryItemTreeSitterBuild struct {
-	Language  string `json:"language"`
+	Language   string `json:"language"`
 	GrammarDir string `json:"grammar_dir"`
 }
 
@@ -172,17 +172,17 @@ type RegistryItemTreeSitter struct {
 }
 
 type RegistryItem struct {
-	Name              string             `json:"name"`
-	Version           string             `json:"version"`
-	PrereleaseVersion string             `json:"prerelease_version,omitempty"`
-	Description       string             `json:"description"`
-	Homepage          string             `json:"homepage"`
-	Licenses          []string           `json:"licenses"`
-	Languages         []string           `json:"languages"`
-	Categories        []string           `json:"categories"`
-	Aliases           []string           `json:"aliases,omitempty"`
-	Source            RegistryItemSource `json:"source"`
-	Bin               map[string]string  `json:"bin"`
+	Name              string                  `json:"name"`
+	Version           string                  `json:"version"`
+	PrereleaseVersion string                  `json:"prerelease_version,omitempty"`
+	Description       string                  `json:"description"`
+	Homepage          string                  `json:"homepage"`
+	Licenses          []string                `json:"licenses"`
+	Languages         []string                `json:"languages"`
+	Categories        []string                `json:"categories"`
+	Aliases           []string                `json:"aliases,omitempty"`
+	Source            RegistryItemSource      `json:"source"`
+	Bin               map[string]string       `json:"bin"`
 	TreeSitter        *RegistryItemTreeSitter `json:"treesitter,omitempty"`
 }
 

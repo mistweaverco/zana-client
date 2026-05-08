@@ -34,11 +34,11 @@ func SharedLibExt() string {
 
 // injectable for tests
 var (
-	treeSitterHasCommand = shell_out.HasCommand
-	treeSitterShellOut   = shell_out.ShellOut
+	treeSitterHasCommand      = shell_out.HasCommand
+	treeSitterShellOut        = shell_out.ShellOut
 	treeSitterShellOutCapture = shell_out.ShellOutCapture
-	osMkdirAll           = func(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
-	treeSitterStat       = os.Stat
+	osMkdirAll                = func(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+	treeSitterStat            = os.Stat
 )
 
 func HasTreeSitterCLI() bool {
@@ -54,9 +54,13 @@ func SafeArtifactPackageID(sourceID string) string {
 	return s
 }
 
+// TreeSitterArtifactVersionDir is the per-version directory where built parser artifacts are stored.
+func TreeSitterArtifactVersionDir(sourceID, version string) string {
+	return filepath.Join(files.GetAppDataSharePath(), "artifacts", "treesitter", SafeArtifactPackageID(sourceID), version)
+}
+
 func TreeSitterArtifactPath(sourceID, version, language string) string {
-	base := filepath.Join(files.GetAppDataSharePath(), "artifacts", "treesitter", SafeArtifactPackageID(sourceID), version)
-	return filepath.Join(base, language+SharedLibExt())
+	return filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), language+SharedLibExt())
 }
 
 // buildTreeSitterParsersToCache builds tree-sitter parser shared libraries from
@@ -128,4 +132,3 @@ func BuildTreeSitterParsersToCache(
 
 	return built, nil
 }
-

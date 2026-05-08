@@ -11,4 +11,3 @@ func TestIntegrations_Enabled(t *testing.T) {
 		t.Fatalf("expected emacs disabled")
 	}
 }
-
