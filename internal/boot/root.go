@@ -97,7 +97,7 @@ func (m model) syncLocalPackages() tea.Cmd {
 
 func (m model) performSyncLocalPackages() tea.Cmd {
 	return func() tea.Msg {
-		providers.SyncAll()
+		_ = providers.SyncAllFromLock()
 		return syncLocalPackagesFinishedMsg{}
 	}
 }

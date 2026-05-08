@@ -29,6 +29,6 @@ func TestSyncAllInvokesProviderSyncs(t *testing.T) {
 	// Ensure base packages dir exists to avoid mkdir races in different providers
 	_ = os.MkdirAll(files.GetAppPackagesPath(), 0755)
 
-	// Call SyncAll; with empty desired sets, each provider's Sync should no-op/return quickly
-	SyncAll()
+	// Call SyncAllFromLock; with empty desired sets, each provider's Sync should no-op/return quickly
+	_ = SyncAllFromLock()
 }

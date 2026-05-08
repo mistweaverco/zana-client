@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
 )
@@ -230,9 +231,10 @@ Examples:
 
 					if success {
 						successCount++
+						_ = local_packages_parser.MergePackageIntegrations(internalID, installIntegrations)
 						fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
 						for _, line := range providers.ConsumeIntegrationReport(internalID, resolvedVersion) {
-							fmt.Printf("  %s\n", line)
+							fmt.Printf("  %s@%s: %s\n", internalID, resolvedVersion, line)
 						}
 					} else {
 						failureCount++
@@ -282,9 +284,10 @@ Examples:
 
 			if success {
 				successCount++
+				_ = local_packages_parser.MergePackageIntegrations(internalID, installIntegrations)
 				fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
 				for _, line := range providers.ConsumeIntegrationReport(internalID, resolvedVersion) {
-					fmt.Printf("  %s\n", line)
+					fmt.Printf("  %s@%s: %s\n", internalID, resolvedVersion, line)
 				}
 			} else {
 				failureCount++

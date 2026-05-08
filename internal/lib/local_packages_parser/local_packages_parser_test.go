@@ -168,7 +168,10 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(written, &saved)
 		// IDs are normalized to new format, so pkg:npm/keep becomes npm:keep
-		expectedNormalized := LocalPackageRoot{Packages: []LocalPackageItem{{SourceID: "npm:keep", Version: "1.0.0"}}}
+		expectedNormalized := LocalPackageRoot{
+			Packages: []LocalPackageItem{{SourceID: "npm:keep", Version: "1.0.0"}},
+			Schema:   lockSchemaURL,
+		}
 		assert.Equal(t, expectedNormalized, saved)
 	})
 
@@ -470,6 +473,37 @@ func TestLocalPackagesParserWithMock(t *testing.T) {
 
 		assert.False(t, result)
 	})
+
+	t.Run("merge package integrations adds extras on item", func(t *testing.T) {
+		// Start with one package in the file.
+		existingData := LocalPackageRoot{
+			Packages: []LocalPackageItem{
+				{SourceID: "pkg:github/owner/repo", Version: "v1.0.0"},
+			},
+		}
+		jsonData, _ := json.Marshal(existingData)
+
+		var written []byte
+		mockFileManager := &MockFileManager{
+			GetAppLocalPackagesFilePathFunc: func() string { return "/mock/path/local-packages.json" },
+			FileExistsFunc:                  func(path string) bool { return true },
+			ReadFileFunc:                    func(path string) ([]byte, error) { return jsonData, nil },
+			WriteFileFunc:                   func(path string, data []byte, perm uint32) error { written = data; return nil },
+		}
+
+		parser := NewWithFileManager(mockFileManager)
+		err := parser.MergePackageIntegrations("github:owner/repo", []string{"Neovim", "neovim", "  "})
+		assert.NoError(t, err)
+
+		var saved LocalPackageRoot
+		_ = json.Unmarshal(written, &saved)
+		assert.Len(t, saved.Packages, 1)
+		assert.Equal(t, lockSchemaURL, saved.Schema)
+		assert.Equal(t, "github:owner/repo", saved.Packages[0].SourceID) // normalized
+		if assert.NotNil(t, saved.Packages[0].Extras) {
+			assert.Equal(t, []string{"neovim"}, saved.Packages[0].Extras.Integrations)
+		}
+	})
 }
 
 func TestMockFileManager(t *testing.T) {
@@ -565,6 +599,7 @@ func TestLegacyFunctions(t *testing.T) {
 		var saved LocalPackageRoot
 		_ = json.Unmarshal(mem, &saved)
 		assert.Len(t, saved.Packages, 1)
+		assert.Equal(t, lockSchemaURL, saved.Schema)
 		// AddLocalPackage normalizes IDs to new format
 		assert.Equal(t, "npm:legacy", saved.Packages[0].SourceID)
 		assert.Equal(t, "1.0.0", saved.Packages[0].Version)

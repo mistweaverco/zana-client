@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getzana.net/zana-lock.schema.json",
+  "title": "Zana zana-lock.json schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["packages"],
+  "properties": {
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceId", "version"],
+        "properties": {
+          "sourceId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Normalized package ID, e.g. \"github:user/repo\" or \"npm:eslint\"."
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact version/tag that was installed."
+          },
+          "extras": {
+            "type": "object",
+            "description": "Optional extension point for per-package metadata.",
+            "additionalProperties": true,
+            "properties": {
+              "integrations": {
+                "type": "array",
+                "description": "Integration backends to replay for this specific package (e.g. [\"neovim\"]).",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "enum": ["neovim"]
+                },
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

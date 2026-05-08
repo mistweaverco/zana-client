@@ -2,8 +2,11 @@ package zana
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/files"
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/spf13/cobra"
 )
@@ -63,8 +66,97 @@ are installed with their exact versions as specified in the lock file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !ShouldUseJSONOutput() && !ShouldUsePlainOutput() {
 			fmt.Println("Syncing packages from zana-lock.json...")
+
+			lock := local_packages_parser.GetData(false)
+			if len(lock.Packages) == 0 {
+				fmt.Println("  (no packages in lockfile)")
+				fmt.Printf("%s Packages sync completed\n", IconCheck())
+				return
+			}
+
+			type pkgResult struct {
+				id                string
+				version           string
+				ok                bool
+				integrations      []string
+				integrationReport []string
+			}
+
+			results := make([]pkgResult, 0, len(lock.Packages))
+			successCount := 0
+			failureCount := 0
+
+			for _, pkg := range lock.Packages {
+				id := strings.TrimSpace(pkg.SourceID)
+				ver := strings.TrimSpace(pkg.Version)
+				if id == "" || ver == "" {
+					continue
+				}
+
+				var ints []string
+				if pkg.Extras != nil {
+					ints = pkg.Extras.Integrations
+				}
+				providers.SetRequestedIntegrations(ints)
+
+				title := fmt.Sprintf("Syncing %s@%s", id, ver)
+				if len(ints) > 0 {
+					title = fmt.Sprintf("Syncing %s@%s (integrations: %v)", id, ver, ints)
+				}
+
+				ok := false
+				action := func() {
+					ok = providers.Install(id, ver)
+				}
+
+				_ = spinner.New().Title(title).Action(action).Run()
+
+				res := pkgResult{
+					id:           id,
+					version:      ver,
+					ok:           ok,
+					integrations: ints,
+				}
+				res.integrationReport = providers.ConsumeIntegrationReport(id, ver)
+				results = append(results, res)
+
+				if ok {
+					successCount++
+					fmt.Printf("%s Synced %s@%s\n", IconCheck(), id, ver)
+					for _, line := range res.integrationReport {
+						fmt.Printf("  %s@%s: %s\n", id, ver, line)
+					}
+				} else {
+					failureCount++
+					fmt.Printf("%s Failed to sync %s@%s\n", IconClose(), id, ver)
+				}
+			}
+
+			// Final overview.
+			fmt.Printf("\nSync Summary:\n")
+			fmt.Printf("  Successfully synced: %d\n", successCount)
+			if failureCount > 0 {
+				fmt.Printf("  Failed to sync: %d\n", failureCount)
+			}
+			fmt.Printf("%s Packages sync completed\n", IconCheck())
+			return
 		}
-		syncPackagesFn()
+
+		// Plain/JSON output keeps the old all-at-once behavior for scripting.
+		if err := syncPackagesFn(); err != nil {
+			if ShouldUseJSONOutput() {
+				result := map[string]interface{}{
+					"success": false,
+					"error":   err.Error(),
+				}
+				PrintJSON(result)
+			} else {
+				fmt.Printf("%s Failed to sync packages: %v\n", IconClose(), err)
+			}
+			osExit(1)
+			return
+		}
+
 		if ShouldUseJSONOutput() {
 			result := map[string]interface{}{
 				"success": true,
@@ -89,5 +181,5 @@ func downloadAndUnzipRegistryForced() error {
 // indirections for testability
 var (
 	syncRegistryFn = downloadAndUnzipRegistryForced
-	syncPackagesFn = providers.SyncAll
+	syncPackagesFn = providers.SyncAllFromLock
 )

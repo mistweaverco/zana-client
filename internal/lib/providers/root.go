@@ -202,7 +202,7 @@ func CheckIfUpdateIsAvailable(localVersion string, remoteVersion string) (bool, 
 	return false, ""
 }
 
-func SyncAll() {
+func syncAllProviders() {
 	npmProvider := getNPMProvider()
 	if npm, ok := npmProvider.(*NPMProvider); ok {
 		npm.Sync()
