@@ -304,7 +304,7 @@ func TestUpdateWithMockFactory(t *testing.T) {
 	}
 }
 
-func TestSyncAllWithMockFactory(t *testing.T) {
+func TestSyncAllFromLockWithMockFactory(t *testing.T) {
 	// Create mock providers
 	mockNPM := &MockPackageManager{}
 	mockPyPI := &MockPackageManager{}
@@ -323,9 +323,9 @@ func TestSyncAllWithMockFactory(t *testing.T) {
 	SetProviderFactory(mockFactory)
 	defer ResetProviderFactory()
 
-	// Test that SyncAll doesn't panic
+	// Test that SyncAllFromLock doesn't panic
 	assert.NotPanics(t, func() {
-		SyncAll()
+		_ = SyncAllFromLock()
 	})
 }
 

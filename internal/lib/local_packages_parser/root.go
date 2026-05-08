@@ -9,13 +9,21 @@ import (
 // marshalIndent is a package-level variable to allow injection during tests
 var marshalIndent = json.MarshalIndent
 
+const lockSchemaURL = "https://getzana.net/zana-lock.schema.json"
+
 type LocalPackageItem struct {
-	SourceID string `json:"sourceId"`
-	Version  string `json:"version"`
+	SourceID string         `json:"sourceId"`
+	Version  string         `json:"version"`
+	Extras   *PackageExtras `json:"extras,omitempty"`
+}
+
+type PackageExtras struct {
+	Integrations []string `json:"integrations,omitempty"`
 }
 
 type LocalPackageRoot struct {
 	Packages []LocalPackageItem `json:"packages"`
+	Schema   string             `json:"$schema,omitempty"`
 }
 
 // LocalPackagesParser implements LocalPackagesManager
@@ -82,6 +90,65 @@ func (lpp *LocalPackagesParser) GetData(force bool) LocalPackageRoot {
 	return localPackageRoot
 }
 
+func normalizeIntegrations(integrations []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(integrations))
+	for _, i := range integrations {
+		i = strings.ToLower(strings.TrimSpace(i))
+		if i == "" {
+			continue
+		}
+		if _, ok := seen[i]; ok {
+			continue
+		}
+		seen[i] = struct{}{}
+		out = append(out, i)
+	}
+	return out
+}
+
+func (lpp *LocalPackagesParser) MergePackageIntegrations(sourceID string, integrations []string) error {
+	integrations = normalizeIntegrations(integrations)
+	if len(integrations) == 0 {
+		return nil
+	}
+
+	sourceID = normalizePackageID(sourceID)
+	if strings.TrimSpace(sourceID) == "" {
+		return nil
+	}
+
+	root := lpp.GetData(false)
+	for i := range root.Packages {
+		if root.Packages[i].SourceID != sourceID {
+			continue
+		}
+		if root.Packages[i].Extras == nil {
+			root.Packages[i].Extras = &PackageExtras{}
+		}
+		root.Packages[i].Extras.Integrations = normalizeIntegrations(
+			append(root.Packages[i].Extras.Integrations, integrations...),
+		)
+		goto write
+	}
+	// Package not found in lockfile (shouldn't happen if caller updated it first).
+	return nil
+
+write:
+	root.Schema = lockSchemaURL
+	localPackagesFile := lpp.fileManager.GetAppLocalPackagesFilePath()
+	jsonData, err := marshalIndent(root, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshaling JSON:", err)
+		return err
+	}
+	if err := lpp.fileManager.WriteFile(localPackagesFile, jsonData, 0644); err != nil {
+		fmt.Println("Error writing to file:", err)
+		return err
+	}
+	return nil
+}
+
 // GetDataForProvider returns the local packages data
 // for a specific provider. Supports both legacy (pkg:provider/pkg) and new (provider:pkg) formats.
 func (lpp *LocalPackagesParser) GetDataForProvider(provider string) LocalPackageRoot {
@@ -126,6 +193,7 @@ func (lpp *LocalPackagesParser) AddLocalPackage(sourceId string, version string)
 		})
 	}
 
+	localPackageRoot.Schema = lockSchemaURL
 	localPackagesFile := lpp.fileManager.GetAppLocalPackagesFilePath()
 	jsonData, err := marshalIndent(localPackageRoot, "", "  ")
 	if err != nil {
@@ -151,6 +219,7 @@ func (lpp *LocalPackagesParser) RemoveLocalPackage(sourceId string) error {
 		}
 	}
 
+	localPackageRoot.Schema = lockSchemaURL
 	localPackagesFile := lpp.fileManager.GetAppLocalPackagesFilePath()
 	jsonData, err := marshalIndent(localPackageRoot, "", "  ")
 	if err != nil {
@@ -211,6 +280,10 @@ func AddLocalPackage(sourceId string, version string) error {
 
 func RemoveLocalPackage(sourceId string) error {
 	return globalParser.RemoveLocalPackage(sourceId)
+}
+
+func MergePackageIntegrations(sourceId string, integrations []string) error {
+	return globalParser.MergePackageIntegrations(sourceId, integrations)
 }
 
 func GetBySourceId(sourceId string) LocalPackageItem {
