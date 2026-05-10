@@ -7,6 +7,8 @@
 [![Made with love][badge-made-with-love]][contributors]
 [![Go][badge-golang]][golang-website]
 [![Development status][badge-development-status]][development-status]
+[![Discord][badge-discord]][discord]
+[![IRC][badge-irc]][irc]
 [![Our manifesto][badge-our-manifesto]][our-manifesto]
 [![Latest release][badge-latest-release]][latest-release]
 
@@ -406,6 +408,10 @@ defaults:
 [badge-development-status]: assets/badge-development-status.svg
 [badge-our-manifesto]: assets/badge-our-manifesto.svg
 [badge-latest-release]: https://img.shields.io/github/v/release/mistweaverco/zana-client?style=for-the-badge
+[badge-discord]: https://mistweaverco.com/assets/badges/discord.svg
+[badge-irc]: https://mistweaverco.com/assets/badges/irc.svg
+[discord]: https://mistweaverco.com/discord
+[irc]: https://mistweaverco.com/irc
 [our-manifesto]: https://mistweaverco.com/manifesto
 [development-status]: https://github.com/orgs/mistweaverco/projects/5/views/1?filterQuery=repo%3Amistweaverco%2Fzana-client.nvim
 [registry-website]: https://registry.getzana.net
