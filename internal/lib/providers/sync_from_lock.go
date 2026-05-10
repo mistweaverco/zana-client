@@ -64,6 +64,10 @@ func SyncAllFromLock() error {
 		}
 
 		langs := languagesFromTreeSitterBuild(item.TreeSitter.Build)
+		if err := ensureNeovimTreeSitterInheritDependencies(item); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
+			continue
+		}
 		if err := installNeovimParsersFromCache(item.Source.ID, version, langs); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
 		}
