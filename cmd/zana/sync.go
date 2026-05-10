@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
+	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/spf13/cobra"
 )
 
@@ -67,6 +67,9 @@ are installed with their exact versions as specified in the lock file.`,
 		if !ShouldUseJSONOutput() && !ShouldUsePlainOutput() {
 			fmt.Println("Syncing packages from zana-lock.json...")
 
+			cleanupNestedInstallOutput := registerNestedInstallOutputHooks()
+			defer cleanupNestedInstallOutput()
+
 			lock := local_packages_parser.GetData(false)
 			if len(lock.Packages) == 0 {
 				fmt.Println("  (no packages in lockfile)")
@@ -99,6 +102,13 @@ are installed with their exact versions as specified in the lock file.`,
 				}
 				providers.SetRequestedIntegrations(ints)
 
+				registryItem := newRegistryParser().GetBySourceId(id)
+				if err := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); err != nil {
+					failureCount++
+					fmt.Printf("%s Failed to sync %s@%s: %v\n", IconClose(), id, ver, err)
+					continue
+				}
+
 				title := fmt.Sprintf("Syncing %s@%s", id, ver)
 				if len(ints) > 0 {
 					title = fmt.Sprintf("Syncing %s@%s (integrations: %v)", id, ver, ints)
@@ -109,7 +119,7 @@ are installed with their exact versions as specified in the lock file.`,
 					ok = providers.Install(id, ver)
 				}
 
-				_ = spinner.New().Title(title).Action(action).Run()
+				_ = spinnerutil.Run(title, action)
 
 				res := pkgResult{
 					id:           id,

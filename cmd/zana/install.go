@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
+	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/spf13/cobra"
 )
 
@@ -129,6 +129,10 @@ Examples:
 	Run: func(cmd *cobra.Command, args []string) {
 		// Configure optional integrations (editor backends).
 		providers.SetRequestedIntegrations(installIntegrations)
+		providers.ResetTreeSitterDependencyInstallSuccessCount()
+
+		cleanupNestedInstallOutput := registerNestedInstallOutputHooks()
+		defer cleanupNestedInstallOutput()
 
 		// Install all packages
 		successCount := 0
@@ -215,6 +219,14 @@ Examples:
 						continue
 					}
 
+					registryItem := newRegistryParser().GetBySourceId(internalID)
+					if err := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); err != nil {
+						fmt.Printf("%s %v\n", IconClose(), err)
+						failureCount++
+						failures = append(failures, displayID)
+						continue
+					}
+
 					// Install package with spinner showing package name and resolved version
 					var success bool
 					action := func() {
@@ -222,7 +234,7 @@ Examples:
 					}
 
 					title := fmt.Sprintf("Installing %s@%s...", displayID, resolvedVersion)
-					if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+					if err := spinnerutil.Run(title, action); err != nil {
 						failureCount++
 						failures = append(failures, displayID)
 						fmt.Printf("%s Failed to install %s@%s: %v\n", IconClose(), displayID, resolvedVersion, err)
@@ -268,6 +280,14 @@ Examples:
 				continue
 			}
 
+			registryItem := newRegistryParser().GetBySourceId(internalID)
+			if err := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); err != nil {
+				fmt.Printf("%s %v\n", IconClose(), err)
+				failureCount++
+				failures = append(failures, displayID)
+				continue
+			}
+
 			// Install package with spinner showing package name and resolved version
 			var success bool
 			action := func() {
@@ -275,7 +295,7 @@ Examples:
 			}
 
 			title := fmt.Sprintf("Installing %s@%s...", displayID, resolvedVersion)
-			if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+			if err := spinnerutil.Run(title, action); err != nil {
 				failureCount++
 				failures = append(failures, displayID)
 				fmt.Printf("%s Failed to install %s@%s: %v\n", IconClose(), displayID, resolvedVersion, err)
@@ -296,18 +316,44 @@ Examples:
 			}
 		}
 
+		depSuccess := providers.ConsumeTreeSitterDependencyInstallSuccessCount()
+		totalSuccess := successCount + depSuccess
+
 		// Print summary
 		if ShouldUseJSONOutput() {
 			result := map[string]interface{}{
-				"success_count": successCount,
-				"failure_count": failureCount,
-				"successful":    successCount,
-				"failed":        failures,
+				"success_count":            totalSuccess,
+				"direct_success_count":     successCount,
+				"dependency_success_count": depSuccess,
+				"failure_count":            failureCount,
+				"successful":               totalSuccess,
+				"direct_successful":        successCount,
+				"dependency_successful":    depSuccess,
+				"failed":                   failures,
 			}
 			PrintJSON(result)
 		} else {
 			fmt.Printf("\nInstallation Summary:\n")
-			fmt.Printf("  Successfully installed: %d\n", successCount)
+			fmt.Printf("  Successfully installed: %d", totalSuccess)
+			if depSuccess > 0 {
+				if successCount > 0 {
+					fmt.Printf(" (%d you requested", successCount)
+					if depSuccess == 1 {
+						fmt.Printf(", 1 tree-sitter dependency")
+					} else {
+						fmt.Printf(", %d tree-sitter dependencies", depSuccess)
+					}
+					fmt.Printf(")\n")
+				} else {
+					if depSuccess == 1 {
+						fmt.Printf(" (1 tree-sitter dependency)\n")
+					} else {
+						fmt.Printf(" (%d tree-sitter dependencies)\n", depSuccess)
+					}
+				}
+			} else {
+				fmt.Printf("\n")
+			}
 			if failureCount > 0 {
 				fmt.Printf("  Failed to install: %d\n", failureCount)
 				fmt.Printf("  Failed packages: %s\n", strings.Join(failures, ", "))

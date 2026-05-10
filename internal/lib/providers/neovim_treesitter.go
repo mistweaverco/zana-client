@@ -15,6 +15,7 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
+	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 )
 
 // Injectable helpers for tests
@@ -30,29 +31,49 @@ var (
 	neovimWriteFile       = os.WriteFile
 )
 
-// neovimInheritsContinuePrompt is swapped in tests to avoid interactive huh.
-var neovimInheritsContinuePrompt = defaultNeovimInheritsContinuePrompt
+// neovimInheritsPromptAction is returned by [neovimInheritsPrompt] (injectable for tests).
+type neovimInheritsPromptAction string
 
-func defaultNeovimInheritsContinuePrompt(title, description string) (continueAnyway bool, err error) {
+const (
+	neovimInheritsAbort    neovimInheritsPromptAction = "abort"
+	neovimInheritsContinue neovimInheritsPromptAction = "continue"
+	neovimInheritsInstall  neovimInheritsPromptAction = "install"
+)
+
+// neovimInheritsPrompt is swapped in tests to avoid interactive huh.
+var neovimInheritsPrompt = defaultNeovimInheritsPrompt
+
+func defaultNeovimInheritsPrompt(title, description string) (neovimInheritsPromptAction, error) {
 	if !isatty.IsTerminal(os.Stdin.Fd()) || !isatty.IsTerminal(os.Stderr.Fd()) {
-		return false, fmt.Errorf("%s\n%s", title, description)
+		return neovimInheritsAbort, fmt.Errorf("%s\n%s", title, description)
 	}
-	continueAnyway = false
+	var choice neovimInheritsPromptAction = neovimInheritsInstall
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewConfirm().
+			huh.NewSelect[neovimInheritsPromptAction]().
 				Title(title).
 				Description(description).
-				Affirmative("Continue anyway").
-				Negative("Abort").
-				Value(&continueAnyway),
+				Options(
+					huh.NewOption("Install missing dependencies", neovimInheritsInstall),
+					huh.NewOption("Continue anyway", neovimInheritsContinue),
+					huh.NewOption("Abort", neovimInheritsAbort),
+				).
+				Value(&choice),
 		),
 	)
 	if err := form.Run(); err != nil {
-		return false, err
+		return neovimInheritsAbort, err
 	}
-	return continueAnyway, nil
+	return choice, nil
 }
+
+// NeovimInheritInstallNotifierStart, if non-nil, is called before each inherited tree-sitter
+// grammar install (e.g. CLI prints progress while the parent install spinner is running).
+var NeovimInheritInstallNotifierStart func(sourceID string, registryVersion string)
+
+// NeovimInheritInstallNotifierDone, if non-nil, is called after each successful inherited install
+// with the version from the lockfile (matches integration report keys).
+var NeovimInheritInstallNotifierDone func(sourceID string, resolvedVersion string)
 
 func neovimTreeSitterQueriesCacheDir(sourceID, version, lang string) string {
 	return filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), "queries", lang)
@@ -340,7 +361,133 @@ func registrySourceIDsForTreeSitterLanguage(lang string, reg *registry_parser.Re
 	return out
 }
 
-func ensureNeovimTreeSitterInheritDependencies(registryItem registry_parser.RegistryItem) error {
+func installRegistryTreeSitterPackagesForLanguages(
+	missing []string,
+	reg *registry_parser.RegistryParser,
+	hint string,
+) error {
+	seenID := map[string]struct{}{}
+	var ids []string
+	var noRegistry []string
+	for _, l := range missing {
+		candidates := registrySourceIDsForTreeSitterLanguage(l, reg)
+		if len(candidates) == 0 {
+			noRegistry = append(noRegistry, l)
+			continue
+		}
+		id := candidates[0]
+		if _, dup := seenID[id]; dup {
+			continue
+		}
+		seenID[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return fmt.Errorf(
+			"no registry Tree-sitter-parser packages found for languages: %s%s",
+			strings.Join(noRegistry, ", "),
+			hint,
+		)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		ver := strings.TrimSpace(reg.GetLatestVersion(id))
+		dispVer := ver
+		if dispVer == "" {
+			dispVer = "latest"
+		}
+		title := fmt.Sprintf("Installing inherited tree-sitter grammar %s@%s...", id, dispVer)
+
+		var installFailed bool
+		action := func() {
+			if !Install(id, ver) {
+				installFailed = true
+			}
+		}
+
+		if err := spinnerutil.RunWithTTYOrPlain(title, func() {
+			if NeovimInheritInstallNotifierStart != nil {
+				NeovimInheritInstallNotifierStart(id, ver)
+			}
+		}, action); err != nil {
+			return err
+		}
+
+		if installFailed {
+			return fmt.Errorf("failed to install inherited grammar %s", id)
+		}
+		noteTreeSitterDependencyInstallSuccess()
+		instVer := strings.TrimSpace(local_packages_parser.GetBySourceId(id).Version)
+		if instVer == "" {
+			instVer = ver
+		}
+		if NeovimInheritInstallNotifierDone != nil {
+			NeovimInheritInstallNotifierDone(id, instVer)
+		}
+	}
+	have := installedTreeSitterGrammarLanguages(reg)
+	var still []string
+	for _, l := range missing {
+		if _, ok := have[strings.ToLower(strings.TrimSpace(l))]; !ok {
+			still = append(still, l)
+		}
+	}
+	if len(still) > 0 {
+		msg := fmt.Sprintf(
+			"after installing dependencies, still missing tree-sitter grammar(s): %s",
+			strings.Join(still, ", "),
+		)
+		if len(noRegistry) > 0 {
+			msg += fmt.Sprintf("; no registry package for: %s", strings.Join(noRegistry, ", "))
+		}
+		return fmt.Errorf("%s%s", msg, hint)
+	}
+	return nil
+}
+
+// neovimInheritContinueAnywaySourceID is set when the user chooses "Continue anyway" during
+// PreflightNeovimTreeSitterInheritDeps so buildAndMaybeIntegrateTreeSitter does not prompt a second time.
+var neovimInheritContinueAnywaySourceID string
+
+// PreflightNeovimTreeSitterInheritDeps runs inherit dependency checks (prompt / nested install)
+// before the CLI install spinner so prompts are not shown while the spinner claims work is in progress.
+// It is a no-op unless Neovim integration is enabled and the registry item declares inherits.
+func PreflightNeovimTreeSitterInheritDeps(registryItem registry_parser.RegistryItem) error {
+	if registryItem.Source.ID == "" {
+		return nil
+	}
+	if !integrationEnabled("neovim") {
+		return nil
+	}
+	if !IsTreeSitterCategory(registryItem.Categories) {
+		return nil
+	}
+	if registryItem.TreeSitter == nil {
+		return nil
+	}
+	hasInherits := false
+	for _, b := range registryItem.TreeSitter.Build {
+		if len(b.Inherits) > 0 {
+			hasInherits = true
+			break
+		}
+	}
+	if !hasInherits {
+		return nil
+	}
+	if neovimInheritContinueAnywaySourceID != "" &&
+		neovimInheritContinueAnywaySourceID != registryItem.Source.ID {
+		neovimInheritContinueAnywaySourceID = ""
+	}
+	return resolveNeovimTreeSitterInheritDependencies(registryItem, func() {
+		neovimInheritContinueAnywaySourceID = registryItem.Source.ID
+	})
+}
+
+func resolveNeovimTreeSitterInheritDependencies(
+	registryItem registry_parser.RegistryItem,
+	onContinueAnyway func(),
+) error {
 	if !integrationEnabled("neovim") {
 		return nil
 	}
@@ -367,6 +514,9 @@ func ensureNeovimTreeSitterInheritDependencies(registryItem registry_parser.Regi
 		}
 	}
 	if len(missing) == 0 {
+		if registryItem.Source.ID == neovimInheritContinueAnywaySourceID {
+			neovimInheritContinueAnywaySourceID = ""
+		}
 		return nil
 	}
 	sort.Strings(missing)
@@ -380,14 +530,34 @@ func ensureNeovimTreeSitterInheritDependencies(registryItem registry_parser.Regi
 	}
 	title := fmt.Sprintf("Missing base tree-sitter grammar(s) for Neovim: %s", strings.Join(missing, ", "))
 	desc := "Queries may not resolve inherited captures until these are installed via Zana (Tree-sitter-parser packages whose languages include the names above)." + hint.String()
-	ok, err := neovimInheritsContinuePrompt(title, desc)
+	action, err := neovimInheritsPrompt(title, desc)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	switch action {
+	case neovimInheritsAbort:
+		return fmt.Errorf("aborted: install inherited grammar(s) first%s", hint.String())
+	case neovimInheritsContinue:
+		if onContinueAnyway != nil {
+			onContinueAnyway()
+		}
+		return nil
+	case neovimInheritsInstall:
+		// Do not carry over a prior "continue anyway" skip from an aborted install attempt.
+		neovimInheritContinueAnywaySourceID = ""
+		return installRegistryTreeSitterPackagesForLanguages(missing, reg, hint.String())
+	default:
 		return fmt.Errorf("aborted: install inherited grammar(s) first%s", hint.String())
 	}
-	return nil
+}
+
+func ensureNeovimTreeSitterInheritDependencies(registryItem registry_parser.RegistryItem) error {
+	if registryItem.Source.ID != "" &&
+		neovimInheritContinueAnywaySourceID == registryItem.Source.ID {
+		neovimInheritContinueAnywaySourceID = ""
+		return nil
+	}
+	return resolveNeovimTreeSitterInheritDependencies(registryItem, nil)
 }
 
 func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_parser.RegistryItem, version string) error {

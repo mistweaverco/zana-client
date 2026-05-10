@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
 	"github.com/mistweaverco/zana-client/internal/lib/semver"
+	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/mistweaverco/zana-client/internal/lib/version"
 	"github.com/spf13/cobra"
 )
@@ -258,7 +258,7 @@ Examples:
 			}
 
 			title := fmt.Sprintf("Updating %s...", displayID)
-			if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+			if err := spinnerutil.Run(title, action); err != nil {
 				service.output.Printf("%s Failed to update %s: %v\n", IconClose(), displayID, err)
 				failedCount++
 				allSuccess = false
@@ -341,7 +341,7 @@ func (us *UpdateService) UpdateAllPackages() bool {
 		}
 
 		title := fmt.Sprintf("Updating %s...", pkg.SourceID)
-		if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+		if err := spinnerutil.Run(title, action); err != nil {
 			us.output.Printf("%s Failed to update %s: %v\n", IconClose(), pkg.SourceID, err)
 			failedCount++
 			allSuccess = false
@@ -616,7 +616,7 @@ func runSelfUpdate(output OutputWriter) error {
 	}
 
 	title := fmt.Sprintf("Downloading zana %s for %s...", latestVersion, platform)
-	if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+	if err := spinnerutil.Run(title, action); err != nil {
 		return fmt.Errorf("failed to download new version: %w", err)
 	}
 

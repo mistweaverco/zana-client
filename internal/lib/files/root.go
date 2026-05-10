@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/huh/spinner"
+	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 )
@@ -802,7 +802,7 @@ func DownloadAndUnzipRegistry() error {
 		}
 	}
 
-	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
+	if err := spinnerutil.Run("Downloading registry...", action); err != nil {
 		return err
 	}
 
@@ -871,7 +871,7 @@ func DownloadAndUnzipRegistryForced() error {
 		}
 	}
 
-	if err := spinner.New().Title("Downloading registry...").Action(action).Run(); err != nil {
+	if err := spinnerutil.Run("Downloading registry...", action); err != nil {
 		return err
 	}
 
