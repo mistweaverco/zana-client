@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/huh/spinner"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
+	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/spf13/cobra"
 )
 
@@ -114,7 +114,7 @@ Examples:
 			}
 
 			title := fmt.Sprintf("Removing %s...", displayID)
-			if err := spinner.New().Title(title).Action(action).Run(); err != nil {
+			if err := spinnerutil.Run(title, action); err != nil {
 				fmt.Printf("%s Failed to remove %s: %v\n", IconClose(), displayID, err)
 				failedCount++
 				allSuccess = false
