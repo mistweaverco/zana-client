@@ -163,8 +163,9 @@ type RegistryItemSource struct {
 }
 
 type RegistryItemTreeSitterBuild struct {
-	Language   string `json:"language"`
-	GrammarDir string `json:"grammar_dir"`
+	Language   string   `json:"language"`
+	GrammarDir string   `json:"grammar_dir"`
+	Inherits   []string `json:"inherits,omitempty"`
 }
 
 type RegistryItemTreeSitter struct {

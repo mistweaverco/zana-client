@@ -1,13 +1,18 @@
 package providers
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
+	"github.com/charmbracelet/huh"
+	"github.com/mattn/go-isatty"
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
 )
@@ -24,6 +29,30 @@ var (
 	neovimReadFile        = os.ReadFile
 	neovimWriteFile       = os.WriteFile
 )
+
+// neovimInheritsContinuePrompt is swapped in tests to avoid interactive huh.
+var neovimInheritsContinuePrompt = defaultNeovimInheritsContinuePrompt
+
+func defaultNeovimInheritsContinuePrompt(title, description string) (continueAnyway bool, err error) {
+	if !isatty.IsTerminal(os.Stdin.Fd()) || !isatty.IsTerminal(os.Stderr.Fd()) {
+		return false, fmt.Errorf("%s\n%s", title, description)
+	}
+	continueAnyway = false
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title(title).
+				Description(description).
+				Affirmative("Continue anyway").
+				Negative("Abort").
+				Value(&continueAnyway),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+	return continueAnyway, nil
+}
 
 func neovimTreeSitterQueriesCacheDir(sourceID, version, lang string) string {
 	return filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), "queries", lang)
@@ -50,7 +79,56 @@ func resolveNeovimTreeSitterQueriesDir(repoPath, fullGrammarDir string) string {
 	return ""
 }
 
-func copyNeovimTreeSitterQueriesDir(src, dst string) error {
+func hasTreeSitterInheritsModeline(content []byte) bool {
+	nonEmpty := 0
+	for _, line := range bytes.Split(content, []byte{'\n'}) {
+		t := bytes.TrimSpace(line)
+		if len(t) == 0 {
+			continue
+		}
+		nonEmpty++
+		if nonEmpty > 8 {
+			break
+		}
+		if !bytes.HasPrefix(t, []byte(";")) {
+			return false
+		}
+		low := bytes.ToLower(t)
+		if bytes.Contains(low, []byte("inherits:")) {
+			return true
+		}
+	}
+	return false
+}
+
+func patchNeovimTreeSitterSCM(content []byte, inherits []string) []byte {
+	s := strings.ReplaceAll(string(content), "#is-not?", "#not-eq?")
+	b := []byte(s)
+	if len(inherits) == 0 {
+		return b
+	}
+	clean := make([]string, 0, len(inherits))
+	seen := map[string]struct{}{}
+	for _, in := range inherits {
+		in = strings.TrimSpace(in)
+		if in == "" {
+			continue
+		}
+		k := strings.ToLower(in)
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		clean = append(clean, in)
+	}
+	if len(clean) == 0 || hasTreeSitterInheritsModeline(b) {
+		return b
+	}
+	prefix := "; inherits: " + strings.Join(clean, ", ") + "\n"
+	return append([]byte(prefix), b...)
+}
+
+func copyNeovimTreeSitterQueriesDir(src, dst string, inherits []string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -67,6 +145,9 @@ func copyNeovimTreeSitterQueriesDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		if strings.EqualFold(filepath.Ext(path), ".scm") {
+			b = patchNeovimTreeSitterSCM(b, inherits)
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
@@ -74,13 +155,13 @@ func copyNeovimTreeSitterQueriesDir(src, dst string) error {
 	})
 }
 
-func cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, lang string) error {
+func cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, lang string, inherits []string) error {
 	dest := neovimTreeSitterQueriesCacheDir(sourceID, version, lang)
 	if err := os.RemoveAll(dest); err != nil {
 		return fmt.Errorf("clear cached queries for %s: %w", lang, err)
 	}
 	if src := resolveNeovimTreeSitterQueriesDir(repoPath, fullGrammarDir); src != "" {
-		if err := copyNeovimTreeSitterQueriesDir(src, dest); err != nil {
+		if err := copyNeovimTreeSitterQueriesDir(src, dest, inherits); err != nil {
 			return fmt.Errorf("cache tree-sitter queries for %s: %w", lang, err)
 		}
 	}
@@ -109,7 +190,7 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			continue
 		}
 		fullGrammarDir := filepath.Join(repoPath, filepath.FromSlash(grammarDir))
-		if err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, lang); err != nil {
+		if err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, lang, b.Inherits); err != nil {
 			return err
 		}
 	}
@@ -193,7 +274,7 @@ func installNeovimParsersFromCache(sourceID, version string, languages []string)
 				if err := neovimRemoveAll(destQueries); err != nil {
 					return fmt.Errorf("remove stale neovim queries %s: %w", lang, err)
 				}
-				if err := copyNeovimTreeSitterQueriesDir(cacheQueries, destQueries); err != nil {
+				if err := copyNeovimTreeSitterQueriesDir(cacheQueries, destQueries, nil); err != nil {
 					return fmt.Errorf("install neovim queries %s: %w", lang, err)
 				}
 			}
@@ -204,12 +285,121 @@ func installNeovimParsersFromCache(sourceID, version string, languages []string)
 	return nil
 }
 
+func installedTreeSitterGrammarLanguages(reg *registry_parser.RegistryParser) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, pkg := range local_packages_parser.GetData(false).Packages {
+		item := reg.GetBySourceId(pkg.SourceID)
+		if item.Source.ID == "" || !IsTreeSitterCategory(item.Categories) {
+			continue
+		}
+		for _, l := range item.Languages {
+			if s := strings.ToLower(strings.TrimSpace(l)); s != "" {
+				out[s] = struct{}{}
+			}
+		}
+		if item.TreeSitter != nil {
+			for _, b := range item.TreeSitter.Build {
+				if s := strings.ToLower(strings.TrimSpace(b.Language)); s != "" {
+					out[s] = struct{}{}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func registrySourceIDsForTreeSitterLanguage(lang string, reg *registry_parser.RegistryParser) []string {
+	want := strings.ToLower(strings.TrimSpace(lang))
+	if want == "" {
+		return nil
+	}
+	var out []string
+	for _, item := range reg.GetData(false) {
+		if item.Source.ID == "" || !IsTreeSitterCategory(item.Categories) {
+			continue
+		}
+		ok := false
+		for _, l := range item.Languages {
+			if strings.ToLower(strings.TrimSpace(l)) == want {
+				ok = true
+				break
+			}
+		}
+		if !ok && item.TreeSitter != nil {
+			for _, b := range item.TreeSitter.Build {
+				if strings.ToLower(strings.TrimSpace(b.Language)) == want {
+					ok = true
+					break
+				}
+			}
+		}
+		if ok {
+			out = append(out, item.Source.ID)
+		}
+	}
+	return out
+}
+
+func ensureNeovimTreeSitterInheritDependencies(registryItem registry_parser.RegistryItem) error {
+	if !integrationEnabled("neovim") {
+		return nil
+	}
+	if registryItem.TreeSitter == nil {
+		return nil
+	}
+	need := map[string]struct{}{}
+	for _, b := range registryItem.TreeSitter.Build {
+		for _, in := range b.Inherits {
+			if s := strings.ToLower(strings.TrimSpace(in)); s != "" {
+				need[s] = struct{}{}
+			}
+		}
+	}
+	if len(need) == 0 {
+		return nil
+	}
+	reg := registry_parser.NewDefaultRegistryParser()
+	have := installedTreeSitterGrammarLanguages(reg)
+	var missing []string
+	for l := range need {
+		if _, ok := have[l]; !ok {
+			missing = append(missing, l)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	var hint strings.Builder
+	for _, l := range missing {
+		if ids := registrySourceIDsForTreeSitterLanguage(l, reg); len(ids) > 0 {
+			fmt.Fprintf(&hint, "\n• %s — e.g. zana install %s --integrate neovim", l, ids[0])
+		} else {
+			fmt.Fprintf(&hint, "\n• %s — install a Tree-sitter-parser package that lists this language in the registry", l)
+		}
+	}
+	title := fmt.Sprintf("Missing base tree-sitter grammar(s) for Neovim: %s", strings.Join(missing, ", "))
+	desc := "Queries may not resolve inherited captures until these are installed via Zana (Tree-sitter-parser packages whose languages include the names above)." + hint.String()
+	ok, err := neovimInheritsContinuePrompt(title, desc)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("aborted: install inherited grammar(s) first%s", hint.String())
+	}
+	return nil
+}
+
 func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_parser.RegistryItem, version string) error {
 	if !IsTreeSitterCategory(registryItem.Categories) {
 		return nil
 	}
 	if registryItem.TreeSitter == nil || len(registryItem.TreeSitter.Build) == 0 {
 		return nil
+	}
+
+	if err := ensureNeovimTreeSitterInheritDependencies(registryItem); err != nil {
+		return err
 	}
 
 	langs, err := BuildTreeSitterParsersToCache(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build)
