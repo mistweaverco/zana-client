@@ -162,10 +162,26 @@ type RegistryItemSource struct {
 	Download RegistryItemSourceDownloadList `json:"download,omitempty"`
 }
 
+// RegistryItemTreeSitterExternalQueries points at a separate repository that only
+// ships Neovim tree-sitter query files (.scm), mirroring neovim-treesitter's
+// nvim-treesitter-queries-* layout (typically a top-level queries/ directory).
+type RegistryItemTreeSitterExternalQueries struct {
+	RepoURL string `json:"repo_url"`
+	// Ref is a branch name, tag, or commit to check out after clone. If empty and
+	// Semver is false, the remote default branch is used.
+	Ref string `json:"ref,omitempty"`
+	// Semver, when true and Ref is empty, selects the greatest valid semver tag
+	// from the remote (via git ls-remote), matching queries_semver in the
+	// neovim-treesitter parser registry.
+	Semver bool `json:"semver,omitempty"`
+}
+
 type RegistryItemTreeSitterBuild struct {
-	Language   string   `json:"language"`
-	GrammarDir string   `json:"grammar_dir"`
-	Inherits   []string `json:"inherits,omitempty"`
+	Language        string                                 `json:"language"`
+	GrammarDir      string                                 `json:"grammar_dir"`
+	Integrations    []string                               `json:"integrations"`
+	Inherits        []string                               `json:"inherits,omitempty"`
+	ExternalQueries *RegistryItemTreeSitterExternalQueries `json:"external_queries,omitempty"`
 }
 
 type RegistryItemTreeSitter struct {

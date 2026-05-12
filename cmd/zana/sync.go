@@ -7,7 +7,6 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
-	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/spf13/cobra"
 )
 
@@ -64,6 +63,14 @@ var syncPackagesCmd = &cobra.Command{
 This command reads the zana-lock.json file and ensures that all packages
 are installed with their exact versions as specified in the lock file.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if err := providers.ConfigureExternalTreeSitterQueriesFromCLI(
+			cmd.Flags().Changed("external-treesitter-queries"),
+			syncExternalTreeSitterQueries,
+		); err != nil {
+			fmt.Printf("%s Invalid --external-treesitter-queries: %v\n", IconClose(), err)
+			osExit(1)
+			return
+		}
 		if !ShouldUseJSONOutput() && !ShouldUsePlainOutput() {
 			fmt.Println("Syncing packages from zana-lock.json...")
 
@@ -103,23 +110,20 @@ are installed with their exact versions as specified in the lock file.`,
 				providers.SetRequestedIntegrations(ints)
 
 				registryItem := newRegistryParser().GetBySourceId(id)
-				if err := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); err != nil {
-					failureCount++
-					fmt.Printf("%s Failed to sync %s@%s: %v\n", IconClose(), id, ver, err)
-					continue
-				}
 
 				title := fmt.Sprintf("Syncing %s@%s", id, ver)
 				if len(ints) > 0 {
 					title = fmt.Sprintf("Syncing %s@%s (integrations: %v)", id, ver, ints)
 				}
 
-				ok := false
-				action := func() {
-					ok = providers.Install(id, ver)
+				ok, err := runZanaInstallWithTreeSitterSpinnerPhases(title, id, ver, registryItem, func() bool {
+					return providers.Install(id, ver)
+				})
+				if err != nil {
+					failureCount++
+					fmt.Printf("%s Failed to sync %s@%s: %v\n", IconClose(), id, ver, err)
+					continue
 				}
-
-				_ = spinnerutil.Run(title, action)
 
 				res := pkgResult{
 					id:           id,
@@ -178,9 +182,12 @@ are installed with their exact versions as specified in the lock file.`,
 	},
 }
 
+var syncExternalTreeSitterQueries string
+
 func init() {
 	syncCmd.AddCommand(syncRegistryCmd)
 	syncCmd.AddCommand(syncPackagesCmd)
+	syncPackagesCmd.Flags().StringVar(&syncExternalTreeSitterQueries, "external-treesitter-queries", "ask", "optional Neovim query-only git clones: ask, always, never (ZANA_EXTERNAL_TREESITTER_QUERIES when default)")
 }
 
 // downloadAndUnzipRegistryForced downloads and unzips the registry, forcing a fresh download

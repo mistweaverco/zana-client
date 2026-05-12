@@ -92,9 +92,29 @@ func (p *GitHubProvider) Install(sourceID, version string) bool {
 		return false
 	}
 
-	// Check registry for asset information
 	registry := githubRegistryParser()
 	registryItem := registry.GetBySourceId(sourceID)
+
+	// Shorthand github:package-name (no owner/repo slash) — resolve to github:owner/repo when the
+	// registry has a package whose name (or alias) matches the segment after "github:".
+	if !strings.Contains(repo, "/") && registryItem.Source.ID == "" {
+		if hit := registry.GetByNameOrAlias(repo); hit.Source.ID != "" {
+			norm := normalizePackageID(hit.Source.ID)
+			if strings.HasPrefix(norm, "github:") {
+				Logger.Info(fmt.Sprintf("GitHub Install: Resolved shorthand %q to %q", sourceID, hit.Source.ID))
+				sourceID = hit.Source.ID
+				repo = p.getRepo(sourceID)
+				registryItem = hit
+			}
+		}
+	}
+	if !strings.Contains(repo, "/") {
+		Logger.Error(fmt.Sprintf(
+			"GitHub Install: repository %q is missing the owner; use github:owner/repo (for example github:tree-sitter/tree-sitter-typescript)",
+			sourceID,
+		))
+		return false
+	}
 
 	// If registry has asset information, use release download method
 	if len(registryItem.Source.Asset) > 0 {
@@ -214,58 +234,16 @@ func (p *GitHubProvider) installFromGit(sourceID, repo, version string) bool {
 		return false
 	}
 
-	repoPath := p.getRepoPath(repo)
-	repoURL := p.getRepoURL(repo)
 	registry := githubRegistryParser()
 	registryItem := registry.GetBySourceId(sourceID)
 
-	// Ensure packages directory exists
-	if err := githubMkdir(p.APP_PACKAGES_DIR, 0755); err != nil && !os.IsExist(err) {
-		Logger.Error(fmt.Sprintf("GitHub Install: Error creating packages directory: %v", err))
-		return false
-	}
-
-	// Clone or update repository
-	if _, err := githubStat(repoPath); os.IsNotExist(err) {
-		// Clone repository
-		Logger.Info(fmt.Sprintf("GitHub Install: Cloning %s to %s", repoURL, repoPath))
-		code, err := githubShellOut("git", []string{"clone", repoURL, repoPath}, p.APP_PACKAGES_DIR, nil)
-		if err != nil || code != 0 {
-			Logger.Error(fmt.Sprintf("GitHub Install: Error cloning repository: %v", err))
-			return false
-		}
-	} else {
-		// Update existing repository
-		Logger.Info(fmt.Sprintf("GitHub Install: Updating repository at %s", repoPath))
-		code, err := githubShellOut("git", []string{"fetch", "origin"}, repoPath, nil)
-		if err != nil || code != 0 {
-			Logger.Error(fmt.Sprintf("GitHub Install: Error fetching updates: %v", err))
-			return false
-		}
-	}
-
-	// Resolve version (tag/commit/branch)
-	resolvedVersion := version
-	if resolvedVersion == "" || resolvedVersion == "latest" {
-		// Try to get latest tag from the cloned repo
-		var err error
-		resolvedVersion, err = p.getLatestVersionFromRepo(repoPath)
-		if err != nil {
-			Logger.Info(fmt.Sprintf("GitHub Install: Could not determine latest version, using default branch: %v", err))
-			// Try to detect default branch
-			resolvedVersion = p.getDefaultBranch(repoPath)
-		}
-	}
-
-	// Checkout specific version
-	code, err := githubShellOut("git", []string{"checkout", resolvedVersion}, repoPath, nil)
-	if err != nil || code != 0 {
-		Logger.Error(fmt.Sprintf("GitHub Install: Error checking out version %s: %v", resolvedVersion, err))
+	repoPath, resolvedVersion, ok := p.gitCloneAndCheckout(sourceID, repo, version)
+	if !ok {
 		return false
 	}
 
 	// If this is a Tree-sitter parser package, build artifacts and run requested integrations.
-	if err := buildAndMaybeIntegrateTreeSitter(repoPath, registryItem, resolvedVersion); err != nil {
+	if err := buildAndMaybeIntegrateTreeSitter(repoPath, registryItem, resolvedVersion, nil); err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error building tree-sitter parsers: %v", err))
 		return false
 	}
