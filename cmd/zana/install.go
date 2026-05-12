@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/providers"
-	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
 	"github.com/spf13/cobra"
 )
 
@@ -127,8 +126,16 @@ Examples:
 	// Enable shell completion for package IDs based on the local registry.
 	ValidArgsFunction: packageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Configure optional integrations (editor backends).
-		providers.SetRequestedIntegrations(installIntegrations)
+		if err := providers.ConfigureExternalTreeSitterQueriesFromCLI(
+			cmd.Flags().Changed("external-treesitter-queries"),
+			installExternalTreeSitterQueries,
+		); err != nil {
+			fmt.Printf("%s Invalid --external-treesitter-queries: %v\n", IconClose(), err)
+			osExit(1)
+			return
+		}
+		userIntegrations := append([]string(nil), installIntegrations...)
+		providers.SetRequestedIntegrations(userIntegrations)
 		providers.ResetTreeSitterDependencyInstallSuccessCount()
 
 		cleanupNestedInstallOutput := registerNestedInstallOutputHooks()
@@ -220,21 +227,28 @@ Examples:
 					}
 
 					registryItem := newRegistryParser().GetBySourceId(internalID)
-					if err := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); err != nil {
+
+					effectiveIntegrations, err := providers.ResolveTreeSitterInstallIntegrations(
+						registryItem,
+						userIntegrations,
+						providers.TreeSitterIntegrateResolveOpts{
+							MachineOutput: ShouldUseJSONOutput() || ShouldUsePlainOutput(),
+						},
+					)
+					if err != nil {
 						fmt.Printf("%s %v\n", IconClose(), err)
 						failureCount++
 						failures = append(failures, displayID)
 						continue
 					}
-
-					// Install package with spinner showing package name and resolved version
-					var success bool
-					action := func() {
-						success = installPackageFn(internalID, resolvedVersion)
-					}
+					providers.SetRequestedIntegrations(effectiveIntegrations)
 
 					title := fmt.Sprintf("Installing %s@%s...", displayID, resolvedVersion)
-					if err := spinnerutil.Run(title, action); err != nil {
+					success, err := runZanaInstallWithTreeSitterSpinnerPhases(title, internalID, resolvedVersion, registryItem, func() bool {
+						return installPackageFn(internalID, resolvedVersion)
+					})
+					providers.SetRequestedIntegrations(userIntegrations)
+					if err != nil {
 						failureCount++
 						failures = append(failures, displayID)
 						fmt.Printf("%s Failed to install %s@%s: %v\n", IconClose(), displayID, resolvedVersion, err)
@@ -243,7 +257,7 @@ Examples:
 
 					if success {
 						successCount++
-						_ = local_packages_parser.MergePackageIntegrations(internalID, installIntegrations)
+						_ = local_packages_parser.MergePackageIntegrations(internalID, effectiveIntegrations)
 						fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
 						for _, line := range providers.ConsumeIntegrationReport(internalID, resolvedVersion) {
 							fmt.Printf("  %s@%s: %s\n", internalID, resolvedVersion, line)
@@ -281,21 +295,28 @@ Examples:
 			}
 
 			registryItem := newRegistryParser().GetBySourceId(internalID)
-			if err := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); err != nil {
+
+			effectiveIntegrations, err := providers.ResolveTreeSitterInstallIntegrations(
+				registryItem,
+				userIntegrations,
+				providers.TreeSitterIntegrateResolveOpts{
+					MachineOutput: ShouldUseJSONOutput() || ShouldUsePlainOutput(),
+				},
+			)
+			if err != nil {
 				fmt.Printf("%s %v\n", IconClose(), err)
 				failureCount++
 				failures = append(failures, displayID)
 				continue
 			}
-
-			// Install package with spinner showing package name and resolved version
-			var success bool
-			action := func() {
-				success = installPackageFn(internalID, resolvedVersion)
-			}
+			providers.SetRequestedIntegrations(effectiveIntegrations)
 
 			title := fmt.Sprintf("Installing %s@%s...", displayID, resolvedVersion)
-			if err := spinnerutil.Run(title, action); err != nil {
+			success, err := runZanaInstallWithTreeSitterSpinnerPhases(title, internalID, resolvedVersion, registryItem, func() bool {
+				return installPackageFn(internalID, resolvedVersion)
+			})
+			providers.SetRequestedIntegrations(userIntegrations)
+			if err != nil {
 				failureCount++
 				failures = append(failures, displayID)
 				fmt.Printf("%s Failed to install %s@%s: %v\n", IconClose(), displayID, resolvedVersion, err)
@@ -304,7 +325,7 @@ Examples:
 
 			if success {
 				successCount++
-				_ = local_packages_parser.MergePackageIntegrations(internalID, installIntegrations)
+				_ = local_packages_parser.MergePackageIntegrations(internalID, effectiveIntegrations)
 				fmt.Printf("%s Successfully installed %s@%s\n", IconCheck(), displayID, resolvedVersion)
 				for _, line := range providers.ConsumeIntegrationReport(internalID, resolvedVersion) {
 					fmt.Printf("  %s@%s: %s\n", internalID, resolvedVersion, line)
@@ -363,9 +384,11 @@ Examples:
 }
 
 var installIntegrations []string
+var installExternalTreeSitterQueries string
 
 func init() {
 	installCmd.Flags().StringSliceVar(&installIntegrations, "integrate", nil, "run integration backends after install (e.g. --integrate neovim)")
+	installCmd.Flags().StringVar(&installExternalTreeSitterQueries, "external-treesitter-queries", "ask", "when Neovim integration needs optional query-only git repos from the registry: ask (default), always, never (overridden by ZANA_EXTERNAL_TREESITTER_QUERIES when this flag is left at default)")
 }
 
 // indirections for testability

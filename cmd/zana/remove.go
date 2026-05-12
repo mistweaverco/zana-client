@@ -35,9 +35,8 @@ Examples:
 	// Enable shell completion for installed package IDs only.
 	ValidArgsFunction: installedPackageIDCompletion,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Configure optional integrations (editor backends).
-		// This matters for cleanup (e.g. removing Neovim parser libs).
-		providers.SetRequestedIntegrations(removeIntegrations)
+		userIntegrations := append([]string(nil), removeIntegrations...)
+		providers.SetRequestedIntegrations(userIntegrations)
 
 		packages := args
 
@@ -107,6 +106,22 @@ Examples:
 			internalID := internalIDs[i]
 			displayID := displayIDs[i]
 
+			registryItem := newRegistryParser().GetBySourceId(internalID)
+			effectiveIntegrations, resolveErr := providers.ResolveTreeSitterInstallIntegrations(
+				registryItem,
+				userIntegrations,
+				providers.TreeSitterIntegrateResolveOpts{
+					MachineOutput: ShouldUseJSONOutput() || ShouldUsePlainOutput(),
+				},
+			)
+			if resolveErr != nil {
+				fmt.Printf("%s %v\n", IconClose(), resolveErr)
+				failedCount++
+				allSuccess = false
+				continue
+			}
+			providers.SetRequestedIntegrations(effectiveIntegrations)
+
 			// Remove the package with spinner showing package name
 			var success bool
 			action := func() {
@@ -118,8 +133,11 @@ Examples:
 				fmt.Printf("%s Failed to remove %s: %v\n", IconClose(), displayID, err)
 				failedCount++
 				allSuccess = false
+				providers.SetRequestedIntegrations(userIntegrations)
 				continue
 			}
+
+			providers.SetRequestedIntegrations(userIntegrations)
 
 			if success {
 				fmt.Printf("%s Successfully removed %s\n", IconCheck(), displayID)

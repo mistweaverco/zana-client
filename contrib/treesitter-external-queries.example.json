@@ -1,0 +1,23 @@
+{
+  "comment": "Fragment for a Tree-sitter-parser registry item: per-build external Neovim query repositories (aligned with neovim-treesitter/treesitter-parser-registry external_queries).",
+  "treesitter": {
+    "build": [
+      {
+        "language": "hcl",
+        "grammar_dir": ".",
+        "external_queries": {
+          "repo_url": "https://github.com/neovim-treesitter/nvim-treesitter-queries-hcl",
+          "semver": true
+        }
+      },
+      {
+        "language": "terraform",
+        "grammar_dir": "dialects/terraform",
+        "external_queries": {
+          "repo_url": "https://github.com/neovim-treesitter/nvim-treesitter-queries-terraform",
+          "semver": true
+        }
+      }
+    ]
+  }
+}

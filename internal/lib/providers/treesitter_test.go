@@ -61,7 +61,7 @@ func TestBuildTreeSitterParsersToCache_UsesShellOut(t *testing.T) {
 	}
 
 	build := []registry_parser.RegistryItemTreeSitterBuild{
-		{Language: "typescript", GrammarDir: "typescript"},
+		{Language: "typescript", GrammarDir: "typescript", Integrations: []string{"neovim"}},
 	}
 
 	// Act
@@ -91,7 +91,7 @@ func TestBuildTreeSitterParsersToCache_FailsWithoutCLI(t *testing.T) {
 	treeSitterHasCommand = func(cmd string, args []string, env []string) bool { return false }
 
 	_, err := BuildTreeSitterParsersToCache("/tmp/repo", "github:x/y", "v1", []registry_parser.RegistryItemTreeSitterBuild{
-		{Language: "x", GrammarDir: "x"},
+		{Language: "x", GrammarDir: "x", Integrations: []string{"neovim"}},
 	})
 	if err == nil {
 		t.Fatalf("expected error")
