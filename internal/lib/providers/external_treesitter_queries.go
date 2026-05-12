@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-isatty"
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
 	"golang.org/x/mod/semver"
@@ -30,6 +31,123 @@ var (
 	externalQueriesShellOutCapture = shell_out.ShellOutCapture
 	externalQueriesGitHas          = shell_out.HasCommand
 )
+
+// externalQueriesGitRevParse reads HEAD after a successful clone (tests may stub).
+var externalQueriesGitRevParse = defaultExternalQueriesGitRevParse
+
+func defaultExternalQueriesGitRevParse(dir string) (string, error) {
+	code, out, err := externalQueriesShellOutCapture("git", []string{"-C", dir, "rev-parse", "HEAD"}, "", nil)
+	if err != nil || code != 0 {
+		return "", fmt.Errorf("git rev-parse HEAD in %q: %w %s", dir, err, strings.TrimSpace(out))
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func normalizeExternalQueryRepoURL(u string) string {
+	u = strings.TrimSpace(u)
+	u = strings.TrimSuffix(u, "/")
+	u = strings.TrimSuffix(strings.TrimSuffix(u, ".git"), "/")
+	return strings.ToLower(u)
+}
+
+func externalQueryRepoURLsEqual(a, b string) bool {
+	return normalizeExternalQueryRepoURL(a) == normalizeExternalQueryRepoURL(b)
+}
+
+// externalQueryLockPinFromLocalLock returns a pinned commit from zana-lock.json when the lock
+// row matches this grammar package version (reproducible sync).
+func externalQueryLockPinFromLocalLock(sourceID, version, lang string) (repoURL, ref string, ok bool) {
+	item := local_packages_parser.GetBySourceId(sourceID)
+	if item.SourceID == "" || strings.TrimSpace(item.Version) != strings.TrimSpace(version) {
+		return "", "", false
+	}
+	if item.Extras == nil {
+		return "", "", false
+	}
+	want := strings.ToLower(strings.TrimSpace(lang))
+	for _, p := range item.Extras.TreeSitterExternalQueries {
+		if strings.ToLower(strings.TrimSpace(p.Language)) != want {
+			continue
+		}
+		ref = strings.TrimSpace(p.Ref)
+		repoURL = strings.TrimSpace(p.RepoURL)
+		if ref != "" && repoURL != "" {
+			return repoURL, ref, true
+		}
+		return "", "", false
+	}
+	return "", "", false
+}
+
+// cloneExternalQueriesRepo clones repoURL into destDir, optionally checking out a tag/branch/commit.
+// When lockRef is set and lockRepoURL matches repoURL, lockRef is used instead of registry semver/ref.
+// Returns the resolved full commit SHA of HEAD.
+func cloneExternalQueriesRepo(repoURL, destDir, registryRef string, wantSemver bool, lockRepoURL, lockRef string) (string, error) {
+	if !externalQueriesGitHas("git", []string{"--version"}, nil) {
+		return "", fmt.Errorf("git not found in PATH (required to clone external tree-sitter query repositories)")
+	}
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return "", fmt.Errorf("external queries repo_url is empty")
+	}
+	if err := os.RemoveAll(destDir); err != nil {
+		return "", fmt.Errorf("remove old external queries clone: %w", err)
+	}
+	parent := filepath.Dir(destDir)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", fmt.Errorf("mkdir external queries parent: %w", err)
+	}
+
+	useLock := strings.TrimSpace(lockRef) != "" && externalQueryRepoURLsEqual(lockRepoURL, repoURL)
+
+	var checkout string
+	if useLock {
+		checkout = strings.TrimSpace(lockRef)
+	} else {
+		checkout = strings.TrimSpace(registryRef)
+		if checkout == "" && wantSemver {
+			code, out, err := externalQueriesShellOutCapture("git", []string{"ls-remote", "--tags", repoURL}, "", nil)
+			if err != nil || code != 0 {
+				return "", fmt.Errorf("git ls-remote --tags %q: %w %s", repoURL, err, strings.TrimSpace(out))
+			}
+			var semverOK bool
+			checkout, semverOK = pickLatestSemverTag(out)
+			if !semverOK {
+				checkout = ""
+			}
+		}
+	}
+
+	if err := gitCloneExternalQueryRepo(repoURL, destDir, checkout, parent); err != nil {
+		return "", err
+	}
+	return externalQueriesGitRevParse(destDir)
+}
+
+func gitCloneExternalQueryRepo(repoURL, destDir, checkout, parent string) error {
+	args := []string{"clone", "--depth", "1"}
+	if checkout != "" {
+		args = append(args, "-b", checkout)
+	}
+	args = append(args, repoURL, destDir)
+	code, out, err := externalQueriesShellOutCapture("git", args, parent, nil)
+	if err == nil && code == 0 {
+		return nil
+	}
+	_ = os.RemoveAll(destDir)
+	code2, out2, err2 := externalQueriesShellOutCapture("git", []string{"clone", repoURL, destDir}, parent, nil)
+	if err2 != nil || code2 != 0 {
+		return fmt.Errorf("git clone %q: %w %s (shallow failed: %v %s)", repoURL, err2, strings.TrimSpace(out2), err, strings.TrimSpace(out))
+	}
+	if strings.TrimSpace(checkout) == "" {
+		return nil
+	}
+	code3, out3, err3 := externalQueriesShellOutCapture("git", []string{"-C", destDir, "checkout", "--detach", checkout}, "", nil)
+	if err3 != nil || code3 != 0 {
+		return fmt.Errorf("git checkout %q in %q: %w %s", checkout, destDir, err3, strings.TrimSpace(out3))
+	}
+	return nil
+}
 
 // externalTreeSitterQueriesConfirmHook is swapped in tests.
 var externalTreeSitterQueriesConfirmHook = defaultExternalTreeSitterQueriesConfirm
@@ -228,48 +346,4 @@ func pickLatestSemverTag(lsRemoteOutput string) (tag string, ok bool) {
 		return "", false
 	}
 	return bestTag, true
-}
-
-func shallowCloneExternalQueriesRepo(repoURL, destDir, ref string, wantSemver bool) error {
-	if !externalQueriesGitHas("git", []string{"--version"}, nil) {
-		return fmt.Errorf("git not found in PATH (required to clone external tree-sitter query repositories)")
-	}
-	repoURL = strings.TrimSpace(repoURL)
-	if repoURL == "" {
-		return fmt.Errorf("external queries repo_url is empty")
-	}
-	if err := os.RemoveAll(destDir); err != nil {
-		return fmt.Errorf("remove old external queries clone: %w", err)
-	}
-	parent := filepath.Dir(destDir)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return fmt.Errorf("mkdir external queries parent: %w", err)
-	}
-
-	checkout := strings.TrimSpace(ref)
-	if checkout == "" && wantSemver {
-		code, out, err := externalQueriesShellOutCapture("git", []string{"ls-remote", "--tags", repoURL}, "", nil)
-		if err != nil || code != 0 {
-			return fmt.Errorf("git ls-remote --tags %q: %w %s", repoURL, err, strings.TrimSpace(out))
-		}
-		var semverOK bool
-		checkout, semverOK = pickLatestSemverTag(out)
-		if !semverOK {
-			// Many nvim-treesitter-queries-* repos only move forward on main with no semver tags;
-			// fall back to the remote default branch (shallow clone without -b).
-			checkout = ""
-		}
-	}
-
-	args := []string{"clone", "--depth", "1"}
-	if checkout != "" {
-		args = append(args, "-b", checkout)
-	}
-	args = append(args, repoURL, destDir)
-
-	code, out, err := externalQueriesShellOutCapture("git", args, parent, nil)
-	if err != nil || code != 0 {
-		return fmt.Errorf("git clone %q: %w %s", repoURL, err, strings.TrimSpace(out))
-	}
-	return nil
 }

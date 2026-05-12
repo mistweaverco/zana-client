@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 )
 
@@ -28,14 +29,15 @@ func GitHubTreeSitterUsesPhasedInteractiveInstall(sourceID string, registryItem 
 }
 
 type githubTreeSitterDeferredState struct {
-	p                *GitHubProvider
-	sourceID         string
-	repo             string
-	repoPath         string
-	resolvedVersion  string
-	registryItem     registry_parser.RegistryItem
-	externalOverride *bool // nil: cache step runs its own confirm; non-nil: use this (preflight already asked)
-	builtLangs       []string
+	p                 *GitHubProvider
+	sourceID          string
+	repo              string
+	repoPath          string
+	resolvedVersion   string
+	registryItem      registry_parser.RegistryItem
+	externalOverride  *bool // nil: cache step runs its own confirm; non-nil: use this (preflight already asked)
+	builtLangs        []string
+	externalQueryPins []local_packages_parser.TreeSitterExternalQueryPin
 }
 
 var githubTreeSitterDeferred *githubTreeSitterDeferredState
@@ -147,18 +149,20 @@ func GitHubTreeSitterPhaseCacheNeovimQueries(sourceID, resolvedVersion string) b
 		Logger.Error("GitHub tree-sitter phased install: missing or stale deferred state")
 		return false
 	}
-	if err := cacheNeovimTreeSitterQueriesForBuiltLangs(
+	pins, err := cacheNeovimTreeSitterQueriesForBuiltLangs(
 		d.repoPath,
 		d.sourceID,
 		d.resolvedVersion,
 		d.registryItem.TreeSitter.Build,
 		d.builtLangs,
 		d.externalOverride,
-	); err != nil {
+	)
+	if err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error caching Neovim tree-sitter queries: %v", err))
 		clearGitHubTreeSitterDeferred()
 		return false
 	}
+	d.externalQueryPins = pins
 	return true
 }
 
@@ -180,6 +184,11 @@ func GitHubTreeSitterPhaseRegisterPackage(sourceID, resolvedVersion string) bool
 	if err := lppGithubAdd(sourceID, d.resolvedVersion); err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error adding package to local packages: %v", err))
 		return false
+	}
+	if len(d.externalQueryPins) > 0 {
+		if err := local_packages_parser.MergePackageTreeSitterExternalQueryPins(d.sourceID, d.externalQueryPins); err != nil {
+			Logger.Info(fmt.Sprintf("GitHub Install: Warning persisting external query pins: %v", err))
+		}
 	}
 
 	if err := d.p.createSymlinks(d.repo, d.repoPath); err != nil {

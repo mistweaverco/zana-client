@@ -243,7 +243,8 @@ func (p *GitHubProvider) installFromGit(sourceID, repo, version string) bool {
 	}
 
 	// If this is a Tree-sitter parser package, build artifacts and run requested integrations.
-	if err := buildAndMaybeIntegrateTreeSitter(repoPath, registryItem, resolvedVersion, nil); err != nil {
+	pins, err := buildAndMaybeIntegrateTreeSitter(repoPath, registryItem, resolvedVersion, nil)
+	if err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error building tree-sitter parsers: %v", err))
 		return false
 	}
@@ -252,6 +253,11 @@ func (p *GitHubProvider) installFromGit(sourceID, repo, version string) bool {
 	if err := lppGithubAdd(sourceID, resolvedVersion); err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error adding package to local packages: %v", err))
 		return false
+	}
+	if len(pins) > 0 {
+		if err := local_packages_parser.MergePackageTreeSitterExternalQueryPins(sourceID, pins); err != nil {
+			Logger.Info(fmt.Sprintf("GitHub Install: Warning persisting external query pins: %v", err))
+		}
 	}
 
 	// Create symlinks for binaries

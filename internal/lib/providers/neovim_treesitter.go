@@ -180,17 +180,17 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 	repoPath, fullGrammarDir, sourceID, version string,
 	build registry_parser.RegistryItemTreeSitterBuild,
 	externalDownloadsAllowed bool,
-) error {
+) (*local_packages_parser.TreeSitterExternalQueryPin, error) {
 	lang := strings.TrimSpace(build.Language)
 	if lang == "" {
-		return nil
+		return nil, nil
 	}
 	if !TreeSitterBuildDeclaresNeovimIntegration(build) || !integrationEnabled("neovim") {
-		return nil
+		return nil, nil
 	}
 	dest := neovimTreeSitterQueriesCacheDir(sourceID, version, lang)
 	if err := os.RemoveAll(dest); err != nil {
-		return fmt.Errorf("clear cached queries for %s: %w", lang, err)
+		return nil, fmt.Errorf("clear cached queries for %s: %w", lang, err)
 	}
 
 	repoURL := ""
@@ -198,39 +198,54 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 		repoURL = strings.TrimSpace(build.ExternalQueries.RepoURL)
 	}
 	if repoURL != "" {
+		lockRepo, lockRef, haveLock := externalQueryLockPinFromLocalLock(sourceID, version, lang)
+		if haveLock && !externalQueryRepoURLsEqual(lockRepo, repoURL) {
+			haveLock = false
+		}
+		var lockR, lockRefVal string
+		if haveLock {
+			lockR, lockRefVal = lockRepo, lockRef
+		}
 		cloneDir := filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), "external-query-clones", lang)
 		cloneTitle := fmt.Sprintf("Cloning external tree-sitter queries (%s)...", lang)
+		var resolved string
 		var cloneErr error
 		if spinErr := spinnerutil.RunIfTTY(cloneTitle, func() {
-			cloneErr = shallowCloneExternalQueriesRepo(
+			resolved, cloneErr = cloneExternalQueriesRepo(
 				repoURL,
 				cloneDir,
 				build.ExternalQueries.Ref,
 				build.ExternalQueries.Semver,
+				lockR,
+				lockRefVal,
 			)
 		}); spinErr != nil {
-			return fmt.Errorf("external queries for %s: %w", lang, spinErr)
+			return nil, fmt.Errorf("external queries for %s: %w", lang, spinErr)
 		}
 		if cloneErr != nil {
-			return fmt.Errorf("external queries for %s: %w", lang, cloneErr)
+			return nil, fmt.Errorf("external queries for %s: %w", lang, cloneErr)
 		}
 		extSrc := resolveNeovimTreeSitterQueriesDir(cloneDir, cloneDir)
 		if extSrc == "" {
-			return fmt.Errorf("external queries repo %s has no queries/ directory usable for language %s", repoURL, lang)
+			return nil, fmt.Errorf("external queries repo %s has no queries/ directory usable for language %s", repoURL, lang)
 		}
 		if err := copyNeovimTreeSitterQueriesDir(extSrc, dest, build.Inherits); err != nil {
-			return fmt.Errorf("cache external tree-sitter queries for %s: %w", lang, err)
+			return nil, fmt.Errorf("cache external tree-sitter queries for %s: %w", lang, err)
 		}
-		return nil
+		return &local_packages_parser.TreeSitterExternalQueryPin{
+			Language: lang,
+			RepoURL:  repoURL,
+			Ref:      resolved,
+		}, nil
 	}
 
 	if src := resolveNeovimTreeSitterQueriesDir(repoPath, fullGrammarDir); src != "" {
 		if err := copyNeovimTreeSitterQueriesDir(src, dest, build.Inherits); err != nil {
-			return fmt.Errorf("cache tree-sitter queries for %s: %w", lang, err)
+			return nil, fmt.Errorf("cache tree-sitter queries for %s: %w", lang, err)
 		}
-		return nil
+		return nil, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func cacheNeovimTreeSitterQueriesForBuiltLangs(
@@ -238,7 +253,8 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 	build []registry_parser.RegistryItemTreeSitterBuild,
 	builtLangs []string,
 	externalDownloadsOverride *bool,
-) error {
+) ([]local_packages_parser.TreeSitterExternalQueryPin, error) {
+	var pins []local_packages_parser.TreeSitterExternalQueryPin
 	want := map[string]struct{}{}
 	for _, l := range builtLangs {
 		l = strings.TrimSpace(l)
@@ -256,7 +272,7 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 				var err error
 				externalDownloadsAllowed, err = batchConfirmExternalTreeSitterQueries(sourceID, needs)
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 		}
@@ -271,11 +287,15 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			continue
 		}
 		fullGrammarDir := filepath.Join(repoPath, filepath.FromSlash(grammarDir))
-		if err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, b, externalDownloadsAllowed); err != nil {
-			return err
+		pin, err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, b, externalDownloadsAllowed)
+		if err != nil {
+			return nil, err
+		}
+		if pin != nil {
+			pins = append(pins, *pin)
 		}
 	}
-	return nil
+	return pins, nil
 }
 
 func detectNeovimDataPath() (string, error) {
@@ -630,33 +650,37 @@ type buildTreeSitterOpts struct {
 	ExternalDownloads *bool
 }
 
-func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_parser.RegistryItem, version string, opts *buildTreeSitterOpts) error {
+func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_parser.RegistryItem, version string, opts *buildTreeSitterOpts) ([]local_packages_parser.TreeSitterExternalQueryPin, error) {
 	if !IsTreeSitterCategory(registryItem.Categories) {
-		return nil
+		return nil, nil
 	}
 	if registryItem.TreeSitter == nil || len(registryItem.TreeSitter.Build) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if opts == nil || !opts.SkipInheritDependencies {
 		if err := ensureNeovimTreeSitterInheritDependencies(registryItem); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	langs, err := BuildTreeSitterParsersToCache(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var ext *bool
 	if opts != nil {
 		ext = opts.ExternalDownloads
 	}
-	if err := cacheNeovimTreeSitterQueriesForBuiltLangs(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build, langs, ext); err != nil {
-		return err
+	pins, err := cacheNeovimTreeSitterQueriesForBuiltLangs(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build, langs, ext)
+	if err != nil {
+		return nil, err
 	}
 	neovimLangs := FilterLanguagesForNeovimTreeSitterIntegration(registryItem.TreeSitter.Build, langs)
-	return installNeovimParsersFromCache(registryItem.Source.ID, version, neovimLangs)
+	if err := installNeovimParsersFromCache(registryItem.Source.ID, version, neovimLangs); err != nil {
+		return nil, err
+	}
+	return pins, nil
 }
 
 func removeNeovimTreeSitterParsers(registryItem registry_parser.RegistryItem) error {
