@@ -179,7 +179,7 @@ func copyNeovimTreeSitterQueriesDir(src, dst string, inherits []string) error {
 func cacheNeovimTreeSitterQueriesAfterBuild(
 	repoPath, fullGrammarDir, sourceID, version string,
 	build registry_parser.RegistryItemTreeSitterBuild,
-	externalDownloadsAllowed bool,
+	allowExternalQueryClone func(string) bool,
 ) (*local_packages_parser.TreeSitterExternalQueryPin, error) {
 	lang := strings.TrimSpace(build.Language)
 	if lang == "" {
@@ -194,7 +194,7 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 	}
 
 	repoURL := ""
-	if build.ExternalQueries != nil && externalDownloadsAllowed {
+	if build.ExternalQueries != nil && allowExternalQueryClone(lang) {
 		repoURL = strings.TrimSpace(build.ExternalQueries.RepoURL)
 	}
 	if repoURL != "" {
@@ -252,7 +252,7 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 	repoPath, sourceID, version string,
 	build []registry_parser.RegistryItemTreeSitterBuild,
 	builtLangs []string,
-	externalDownloadsOverride *bool,
+	externalPreflight *ExternalQueryPreflightChoice,
 ) ([]local_packages_parser.TreeSitterExternalQueryPin, error) {
 	var pins []local_packages_parser.TreeSitterExternalQueryPin
 	want := map[string]struct{}{}
@@ -262,19 +262,48 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			want[l] = struct{}{}
 		}
 	}
-	externalDownloadsAllowed := true
-	if integrationEnabled("neovim") {
-		if externalDownloadsOverride != nil {
-			externalDownloadsAllowed = *externalDownloadsOverride
-		} else {
-			needs := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
-			if len(needs) > 0 {
-				var err error
-				externalDownloadsAllowed, err = batchConfirmExternalTreeSitterQueries(sourceID, needs)
-				if err != nil {
-					return nil, err
-				}
+	var allowExternalQueryClone func(string) bool
+	if !integrationEnabled("neovim") {
+		allowExternalQueryClone = func(string) bool { return false }
+	} else if externalPreflight != nil {
+		needs := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
+		allowUnpinned := externalPreflight.AllowUnpinned
+		pinned := make(map[string]struct{}, len(needs))
+		for _, n := range needs {
+			if externalQueryLockCoversNeed(sourceID, version, n) {
+				pinned[strings.ToLower(strings.TrimSpace(n.Lang))] = struct{}{}
 			}
+		}
+		allowExternalQueryClone = func(lang string) bool {
+			lk := strings.ToLower(strings.TrimSpace(lang))
+			if _, ok := pinned[lk]; ok {
+				return true
+			}
+			return allowUnpinned
+		}
+	} else {
+		needs := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
+		needsConfirm := externalQueryNeedsStillRequiringConfirm(sourceID, version, needs)
+		allowUnpinned := true
+		var err error
+		if len(needsConfirm) > 0 {
+			allowUnpinned, err = batchConfirmExternalTreeSitterQueries(sourceID, needsConfirm)
+			if err != nil {
+				return nil, err
+			}
+		}
+		pinned := make(map[string]struct{}, len(needs))
+		for _, n := range needs {
+			if externalQueryLockCoversNeed(sourceID, version, n) {
+				pinned[strings.ToLower(strings.TrimSpace(n.Lang))] = struct{}{}
+			}
+		}
+		allowExternalQueryClone = func(lang string) bool {
+			lk := strings.ToLower(strings.TrimSpace(lang))
+			if _, ok := pinned[lk]; ok {
+				return true
+			}
+			return allowUnpinned
 		}
 	}
 	for _, b := range build {
@@ -287,7 +316,7 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			continue
 		}
 		fullGrammarDir := filepath.Join(repoPath, filepath.FromSlash(grammarDir))
-		pin, err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, b, externalDownloadsAllowed)
+		pin, err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, b, allowExternalQueryClone)
 		if err != nil {
 			return nil, err
 		}
@@ -646,8 +675,9 @@ func ensureNeovimTreeSitterInheritDependencies(registryItem registry_parser.Regi
 // buildTreeSitterOpts configures buildAndMaybeIntegrateTreeSitter for phased GitHub installs.
 type buildTreeSitterOpts struct {
 	SkipInheritDependencies bool
-	// ExternalDownloads, when non-nil, skips the external-query batch confirm and uses this value.
-	ExternalDownloads *bool
+	// ExternalQueryPreflight, when non-nil, skips the external-query batch confirm in the cache step
+	// and applies AllowUnpinned only to languages without a matching lock pin.
+	ExternalQueryPreflight *ExternalQueryPreflightChoice
 }
 
 func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_parser.RegistryItem, version string, opts *buildTreeSitterOpts) ([]local_packages_parser.TreeSitterExternalQueryPin, error) {
@@ -668,11 +698,11 @@ func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_par
 	if err != nil {
 		return nil, err
 	}
-	var ext *bool
+	var pre *ExternalQueryPreflightChoice
 	if opts != nil {
-		ext = opts.ExternalDownloads
+		pre = opts.ExternalQueryPreflight
 	}
-	pins, err := cacheNeovimTreeSitterQueriesForBuiltLangs(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build, langs, ext)
+	pins, err := cacheNeovimTreeSitterQueriesForBuiltLangs(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build, langs, pre)
 	if err != nil {
 		return nil, err
 	}
