@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": ["packages"],
   "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
     "packages": {
       "type": "array",
       "items": {
