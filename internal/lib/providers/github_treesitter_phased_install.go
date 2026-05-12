@@ -29,15 +29,15 @@ func GitHubTreeSitterUsesPhasedInteractiveInstall(sourceID string, registryItem 
 }
 
 type githubTreeSitterDeferredState struct {
-	p                 *GitHubProvider
-	sourceID          string
-	repo              string
-	repoPath          string
-	resolvedVersion   string
-	registryItem      registry_parser.RegistryItem
-	externalOverride  *bool // nil: cache step runs its own confirm; non-nil: use this (preflight already asked)
-	builtLangs        []string
-	externalQueryPins []local_packages_parser.TreeSitterExternalQueryPin
+	p                      *GitHubProvider
+	sourceID               string
+	repo                   string
+	repoPath               string
+	resolvedVersion        string
+	registryItem           registry_parser.RegistryItem
+	externalQueryPreflight *ExternalQueryPreflightChoice // nil: cache step runs lock-aware confirm; non-nil: preflight already asked
+	builtLangs             []string
+	externalQueryPins      []local_packages_parser.TreeSitterExternalQueryPin
 }
 
 var githubTreeSitterDeferred *githubTreeSitterDeferredState
@@ -100,24 +100,28 @@ func GitHubTreeSitterPreflightInteractive(sourceID, resolvedVersion string) erro
 
 	planned := plannedTreeSitterBuildLanguages(reg.TreeSitter.Build)
 	needs := collectExternalTreeSitterQueryNeeds(repoPath, reg.TreeSitter.Build, planned)
-	var ext *bool
-	if len(needs) > 0 {
-		allow, err := batchConfirmExternalTreeSitterQueries(sourceID, needs)
+	needsConfirm := externalQueryNeedsStillRequiringConfirm(sourceID, ver, needs)
+	var pre *ExternalQueryPreflightChoice
+	if len(needsConfirm) > 0 {
+		allow, err := batchConfirmExternalTreeSitterQueries(sourceID, needsConfirm)
 		if err != nil {
 			clearGitHubTreeSitterDeferred()
 			return err
 		}
-		ext = &allow
+		pre = &ExternalQueryPreflightChoice{AllowUnpinned: allow}
+	} else if len(needs) > 0 {
+		// All external-query languages are already pinned in the lockfile at this version.
+		pre = &ExternalQueryPreflightChoice{AllowUnpinned: false}
 	}
 
 	githubTreeSitterDeferred = &githubTreeSitterDeferredState{
-		p:                p,
-		sourceID:         sourceID,
-		repo:             repo,
-		repoPath:         repoPath,
-		resolvedVersion:  ver,
-		registryItem:     reg,
-		externalOverride: ext,
+		p:                      p,
+		sourceID:               sourceID,
+		repo:                   repo,
+		repoPath:               repoPath,
+		resolvedVersion:        ver,
+		registryItem:           reg,
+		externalQueryPreflight: pre,
 	}
 	return nil
 }
@@ -155,7 +159,7 @@ func GitHubTreeSitterPhaseCacheNeovimQueries(sourceID, resolvedVersion string) b
 		d.resolvedVersion,
 		d.registryItem.TreeSitter.Build,
 		d.builtLangs,
-		d.externalOverride,
+		d.externalQueryPreflight,
 	)
 	if err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error caching Neovim tree-sitter queries: %v", err))

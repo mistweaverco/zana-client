@@ -106,3 +106,65 @@ func TestParseExternalTreeSitterQueriesPolicy_Invalid(t *testing.T) {
 	_, err := parseExternalTreeSitterQueriesPolicy("sometimes")
 	require.Error(t, err)
 }
+
+func TestExternalQueryNeedsStillRequiringConfirm_FiltersLockPinned(t *testing.T) {
+	prev := externalQueryLockPinForConfirmFilter
+	externalQueryLockPinForConfirmFilter = func(sourceID, version, lang string) (string, string, bool) {
+		if lang == "hcl" {
+			return "https://example.com/nvim-treesitter-queries-hcl", "abc123def456", true
+		}
+		return "", "", false
+	}
+	t.Cleanup(func() { externalQueryLockPinForConfirmFilter = prev })
+
+	needs := []externalQueryNeed{
+		{Lang: "hcl", URL: "https://example.com/nvim-treesitter-queries-hcl"},
+		{Lang: "lua", URL: "https://example.com/other-queries"},
+	}
+	got := externalQueryNeedsStillRequiringConfirm("github:demo/grammar", "v1.0.0", needs)
+	require.Len(t, got, 1)
+	require.Equal(t, "lua", got[0].Lang)
+}
+
+func TestExternalQueryLockCoversNeed_URLMismatchStillRequiresConfirm(t *testing.T) {
+	prev := externalQueryLockPinForConfirmFilter
+	externalQueryLockPinForConfirmFilter = func(_, _, lang string) (string, string, bool) {
+		if lang == "hcl" {
+			return "https://example.com/different-repo", "abc123", true
+		}
+		return "", "", false
+	}
+	t.Cleanup(func() { externalQueryLockPinForConfirmFilter = prev })
+
+	n := externalQueryNeed{Lang: "hcl", URL: "https://example.com/nvim-treesitter-queries-hcl"}
+	require.False(t, externalQueryLockCoversNeed("github:demo/grammar", "v1.0.0", n))
+}
+
+func TestBatchConfirmExternalTreeSitterQueries_SkippedWhenNeedsEmptyAfterLockFilter(t *testing.T) {
+	t.Cleanup(func() { _ = SetExternalTreeSitterQueriesPolicy("ask") })
+	require.NoError(t, SetExternalTreeSitterQueriesPolicy("ask"))
+
+	prev := externalTreeSitterQueriesConfirmHook
+	externalTreeSitterQueriesConfirmHook = func(_, _ string) (bool, error) {
+		t.Fatal("confirm hook should not run when every need is lock-pinned")
+		return false, nil
+	}
+	t.Cleanup(func() { externalTreeSitterQueriesConfirmHook = prev })
+
+	prevPin := externalQueryLockPinForConfirmFilter
+	externalQueryLockPinForConfirmFilter = func(_, _, lang string) (string, string, bool) {
+		if lang == "hcl" {
+			return "https://example.com/q", "deadbeef", true
+		}
+		return "", "", false
+	}
+	t.Cleanup(func() { externalQueryLockPinForConfirmFilter = prevPin })
+
+	needs := []externalQueryNeed{{Lang: "hcl", URL: "https://example.com/q"}}
+	confirm := externalQueryNeedsStillRequiringConfirm("github:demo/pkg", "v1", needs)
+	require.Empty(t, confirm)
+
+	ok, err := batchConfirmExternalTreeSitterQueries("github:demo/pkg", confirm)
+	require.NoError(t, err)
+	require.True(t, ok)
+}

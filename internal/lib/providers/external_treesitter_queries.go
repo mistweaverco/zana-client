@@ -79,6 +79,35 @@ func externalQueryLockPinFromLocalLock(sourceID, version, lang string) (repoURL,
 	return "", "", false
 }
 
+// externalQueryLockPinForConfirmFilter is the lock lookup used when deciding whether to prompt for
+// external query clones; tests may replace it.
+var externalQueryLockPinForConfirmFilter = externalQueryLockPinFromLocalLock
+
+func externalQueryLockCoversNeed(sourceID, version string, n externalQueryNeed) bool {
+	lockRepo, lockRef, ok := externalQueryLockPinForConfirmFilter(sourceID, version, n.Lang)
+	if !ok || strings.TrimSpace(lockRef) == "" {
+		return false
+	}
+	return externalQueryRepoURLsEqual(lockRepo, n.URL)
+}
+
+// externalQueryNeedsStillRequiringConfirm returns only those external query needs for which the
+// lockfile does not already record an acceptable pin (same grammar version, repo URL, non-empty ref).
+// Sync and reinstall can then skip re-prompting for those languages.
+func externalQueryNeedsStillRequiringConfirm(sourceID, version string, needs []externalQueryNeed) []externalQueryNeed {
+	if len(needs) == 0 {
+		return nil
+	}
+	var out []externalQueryNeed
+	for _, n := range needs {
+		if externalQueryLockCoversNeed(sourceID, version, n) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
 // cloneExternalQueriesRepo clones repoURL into destDir, optionally checking out a tag/branch/commit.
 // When lockRef is set and lockRepoURL matches repoURL, lockRef is used instead of registry semver/ref.
 // Returns the resolved full commit SHA of HEAD.
@@ -190,6 +219,13 @@ func ConfigureExternalTreeSitterQueriesFromCLI(flagExplicit bool, flagValue stri
 type externalQueryNeed struct {
 	Lang string
 	URL  string
+}
+
+// ExternalQueryPreflightChoice records phased-install preflight consent for optional external query
+// git clones. When non-nil, the cache step skips batch confirmation. AllowUnpinned applies only to
+// languages not already covered by a matching lockfile pin (same grammar version, repo URL, ref).
+type ExternalQueryPreflightChoice struct {
+	AllowUnpinned bool
 }
 
 // plannedTreeSitterBuildLanguages returns every non-empty language from the registry build list
