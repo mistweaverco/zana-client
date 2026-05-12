@@ -3,6 +3,7 @@ package local_packages_parser
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -19,6 +20,16 @@ type LocalPackageItem struct {
 
 type PackageExtras struct {
 	Integrations []string `json:"integrations,omitempty"`
+	// TreeSitterExternalQueries pins optional external query-only git deps per language (commit SHA)
+	// so zana sync can reproduce the same query trees without re-resolving semver.
+	TreeSitterExternalQueries []TreeSitterExternalQueryPin `json:"treesitter_external_queries,omitempty"`
+}
+
+// TreeSitterExternalQueryPin records the resolved git revision for an external_queries repo.
+type TreeSitterExternalQueryPin struct {
+	Language string `json:"language"`
+	RepoURL  string `json:"repo_url"`
+	Ref      string `json:"ref"` // full commit SHA from git rev-parse HEAD after clone
 }
 
 type LocalPackageRoot struct {
@@ -149,6 +160,65 @@ write:
 	return nil
 }
 
+// MergePackageTreeSitterExternalQueryPins upserts per-language pins for optional external query
+// query git clones (commit SHA + repo URL). The lock row must already exist for sourceID.
+func (lpp *LocalPackagesParser) MergePackageTreeSitterExternalQueryPins(sourceID string, pins []TreeSitterExternalQueryPin) error {
+	sourceID = normalizePackageID(sourceID)
+	if strings.TrimSpace(sourceID) == "" || len(pins) == 0 {
+		return nil
+	}
+
+	root := lpp.GetData(false)
+	for i := range root.Packages {
+		if root.Packages[i].SourceID != sourceID {
+			continue
+		}
+		if root.Packages[i].Extras == nil {
+			root.Packages[i].Extras = &PackageExtras{}
+		}
+		byLang := map[string]TreeSitterExternalQueryPin{}
+		for _, p := range root.Packages[i].Extras.TreeSitterExternalQueries {
+			l := strings.ToLower(strings.TrimSpace(p.Language))
+			if l != "" {
+				byLang[l] = p
+			}
+		}
+		for _, p := range pins {
+			l := strings.ToLower(strings.TrimSpace(p.Language))
+			if l == "" || strings.TrimSpace(p.Ref) == "" {
+				continue
+			}
+			byLang[l] = TreeSitterExternalQueryPin{
+				Language: strings.TrimSpace(p.Language),
+				RepoURL:  strings.TrimSpace(p.RepoURL),
+				Ref:      strings.TrimSpace(p.Ref),
+			}
+		}
+		merged := make([]TreeSitterExternalQueryPin, 0, len(byLang))
+		for _, p := range byLang {
+			merged = append(merged, p)
+		}
+		sort.Slice(merged, func(a, b int) bool {
+			return strings.ToLower(merged[a].Language) < strings.ToLower(merged[b].Language)
+		})
+		root.Packages[i].Extras.TreeSitterExternalQueries = merged
+
+		root.Schema = lockSchemaURL
+		localPackagesFile := lpp.fileManager.GetAppLocalPackagesFilePath()
+		jsonData, err := marshalIndent(root, "", "  ")
+		if err != nil {
+			fmt.Println("Error marshaling JSON:", err)
+			return err
+		}
+		if err := lpp.fileManager.WriteFile(localPackagesFile, jsonData, 0644); err != nil {
+			fmt.Println("Error writing to file:", err)
+			return err
+		}
+		return nil
+	}
+	return nil
+}
+
 // GetDataForProvider returns the local packages data
 // for a specific provider. Supports both legacy (pkg:provider/pkg) and new (provider:pkg) formats.
 func (lpp *LocalPackagesParser) GetDataForProvider(provider string) LocalPackageRoot {
@@ -178,6 +248,9 @@ func (lpp *LocalPackagesParser) AddLocalPackage(sourceId string, version string)
 	// Check if the package is already installed (compare normalized IDs)
 	for i, pkg := range localPackageRoot.Packages {
 		if pkg.SourceID == normalizedID {
+			if pkg.Version != version && localPackageRoot.Packages[i].Extras != nil {
+				localPackageRoot.Packages[i].Extras.TreeSitterExternalQueries = nil
+			}
 			// Update the existing package with the new version
 			localPackageRoot.Packages[i].Version = version
 			packageExists = true
@@ -284,6 +357,10 @@ func RemoveLocalPackage(sourceId string) error {
 
 func MergePackageIntegrations(sourceId string, integrations []string) error {
 	return globalParser.MergePackageIntegrations(sourceId, integrations)
+}
+
+func MergePackageTreeSitterExternalQueryPins(sourceId string, pins []TreeSitterExternalQueryPin) error {
+	return globalParser.MergePackageTreeSitterExternalQueryPins(sourceId, pins)
 }
 
 func GetBySourceId(sourceId string) LocalPackageItem {

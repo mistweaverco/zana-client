@@ -37,6 +37,32 @@
                   "enum": ["neovim"]
                 },
                 "uniqueItems": true
+              },
+              "treesitter_external_queries": {
+                "type": "array",
+                "description": "Pinned git revisions (full commit SHA) for optional Neovim tree-sitter external_queries repos, per grammar language. Used on sync to reproduce the same query trees.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["language", "repo_url", "ref"],
+                  "properties": {
+                    "language": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Tree-sitter language id matching the registry build row."
+                    },
+                    "repo_url": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Git remote URL of the queries-only repo (must match registry when applying the pin)."
+                    },
+                    "ref": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Resolved commit SHA (e.g. from git rev-parse HEAD after clone)."
+                    }
+                  }
+                }
               }
             }
           }
