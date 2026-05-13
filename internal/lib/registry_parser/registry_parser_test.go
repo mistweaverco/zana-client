@@ -1,6 +1,7 @@
 package registry_parser
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -28,6 +29,25 @@ func TestRegistryItemSource(t *testing.T) {
 	t.Run("registry item source structure", func(t *testing.T) {
 		source := RegistryItemSource{ID: "pkg:npm/test-package"}
 		assert.Equal(t, "pkg:npm/test-package", source.ID)
+	})
+}
+
+func TestTreeSitterExternalQueriesList_UnmarshalJSON(t *testing.T) {
+	t.Run("single object", func(t *testing.T) {
+		var list TreeSitterExternalQueriesList
+		require.NoError(t, json.Unmarshal([]byte(`{"repo_url":"https://a/x","semver":true}`), &list))
+		require.Len(t, list, 1)
+		assert.Equal(t, "https://a/x", list[0].RepoURL)
+		assert.True(t, list[0].Semver)
+	})
+	t.Run("array", func(t *testing.T) {
+		var list TreeSitterExternalQueriesList
+		require.NoError(t, json.Unmarshal([]byte(`[{"repo_url":"https://a/x"},{"repo_url":"https://b/y","semver":true}]`), &list))
+		require.Len(t, list, 2)
+		assert.Equal(t, "https://a/x", list[0].RepoURL)
+		assert.False(t, list[0].Semver)
+		assert.Equal(t, "https://b/y", list[1].RepoURL)
+		assert.True(t, list[1].Semver)
 	})
 }
 

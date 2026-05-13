@@ -44,7 +44,7 @@
               },
               "treesitter_external_queries": {
                 "type": "array",
-                "description": "Pinned git revisions (full commit SHA) for optional Neovim tree-sitter external_queries repos, per grammar language. Used on sync to reproduce the same query trees.",
+                "description": "Pinned git revisions (full commit SHA) for optional Neovim tree-sitter external_queries repos. Multiple entries may share the same language when several query-only repositories apply; each row is keyed by language plus repo_url.",
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
