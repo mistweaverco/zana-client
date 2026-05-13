@@ -266,7 +266,10 @@ func collectExternalTreeSitterQueryNeeds(
 	for _, b := range build {
 		lang := strings.TrimSpace(b.Language)
 		grammarDir := strings.TrimSpace(b.GrammarDir)
-		if lang == "" || grammarDir == "" {
+		if lang == "" {
+			continue
+		}
+		if !b.QueriesOnly && grammarDir == "" {
 			continue
 		}
 		if !TreeSitterBuildDeclaresNeovimIntegration(b) {

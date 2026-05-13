@@ -180,7 +180,8 @@ func GitHubTreeSitterPhaseRegisterPackage(sourceID, resolvedVersion string) bool
 	}
 	defer clearGitHubTreeSitterDeferred()
 
-	if err := installNeovimParsersFromCache(d.sourceID, d.resolvedVersion, d.builtLangs); err != nil {
+	queryOnly := queryOnlyNeovimLanguagesForInstall(d.registryItem.TreeSitter.Build, d.builtLangs)
+	if err := installNeovimParsersAndQueriesFromCache(d.sourceID, d.resolvedVersion, d.builtLangs, queryOnly); err != nil {
 		Logger.Error(fmt.Sprintf("GitHub Install: Error installing Neovim parsers: %v", err))
 		return false
 	}

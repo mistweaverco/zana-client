@@ -77,6 +77,13 @@ func TestRegistryItem(t *testing.T) {
 	})
 }
 
+func TestRegistryItemTreeSitterBuild_QueriesOnlyJSON(t *testing.T) {
+	var build RegistryItemTreeSitterBuild
+	require.NoError(t, json.Unmarshal([]byte(`{"language":"html_tags","queries_only":true}`), &build))
+	assert.Equal(t, "html_tags", build.Language)
+	assert.True(t, build.QueriesOnly)
+}
+
 func TestNewRegistryParser(t *testing.T) {
 	t.Run("creates new registry parser with file reader", func(t *testing.T) {
 		mockReader := &mockFileReader{}
