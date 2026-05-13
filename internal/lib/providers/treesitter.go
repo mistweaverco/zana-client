@@ -78,15 +78,29 @@ func BuildTreeSitterParsersToCache(
 	if strings.TrimSpace(version) == "" {
 		version = "unknown"
 	}
-	if !HasTreeSitterCLI() {
+	needsParserBuild := false
+	for _, b := range build {
+		if !b.QueriesOnly {
+			needsParserBuild = true
+			break
+		}
+	}
+	if needsParserBuild && !HasTreeSitterCLI() {
 		return nil, fmt.Errorf("tree-sitter CLI not found in PATH (required to build parsers from source)")
 	}
 
 	var built []string
 	for _, b := range build {
 		lang := strings.TrimSpace(b.Language)
+		if lang == "" {
+			continue
+		}
+		if b.QueriesOnly {
+			built = append(built, lang)
+			continue
+		}
 		grammarDir := strings.TrimSpace(b.GrammarDir)
-		if lang == "" || grammarDir == "" {
+		if grammarDir == "" {
 			continue
 		}
 

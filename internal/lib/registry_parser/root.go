@@ -208,6 +208,7 @@ type RegistryItemTreeSitterBuild struct {
 	GrammarDir      string                        `json:"grammar_dir"`
 	Integrations    []string                      `json:"integrations"`
 	Inherits        []string                      `json:"inherits,omitempty"`
+	QueriesOnly     bool                          `json:"queries_only,omitempty"`
 	ExternalQueries TreeSitterExternalQueriesList `json:"external_queries,omitempty"`
 }
 

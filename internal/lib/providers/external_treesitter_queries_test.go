@@ -93,6 +93,23 @@ func TestCollectExternalTreeSitterQueryNeeds_MultipleReposSameLang(t *testing.T)
 	require.Contains(t, urls, "https://github.com/neovim-treesitter/nvim-treesitter-queries-html_tags")
 }
 
+func TestCollectExternalTreeSitterQueryNeeds_QueriesOnlyWithoutGrammarDir(t *testing.T) {
+	build := []registry_parser.RegistryItemTreeSitterBuild{
+		{
+			Language:     "html_tags",
+			QueriesOnly:  true,
+			Integrations: []string{"neovim"},
+			ExternalQueries: registry_parser.TreeSitterExternalQueriesList{
+				{RepoURL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-html_tags"},
+			},
+		},
+	}
+	got := collectExternalTreeSitterQueryNeeds(t.TempDir(), build, []string{"html_tags"})
+	require.Len(t, got, 1)
+	require.Equal(t, "html_tags", got[0].Lang)
+	require.Contains(t, got[0].URL, "html_tags")
+}
+
 func TestCollectExternalTreeSitterQueryNeeds_SkipsWhenBuildDoesNotTargetNeovim(t *testing.T) {
 	repo := t.TempDir()
 	gram := filepath.Join(repo, "g")

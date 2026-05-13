@@ -68,7 +68,8 @@ func SyncAllFromLock() error {
 			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
 			continue
 		}
-		if err := installNeovimParsersFromCache(item.Source.ID, version, langs); err != nil && firstErr == nil {
+		queryOnly := queryOnlyNeovimLanguagesForInstall(item.TreeSitter.Build, langs)
+		if err := installNeovimParsersAndQueriesFromCache(item.Source.ID, version, langs, queryOnly); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
 		}
 	}

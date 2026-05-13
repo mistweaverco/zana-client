@@ -97,3 +97,27 @@ func TestBuildTreeSitterParsersToCache_FailsWithoutCLI(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 }
+
+func TestBuildTreeSitterParsersToCache_QueriesOnlySkipsCLIAndBuild(t *testing.T) {
+	oldHas := treeSitterHasCommand
+	oldShellCapture := treeSitterShellOutCapture
+	t.Cleanup(func() {
+		treeSitterHasCommand = oldHas
+		treeSitterShellOutCapture = oldShellCapture
+	})
+	treeSitterHasCommand = func(cmd string, args []string, env []string) bool { return false }
+	treeSitterShellOutCapture = func(command string, args []string, dir string, env []string) (int, string, error) {
+		t.Fatalf("queries-only build should not call %s %#v", command, args)
+		return 1, "", nil
+	}
+
+	langs, err := BuildTreeSitterParsersToCache("/tmp/repo", "github:x/y", "v1", []registry_parser.RegistryItemTreeSitterBuild{
+		{Language: "html_tags", QueriesOnly: true, Integrations: []string{"neovim"}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(langs) != 1 || langs[0] != "html_tags" {
+		t.Fatalf("unexpected languages: %#v", langs)
+	}
+}
