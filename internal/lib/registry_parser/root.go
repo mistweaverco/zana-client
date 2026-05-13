@@ -1,6 +1,7 @@
 package registry_parser
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -176,12 +177,38 @@ type RegistryItemTreeSitterExternalQueries struct {
 	Semver bool `json:"semver,omitempty"`
 }
 
+// TreeSitterExternalQueriesList unmarshals external_queries as either one object or an array
+// (matching package YAML / compiled registry JSON).
+type TreeSitterExternalQueriesList []RegistryItemTreeSitterExternalQueries
+
+func (l *TreeSitterExternalQueriesList) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		*l = nil
+		return nil
+	}
+	if data[0] == '[' {
+		var sl []RegistryItemTreeSitterExternalQueries
+		if err := json.Unmarshal(data, &sl); err != nil {
+			return err
+		}
+		*l = sl
+		return nil
+	}
+	var one RegistryItemTreeSitterExternalQueries
+	if err := json.Unmarshal(data, &one); err != nil {
+		return err
+	}
+	*l = []RegistryItemTreeSitterExternalQueries{one}
+	return nil
+}
+
 type RegistryItemTreeSitterBuild struct {
-	Language        string                                 `json:"language"`
-	GrammarDir      string                                 `json:"grammar_dir"`
-	Integrations    []string                               `json:"integrations"`
-	Inherits        []string                               `json:"inherits,omitempty"`
-	ExternalQueries *RegistryItemTreeSitterExternalQueries `json:"external_queries,omitempty"`
+	Language        string                        `json:"language"`
+	GrammarDir      string                        `json:"grammar_dir"`
+	Integrations    []string                      `json:"integrations"`
+	Inherits        []string                      `json:"inherits,omitempty"`
+	ExternalQueries TreeSitterExternalQueriesList `json:"external_queries,omitempty"`
 }
 
 type RegistryItemTreeSitter struct {

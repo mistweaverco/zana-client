@@ -20,12 +20,14 @@ type LocalPackageItem struct {
 
 type PackageExtras struct {
 	Integrations []string `json:"integrations,omitempty"`
-	// TreeSitterExternalQueries pins optional external query-only git deps per language (commit SHA)
-	// so zana sync can reproduce the same query trees without re-resolving semver.
+	// TreeSitterExternalQueries pins optional external query-only git deps (commit SHA per repo URL)
+	// so zana sync can reproduce the same query trees without re-resolving semver. Multiple rows may
+	// share the same language when several query-only repositories apply.
 	TreeSitterExternalQueries []TreeSitterExternalQueryPin `json:"treesitter_external_queries,omitempty"`
 }
 
 // TreeSitterExternalQueryPin records the resolved git revision for an external_queries repo.
+// Multiple pins may share the same language when the registry lists several query-only repositories.
 type TreeSitterExternalQueryPin struct {
 	Language string `json:"language"`
 	RepoURL  string `json:"repo_url"`
@@ -160,8 +162,20 @@ write:
 	return nil
 }
 
-// MergePackageTreeSitterExternalQueryPins upserts per-language pins for optional external query
-// query git clones (commit SHA + repo URL). The lock row must already exist for sourceID.
+func normalizeExternalQueryRepoURLForPin(u string) string {
+	u = strings.TrimSpace(u)
+	u = strings.TrimSuffix(u, "/")
+	u = strings.TrimSuffix(strings.TrimSuffix(u, ".git"), "/")
+	return strings.ToLower(u)
+}
+
+func treeSitterExternalQueryPinKey(lang, repoURL string) string {
+	return strings.ToLower(strings.TrimSpace(lang)) + "\x00" + normalizeExternalQueryRepoURLForPin(repoURL)
+}
+
+// MergePackageTreeSitterExternalQueryPins upserts pins for optional external query git clones
+// (commit SHA + repo URL). The lock row must already exist for sourceID. Multiple repos per
+// language are keyed by language and repo_url together.
 func (lpp *LocalPackagesParser) MergePackageTreeSitterExternalQueryPins(sourceID string, pins []TreeSitterExternalQueryPin) error {
 	sourceID = normalizePackageID(sourceID)
 	if strings.TrimSpace(sourceID) == "" || len(pins) == 0 {
@@ -176,30 +190,39 @@ func (lpp *LocalPackagesParser) MergePackageTreeSitterExternalQueryPins(sourceID
 		if root.Packages[i].Extras == nil {
 			root.Packages[i].Extras = &PackageExtras{}
 		}
-		byLang := map[string]TreeSitterExternalQueryPin{}
+		byKey := map[string]TreeSitterExternalQueryPin{}
 		for _, p := range root.Packages[i].Extras.TreeSitterExternalQueries {
-			l := strings.ToLower(strings.TrimSpace(p.Language))
-			if l != "" {
-				byLang[l] = p
-			}
-		}
-		for _, p := range pins {
-			l := strings.ToLower(strings.TrimSpace(p.Language))
-			if l == "" || strings.TrimSpace(p.Ref) == "" {
+			l := strings.TrimSpace(p.Language)
+			r := strings.TrimSpace(p.RepoURL)
+			if l == "" || r == "" {
 				continue
 			}
-			byLang[l] = TreeSitterExternalQueryPin{
-				Language: strings.TrimSpace(p.Language),
-				RepoURL:  strings.TrimSpace(p.RepoURL),
+			byKey[treeSitterExternalQueryPinKey(l, r)] = p
+		}
+		for _, p := range pins {
+			l := strings.TrimSpace(p.Language)
+			r := strings.TrimSpace(p.RepoURL)
+			if l == "" || r == "" || strings.TrimSpace(p.Ref) == "" {
+				continue
+			}
+			k := treeSitterExternalQueryPinKey(l, r)
+			byKey[k] = TreeSitterExternalQueryPin{
+				Language: l,
+				RepoURL:  r,
 				Ref:      strings.TrimSpace(p.Ref),
 			}
 		}
-		merged := make([]TreeSitterExternalQueryPin, 0, len(byLang))
-		for _, p := range byLang {
+		merged := make([]TreeSitterExternalQueryPin, 0, len(byKey))
+		for _, p := range byKey {
 			merged = append(merged, p)
 		}
 		sort.Slice(merged, func(a, b int) bool {
-			return strings.ToLower(merged[a].Language) < strings.ToLower(merged[b].Language)
+			la := strings.ToLower(merged[a].Language)
+			lb := strings.ToLower(merged[b].Language)
+			if la != lb {
+				return la < lb
+			}
+			return strings.ToLower(merged[a].RepoURL) < strings.ToLower(merged[b].RepoURL)
 		})
 		root.Packages[i].Extras.TreeSitterExternalQueries = merged
 

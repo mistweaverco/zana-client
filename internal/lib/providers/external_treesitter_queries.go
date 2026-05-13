@@ -55,8 +55,8 @@ func externalQueryRepoURLsEqual(a, b string) bool {
 }
 
 // externalQueryLockPinFromLocalLock returns a pinned commit from zana-lock.json when the lock
-// row matches this grammar package version (reproducible sync).
-func externalQueryLockPinFromLocalLock(sourceID, version, lang string) (repoURL, ref string, ok bool) {
+// row matches this grammar package version and optional external query repo URL (reproducible sync).
+func externalQueryLockPinFromLocalLock(sourceID, version, lang, wantRepoURL string) (repoURL, ref string, ok bool) {
 	item := local_packages_parser.GetBySourceId(sourceID)
 	if item.SourceID == "" || strings.TrimSpace(item.Version) != strings.TrimSpace(version) {
 		return "", "", false
@@ -64,13 +64,18 @@ func externalQueryLockPinFromLocalLock(sourceID, version, lang string) (repoURL,
 	if item.Extras == nil {
 		return "", "", false
 	}
-	want := strings.ToLower(strings.TrimSpace(lang))
+	wantLang := strings.ToLower(strings.TrimSpace(lang))
+	wantURL := strings.TrimSpace(wantRepoURL)
 	for _, p := range item.Extras.TreeSitterExternalQueries {
-		if strings.ToLower(strings.TrimSpace(p.Language)) != want {
+		if strings.ToLower(strings.TrimSpace(p.Language)) != wantLang {
+			continue
+		}
+		cand := strings.TrimSpace(p.RepoURL)
+		if wantURL != "" && !externalQueryRepoURLsEqual(cand, wantURL) {
 			continue
 		}
 		ref = strings.TrimSpace(p.Ref)
-		repoURL = strings.TrimSpace(p.RepoURL)
+		repoURL = cand
 		if ref != "" && repoURL != "" {
 			return repoURL, ref, true
 		}
@@ -84,11 +89,15 @@ func externalQueryLockPinFromLocalLock(sourceID, version, lang string) (repoURL,
 var externalQueryLockPinForConfirmFilter = externalQueryLockPinFromLocalLock
 
 func externalQueryLockCoversNeed(sourceID, version string, n externalQueryNeed) bool {
-	lockRepo, lockRef, ok := externalQueryLockPinForConfirmFilter(sourceID, version, n.Lang)
+	lockRepo, lockRef, ok := externalQueryLockPinForConfirmFilter(sourceID, version, n.Lang, n.URL)
 	if !ok || strings.TrimSpace(lockRef) == "" {
 		return false
 	}
 	return externalQueryRepoURLsEqual(lockRepo, n.URL)
+}
+
+func externalQueryNeedKey(lang, repoURL string) string {
+	return strings.ToLower(strings.TrimSpace(lang)) + "\x00" + normalizeExternalQueryRepoURL(repoURL)
 }
 
 // externalQueryNeedsStillRequiringConfirm returns only those external query needs for which the
@@ -223,7 +232,7 @@ type externalQueryNeed struct {
 
 // ExternalQueryPreflightChoice records phased-install preflight consent for optional external query
 // git clones. When non-nil, the cache step skips batch confirmation. AllowUnpinned applies only to
-// languages not already covered by a matching lockfile pin (same grammar version, repo URL, ref).
+// language/repo pairs not already covered by a matching lockfile pin (same grammar version, repo URL, ref).
 type ExternalQueryPreflightChoice struct {
 	AllowUnpinned bool
 }
@@ -266,20 +275,23 @@ func collectExternalTreeSitterQueryNeeds(
 		if _, ok := want[lang]; !ok {
 			continue
 		}
-		if b.ExternalQueries == nil {
+		if len(b.ExternalQueries) == 0 {
 			continue
 		}
-		url := strings.TrimSpace(b.ExternalQueries.RepoURL)
-		if url == "" {
-			continue
+		for _, spec := range b.ExternalQueries {
+			url := strings.TrimSpace(spec.RepoURL)
+			if url == "" {
+				continue
+			}
+			// Registry external_queries always participates in confirm / policy. Upstream repos often
+			// ship a minimal queries/ tree; that must not hide the optional nvim-treesitter-queries-* clone.
+			k := externalQueryNeedKey(lang, url)
+			if _, dup := seen[k]; dup {
+				continue
+			}
+			seen[k] = struct{}{}
+			out = append(out, externalQueryNeed{Lang: lang, URL: url})
 		}
-		// Registry external_queries always participates in confirm / policy. Upstream repos often
-		// ship a minimal queries/ tree; that must not hide the optional nvim-treesitter-queries-* clone.
-		if _, dup := seen[lang]; dup {
-			continue
-		}
-		seen[lang] = struct{}{}
-		out = append(out, externalQueryNeed{Lang: lang, URL: url})
 	}
 	return out
 }

@@ -3,6 +3,7 @@ package providers
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
@@ -34,9 +35,11 @@ func TestCollectExternalTreeSitterQueryNeeds_IncludesWhenRegistryDeclaresExterna
 			Language:     "hcl",
 			GrammarDir:   "g",
 			Integrations: []string{"neovim"},
-			ExternalQueries: &registry_parser.RegistryItemTreeSitterExternalQueries{
-				RepoURL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-hcl",
-				Semver:  true,
+			ExternalQueries: registry_parser.TreeSitterExternalQueriesList{
+				{
+					RepoURL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-hcl",
+					Semver:  true,
+				},
 			},
 		},
 	}
@@ -56,8 +59,8 @@ func TestCollectExternalTreeSitterQueryNeeds_IncludesWhenMissingQueries(t *testi
 			Language:     "hcl",
 			GrammarDir:   "g",
 			Integrations: []string{"neovim"},
-			ExternalQueries: &registry_parser.RegistryItemTreeSitterExternalQueries{
-				RepoURL: "https://example.com/nvim-treesitter-queries-hcl",
+			ExternalQueries: registry_parser.TreeSitterExternalQueriesList{
+				{RepoURL: "https://example.com/nvim-treesitter-queries-hcl"},
 			},
 		},
 	}
@@ -65,6 +68,29 @@ func TestCollectExternalTreeSitterQueryNeeds_IncludesWhenMissingQueries(t *testi
 	require.Len(t, got, 1)
 	require.Equal(t, "hcl", got[0].Lang)
 	require.Equal(t, "https://example.com/nvim-treesitter-queries-hcl", got[0].URL)
+}
+
+func TestCollectExternalTreeSitterQueryNeeds_MultipleReposSameLang(t *testing.T) {
+	repo := t.TempDir()
+	gram := filepath.Join(repo, "g")
+	require.NoError(t, os.MkdirAll(gram, 0o755))
+
+	build := []registry_parser.RegistryItemTreeSitterBuild{
+		{
+			Language:     "html",
+			GrammarDir:   "g",
+			Integrations: []string{"neovim"},
+			ExternalQueries: registry_parser.TreeSitterExternalQueriesList{
+				{RepoURL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-html", Semver: true},
+				{RepoURL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-html_tags", Semver: true},
+			},
+		},
+	}
+	got := collectExternalTreeSitterQueryNeeds(repo, build, []string{"html"})
+	require.Len(t, got, 2)
+	urls := []string{got[0].URL, got[1].URL}
+	require.Contains(t, urls, "https://github.com/neovim-treesitter/nvim-treesitter-queries-html")
+	require.Contains(t, urls, "https://github.com/neovim-treesitter/nvim-treesitter-queries-html_tags")
 }
 
 func TestCollectExternalTreeSitterQueryNeeds_SkipsWhenBuildDoesNotTargetNeovim(t *testing.T) {
@@ -77,8 +103,8 @@ func TestCollectExternalTreeSitterQueryNeeds_SkipsWhenBuildDoesNotTargetNeovim(t
 			Language:     "hcl",
 			GrammarDir:   "g",
 			Integrations: []string{"vscode"},
-			ExternalQueries: &registry_parser.RegistryItemTreeSitterExternalQueries{
-				RepoURL: "https://example.com/nvim-treesitter-queries-hcl",
+			ExternalQueries: registry_parser.TreeSitterExternalQueriesList{
+				{RepoURL: "https://example.com/nvim-treesitter-queries-hcl"},
 			},
 		},
 	}
@@ -109,7 +135,10 @@ func TestParseExternalTreeSitterQueriesPolicy_Invalid(t *testing.T) {
 
 func TestExternalQueryNeedsStillRequiringConfirm_FiltersLockPinned(t *testing.T) {
 	prev := externalQueryLockPinForConfirmFilter
-	externalQueryLockPinForConfirmFilter = func(sourceID, version, lang string) (string, string, bool) {
+	externalQueryLockPinForConfirmFilter = func(sourceID, version, lang, wantRepo string) (string, string, bool) {
+		_ = sourceID
+		_ = version
+		_ = wantRepo
 		if lang == "hcl" {
 			return "https://example.com/nvim-treesitter-queries-hcl", "abc123def456", true
 		}
@@ -128,7 +157,7 @@ func TestExternalQueryNeedsStillRequiringConfirm_FiltersLockPinned(t *testing.T)
 
 func TestExternalQueryLockCoversNeed_URLMismatchStillRequiresConfirm(t *testing.T) {
 	prev := externalQueryLockPinForConfirmFilter
-	externalQueryLockPinForConfirmFilter = func(_, _, lang string) (string, string, bool) {
+	externalQueryLockPinForConfirmFilter = func(_, _, lang, _ string) (string, string, bool) {
 		if lang == "hcl" {
 			return "https://example.com/different-repo", "abc123", true
 		}
@@ -138,6 +167,25 @@ func TestExternalQueryLockCoversNeed_URLMismatchStillRequiresConfirm(t *testing.
 
 	n := externalQueryNeed{Lang: "hcl", URL: "https://example.com/nvim-treesitter-queries-hcl"}
 	require.False(t, externalQueryLockCoversNeed("github:demo/grammar", "v1.0.0", n))
+}
+
+func TestExternalQueryNeedsStillRequiringConfirm_PartialLockPerRepo(t *testing.T) {
+	prev := externalQueryLockPinForConfirmFilter
+	externalQueryLockPinForConfirmFilter = func(_, _, lang, wantRepo string) (string, string, bool) {
+		if lang == "html" && strings.Contains(wantRepo, "queries-html") && !strings.Contains(wantRepo, "html_tags") {
+			return wantRepo, "abc123", true
+		}
+		return "", "", false
+	}
+	t.Cleanup(func() { externalQueryLockPinForConfirmFilter = prev })
+
+	needs := []externalQueryNeed{
+		{Lang: "html", URL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-html"},
+		{Lang: "html", URL: "https://github.com/neovim-treesitter/nvim-treesitter-queries-html_tags"},
+	}
+	got := externalQueryNeedsStillRequiringConfirm("github:demo/html", "v1", needs)
+	require.Len(t, got, 1)
+	require.Contains(t, got[0].URL, "html_tags")
 }
 
 func TestBatchConfirmExternalTreeSitterQueries_SkippedWhenNeedsEmptyAfterLockFilter(t *testing.T) {
@@ -152,7 +200,7 @@ func TestBatchConfirmExternalTreeSitterQueries_SkippedWhenNeedsEmptyAfterLockFil
 	t.Cleanup(func() { externalTreeSitterQueriesConfirmHook = prev })
 
 	prevPin := externalQueryLockPinForConfirmFilter
-	externalQueryLockPinForConfirmFilter = func(_, _, lang string) (string, string, bool) {
+	externalQueryLockPinForConfirmFilter = func(_, _, lang, _ string) (string, string, bool) {
 		if lang == "hcl" {
 			return "https://example.com/q", "deadbeef", true
 		}

@@ -2,6 +2,8 @@ package providers
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
@@ -77,6 +79,11 @@ var NeovimInheritInstallNotifierDone func(sourceID string, resolvedVersion strin
 
 func neovimTreeSitterQueriesCacheDir(sourceID, version, lang string) string {
 	return filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), "queries", lang)
+}
+
+func externalQueryCloneWorkDir(sourceID, version, lang, repoURL string) string {
+	sum := sha256.Sum256([]byte(normalizeExternalQueryRepoURL(repoURL)))
+	return filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), "external-query-clones", lang, hex.EncodeToString(sum[:8]))
 }
 
 // resolveNeovimTreeSitterQueriesDir finds highlights/injections (etc.) for Neovim under a grammar checkout.
@@ -179,8 +186,8 @@ func copyNeovimTreeSitterQueriesDir(src, dst string, inherits []string) error {
 func cacheNeovimTreeSitterQueriesAfterBuild(
 	repoPath, fullGrammarDir, sourceID, version string,
 	build registry_parser.RegistryItemTreeSitterBuild,
-	allowExternalQueryClone func(string) bool,
-) (*local_packages_parser.TreeSitterExternalQueryPin, error) {
+	allowExternalQueryClone func(lang, repoURL string) bool,
+) ([]local_packages_parser.TreeSitterExternalQueryPin, error) {
 	lang := strings.TrimSpace(build.Language)
 	if lang == "" {
 		return nil, nil
@@ -193,12 +200,16 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 		return nil, fmt.Errorf("clear cached queries for %s: %w", lang, err)
 	}
 
-	repoURL := ""
-	if build.ExternalQueries != nil && allowExternalQueryClone(lang) {
-		repoURL = strings.TrimSpace(build.ExternalQueries.RepoURL)
-	}
-	if repoURL != "" {
-		lockRepo, lockRef, haveLock := externalQueryLockPinFromLocalLock(sourceID, version, lang)
+	var pins []local_packages_parser.TreeSitterExternalQueryPin
+	for _, spec := range build.ExternalQueries {
+		repoURL := strings.TrimSpace(spec.RepoURL)
+		if repoURL == "" {
+			continue
+		}
+		if !allowExternalQueryClone(lang, repoURL) {
+			continue
+		}
+		lockRepo, lockRef, haveLock := externalQueryLockPinFromLocalLock(sourceID, version, lang, repoURL)
 		if haveLock && !externalQueryRepoURLsEqual(lockRepo, repoURL) {
 			haveLock = false
 		}
@@ -206,7 +217,7 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 		if haveLock {
 			lockR, lockRefVal = lockRepo, lockRef
 		}
-		cloneDir := filepath.Join(TreeSitterArtifactVersionDir(sourceID, version), "external-query-clones", lang)
+		cloneDir := externalQueryCloneWorkDir(sourceID, version, lang, repoURL)
 		cloneTitle := fmt.Sprintf("Cloning external tree-sitter queries (%s)...", lang)
 		var resolved string
 		var cloneErr error
@@ -214,8 +225,8 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 			resolved, cloneErr = cloneExternalQueriesRepo(
 				repoURL,
 				cloneDir,
-				build.ExternalQueries.Ref,
-				build.ExternalQueries.Semver,
+				spec.Ref,
+				spec.Semver,
 				lockR,
 				lockRefVal,
 			)
@@ -232,11 +243,14 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 		if err := copyNeovimTreeSitterQueriesDir(extSrc, dest, build.Inherits); err != nil {
 			return nil, fmt.Errorf("cache external tree-sitter queries for %s: %w", lang, err)
 		}
-		return &local_packages_parser.TreeSitterExternalQueryPin{
+		pins = append(pins, local_packages_parser.TreeSitterExternalQueryPin{
 			Language: lang,
 			RepoURL:  repoURL,
 			Ref:      resolved,
-		}, nil
+		})
+	}
+	if len(pins) > 0 {
+		return pins, nil
 	}
 
 	if src := resolveNeovimTreeSitterQueriesDir(repoPath, fullGrammarDir); src != "" {
@@ -262,21 +276,20 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			want[l] = struct{}{}
 		}
 	}
-	var allowExternalQueryClone func(string) bool
+	var allowExternalQueryClone func(lang, repoURL string) bool
 	if !integrationEnabled("neovim") {
-		allowExternalQueryClone = func(string) bool { return false }
+		allowExternalQueryClone = func(string, string) bool { return false }
 	} else if externalPreflight != nil {
 		needs := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
 		allowUnpinned := externalPreflight.AllowUnpinned
 		pinned := make(map[string]struct{}, len(needs))
 		for _, n := range needs {
 			if externalQueryLockCoversNeed(sourceID, version, n) {
-				pinned[strings.ToLower(strings.TrimSpace(n.Lang))] = struct{}{}
+				pinned[externalQueryNeedKey(n.Lang, n.URL)] = struct{}{}
 			}
 		}
-		allowExternalQueryClone = func(lang string) bool {
-			lk := strings.ToLower(strings.TrimSpace(lang))
-			if _, ok := pinned[lk]; ok {
+		allowExternalQueryClone = func(lang, repoURL string) bool {
+			if _, ok := pinned[externalQueryNeedKey(lang, repoURL)]; ok {
 				return true
 			}
 			return allowUnpinned
@@ -295,12 +308,11 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 		pinned := make(map[string]struct{}, len(needs))
 		for _, n := range needs {
 			if externalQueryLockCoversNeed(sourceID, version, n) {
-				pinned[strings.ToLower(strings.TrimSpace(n.Lang))] = struct{}{}
+				pinned[externalQueryNeedKey(n.Lang, n.URL)] = struct{}{}
 			}
 		}
-		allowExternalQueryClone = func(lang string) bool {
-			lk := strings.ToLower(strings.TrimSpace(lang))
-			if _, ok := pinned[lk]; ok {
+		allowExternalQueryClone = func(lang, repoURL string) bool {
+			if _, ok := pinned[externalQueryNeedKey(lang, repoURL)]; ok {
 				return true
 			}
 			return allowUnpinned
@@ -316,12 +328,12 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			continue
 		}
 		fullGrammarDir := filepath.Join(repoPath, filepath.FromSlash(grammarDir))
-		pin, err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, b, allowExternalQueryClone)
+		newPins, err := cacheNeovimTreeSitterQueriesAfterBuild(repoPath, fullGrammarDir, sourceID, version, b, allowExternalQueryClone)
 		if err != nil {
 			return nil, err
 		}
-		if pin != nil {
-			pins = append(pins, *pin)
+		if len(newPins) > 0 {
+			pins = append(pins, newPins...)
 		}
 	}
 	return pins, nil
