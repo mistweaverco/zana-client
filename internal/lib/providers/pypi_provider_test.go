@@ -367,6 +367,19 @@ func TestPyPiCreateWrappers_WrapperCreateErrorContinues(t *testing.T) {
 	assert.NoError(t, p.createWrappers())
 }
 
+func TestPyPiCreatePythonWrapper_StripsPypiPrefixFromRegistryBin(t *testing.T) {
+	_ = withTempZanaHome(t)
+	p := NewProviderPyPi()
+	_ = os.MkdirAll(p.APP_PACKAGES_DIR, 0755)
+	wrapper := filepath.Join(files.GetAppBinPath(), "yamllint")
+	assert.NoError(t, p.createPythonWrapperForCommand("pypi:yamllint", wrapper))
+	data, err := os.ReadFile(wrapper)
+	assert.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, "exec yamllint \"$@\"")
+	assert.NotContains(t, body, "pypi:yamllint")
+}
+
 func TestPyPiFindPackageInfoDir_ErrorAndContinues(t *testing.T) {
 	_ = withTempZanaHome(t)
 	p := NewProviderPyPi()
