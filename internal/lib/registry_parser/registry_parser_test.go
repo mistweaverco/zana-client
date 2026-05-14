@@ -40,6 +40,13 @@ func TestTreeSitterExternalQueriesList_UnmarshalJSON(t *testing.T) {
 		assert.Equal(t, "https://a/x", list[0].RepoURL)
 		assert.True(t, list[0].Semver)
 	})
+	t.Run("package reference", func(t *testing.T) {
+		var list TreeSitterExternalQueriesList
+		require.NoError(t, json.Unmarshal([]byte(`{"package":"github:neovim-treesitter/nvim-treesitter-queries-typescript","semver":true}`), &list))
+		require.Len(t, list, 1)
+		assert.Equal(t, "github:neovim-treesitter/nvim-treesitter-queries-typescript", list[0].Package)
+		assert.True(t, list[0].Semver)
+	})
 	t.Run("array", func(t *testing.T) {
 		var list TreeSitterExternalQueriesList
 		require.NoError(t, json.Unmarshal([]byte(`[{"repo_url":"https://a/x"},{"repo_url":"https://b/y","semver":true}]`), &list))

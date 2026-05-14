@@ -40,7 +40,13 @@ func runZanaInstallWithTreeSitterSpinnerPhases(
 		return success, err
 	}
 
+	if e := providers.PreflightTreeSitterParserRequirements(registryItem, resolvedVersion); e != nil {
+		return false, e
+	}
 	if e := providers.PreflightNeovimTreeSitterInheritDeps(registryItem); e != nil {
+		return false, e
+	}
+	if e := providers.PreflightTreeSitterInjectionQueryPackages(registryItem, resolvedVersion); e != nil {
 		return false, e
 	}
 	err = spinnerutil.Run(title, func() {

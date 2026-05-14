@@ -167,7 +167,10 @@ type RegistryItemSource struct {
 // ships Neovim tree-sitter query files (.scm), mirroring neovim-treesitter's
 // nvim-treesitter-queries-* layout (typically a top-level queries/ directory).
 type RegistryItemTreeSitterExternalQueries struct {
-	RepoURL string `json:"repo_url"`
+	RepoURL string `json:"repo_url,omitempty"`
+	// Package is an optional registry source id (e.g. github:org/repo) naming a Tree-sitter-queries
+	// (or other) package whose git URL is derived for Neovim external query clones.
+	Package string `json:"package,omitempty"`
 	// Ref is a branch name, tag, or commit to check out after clone. If empty and
 	// Semver is false, the remote default branch is used.
 	Ref string `json:"ref,omitempty"`
@@ -204,10 +207,14 @@ func (l *TreeSitterExternalQueriesList) UnmarshalJSON(data []byte) error {
 }
 
 type RegistryItemTreeSitterBuild struct {
-	Language        string                        `json:"language"`
-	GrammarDir      string                        `json:"grammar_dir"`
-	Integrations    []string                      `json:"integrations"`
-	Inherits        []string                      `json:"inherits,omitempty"`
+	Language     string   `json:"language"`
+	GrammarDir   string   `json:"grammar_dir"`
+	Integrations []string `json:"integrations"`
+	// Requires lists other tree-sitter language names needed before this grammar can build.
+	Requires []string `json:"requires,omitempty"`
+	Inherits []string `json:"inherits,omitempty"`
+	// Injections lists host language names used at runtime/editor for injected regions (metadata).
+	Injections      []string                      `json:"injections,omitempty"`
 	QueriesOnly     bool                          `json:"queries_only,omitempty"`
 	ExternalQueries TreeSitterExternalQueriesList `json:"external_queries,omitempty"`
 }

@@ -79,6 +79,10 @@ func GitHubTreeSitterPreflightInteractive(sourceID, resolvedVersion string) erro
 	}
 	clearGitHubTreeSitterDeferred()
 
+	if err := ensureTreeSitterParserRequirements(reg, resolvedVersion); err != nil {
+		return err
+	}
+
 	p, ok := getGitHubProviderConcrete()
 	if !ok {
 		return fmt.Errorf("internal: GitHub provider unavailable")
@@ -97,9 +101,17 @@ func GitHubTreeSitterPreflightInteractive(sourceID, resolvedVersion string) erro
 		clearGitHubTreeSitterDeferred()
 		return err
 	}
+	if err := ensureNeovimTreeSitterInjectionQueryPackages(reg, ver); err != nil {
+		clearGitHubTreeSitterDeferred()
+		return err
+	}
 
 	planned := plannedTreeSitterBuildLanguages(reg.TreeSitter.Build)
-	needs := collectExternalTreeSitterQueryNeeds(repoPath, reg.TreeSitter.Build, planned)
+	needs, err := collectExternalTreeSitterQueryNeeds(repoPath, reg.TreeSitter.Build, planned)
+	if err != nil {
+		clearGitHubTreeSitterDeferred()
+		return err
+	}
 	needsConfirm := externalQueryNeedsStillRequiringConfirm(sourceID, ver, needs)
 	var pre *ExternalQueryPreflightChoice
 	if len(needsConfirm) > 0 {
