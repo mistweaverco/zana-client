@@ -279,6 +279,23 @@ prefix of either the package id or name.
 zana list -A yaml
 ```
 
+Optional list constraints (combinable with each other and with name filters):
+
+- `--only-outdated`: show only packages that have an update available. For
+  installed packages this is the usual meaning; with `--all`, only registry
+  entries you have installed and that are outdated are shown.
+- `--only-providers`: comma-separated provider names (must match a supported
+  provider), for example `pypi,npm`.
+- `--only-categories`: comma-separated category tokens; a package matches if
+  any of its registry categories matches any token (substring match,
+  case-insensitive), for example `lsp,tree-sitter-parser`.
+
+```sh
+zana list --only-outdated
+zana list --only-providers pypi --only-categories lsp
+zana list -A --only-providers npm --only-outdated
+```
+
 #### zana update
 
 `update`/`up` updates packages.

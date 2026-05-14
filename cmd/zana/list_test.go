@@ -280,7 +280,7 @@ func TestListService(t *testing.T) {
 		// We don't care about the actual output here, just that the
 		// downloader is invoked as part of the listing process.
 		_ = captureOutput(t, func() {
-			service.ListInstalledPackages(nil)
+			service.ListInstalledPackages(ListQueryOptions{})
 		})
 
 		assert.True(t, called, "expected registry downloader to be called")
@@ -312,7 +312,7 @@ func TestListService(t *testing.T) {
 		)
 
 		_ = captureOutput(t, func() {
-			service.ListAllPackages(nil)
+			service.ListAllPackages(ListQueryOptions{})
 		})
 
 		assert.True(t, called, "expected registry downloader to be called")
@@ -335,7 +335,7 @@ func TestListInstalledPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListInstalledPackages(nil)
+			service.ListInstalledPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_installed_empty")
@@ -382,7 +382,7 @@ func TestListInstalledPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListInstalledPackages(nil)
+			service.ListInstalledPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_installed_with_data")
@@ -419,13 +419,134 @@ func TestListFiltersUseSubstringMatching(t *testing.T) {
 		)
 
 		out := captureOutput(t, func() {
-			service.ListInstalledPackages([]string{"PACK"})
+			service.ListInstalledPackages(ListQueryOptions{NameFilters: []string{"PACK"}})
 		})
 
 		// With substring matching, "PACK" should match "test-package".
 		assert.Contains(t, out, "pkg:npm/test-package")
 		assert.NotContains(t, out, "pkg:pypi/black")
 	})
+}
+
+func TestParseAndValidateOnlyProviders(t *testing.T) {
+	p, err := parseAndValidateOnlyProviders("pypi, npm")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pypi", "npm"}, p)
+
+	_, err = parseAndValidateOnlyProviders("pypi,notaprovider")
+	require.Error(t, err)
+
+	nilSl, err := parseAndValidateOnlyProviders("")
+	require.NoError(t, err)
+	assert.Nil(t, nilSl)
+}
+
+func TestRegistryItemMatchesCategoryFilters(t *testing.T) {
+	assert.True(t, registryItemMatchesCategoryFilters([]string{"LSP", "Formatter"}, []string{"lsp"}))
+	assert.True(t, registryItemMatchesCategoryFilters([]string{"Tree-sitter-parser"}, []string{"tree-sitter-parsers"}))
+	assert.False(t, registryItemMatchesCategoryFilters([]string{"LSP"}, []string{"npm"}))
+}
+
+func TestListInstalledPackagesAdvancedFilters(t *testing.T) {
+	mockLocal := &MockLocalPackagesProvider{
+		GetDataFunc: func(force bool) local_packages_parser.LocalPackageRoot {
+			return local_packages_parser.LocalPackageRoot{
+				Packages: []local_packages_parser.LocalPackageItem{
+					{SourceID: "npm:pkg-a", Version: "1.0.0"},
+					{SourceID: "pypi:pkg-b", Version: "2.0.0"},
+				},
+			}
+		},
+	}
+	mockRegistry := &MockRegistryProvider{
+		GetDataFunc: func(force bool) []registry_parser.RegistryItem {
+			return []registry_parser.RegistryItem{
+				{Source: registry_parser.RegistryItemSource{ID: "npm:pkg-a"}, Categories: []string{"LSP"}},
+				{Source: registry_parser.RegistryItemSource{ID: "pypi:pkg-b"}, Categories: []string{"Formatter"}},
+			}
+		},
+		GetLatestVersionsFunc: func(sourceID string) (string, string) {
+			return "2.0.0", ""
+		},
+	}
+	mockUpdate := &MockUpdateChecker{
+		CheckIfUpdateIsAvailableFunc: func(current, latest string) (bool, string) {
+			return current != latest, ""
+		},
+	}
+	svc := NewListServiceWithDependencies(mockLocal, mockRegistry, mockUpdate, &MockFileDownloader{})
+
+	out := captureOutput(t, func() {
+		svc.ListInstalledPackages(ListQueryOptions{OnlyOutdated: true})
+	})
+	assert.Contains(t, out, "npm:pkg-a")
+	assert.NotContains(t, out, "pypi:pkg-b")
+
+	out2 := captureOutput(t, func() {
+		svc.ListInstalledPackages(ListQueryOptions{OnlyProviders: []string{"npm"}})
+	})
+	assert.Contains(t, out2, "npm:pkg-a")
+	assert.NotContains(t, out2, "pypi:pkg-b")
+
+	out3 := captureOutput(t, func() {
+		svc.ListInstalledPackages(ListQueryOptions{OnlyCategories: []string{"lsp"}})
+	})
+	assert.Contains(t, out3, "npm:pkg-a")
+	assert.NotContains(t, out3, "pypi:pkg-b")
+
+	out4 := captureOutput(t, func() {
+		svc.ListInstalledPackages(ListQueryOptions{OnlyOutdated: true, OnlyProviders: []string{"pypi"}})
+	})
+	assert.Contains(t, out4, "No installed packages match")
+}
+
+func TestListAllPackagesAdvancedFilters(t *testing.T) {
+	mockLocal := &MockLocalPackagesProvider{
+		GetDataFunc: func(force bool) local_packages_parser.LocalPackageRoot {
+			return local_packages_parser.LocalPackageRoot{
+				Packages: []local_packages_parser.LocalPackageItem{
+					{SourceID: "pypi:black", Version: "1.0.0"},
+				},
+			}
+		},
+	}
+	mockRegistry := &MockRegistryProvider{
+		GetDataFunc: func(force bool) []registry_parser.RegistryItem {
+			return []registry_parser.RegistryItem{
+				{Source: registry_parser.RegistryItemSource{ID: "pypi:black"}, Version: "2.0.0", Categories: []string{"Formatter"}},
+				{Source: registry_parser.RegistryItemSource{ID: "npm:eslint"}, Version: "9.0.0", Categories: []string{"LSP"}},
+			}
+		},
+		GetLatestVersionsFunc: func(sourceID string) (string, string) {
+			if strings.Contains(sourceID, "black") {
+				return "2.0.0", ""
+			}
+			return "9.0.0", ""
+		},
+	}
+	svc := NewListServiceWithDependencies(mockLocal, mockRegistry, &MockUpdateChecker{
+		CheckIfUpdateIsAvailableFunc: func(cur, lat string) (bool, string) {
+			return cur != lat, ""
+		},
+	}, &MockFileDownloader{})
+
+	out := captureOutput(t, func() {
+		svc.ListAllPackages(ListQueryOptions{OnlyOutdated: true})
+	})
+	assert.Contains(t, out, "pypi:black")
+	assert.NotContains(t, out, "npm:eslint")
+
+	out2 := captureOutput(t, func() {
+		svc.ListAllPackages(ListQueryOptions{OnlyProviders: []string{"npm"}})
+	})
+	assert.Contains(t, out2, "npm:eslint")
+	assert.NotContains(t, out2, "pypi:black")
+
+	out3 := captureOutput(t, func() {
+		svc.ListAllPackages(ListQueryOptions{OnlyCategories: []string{"lsp"}})
+	})
+	assert.Contains(t, out3, "npm:eslint")
+	assert.NotContains(t, out3, "pypi:black")
 }
 
 func TestListAllPackagesGolden(t *testing.T) {
@@ -450,7 +571,7 @@ func TestListAllPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages(nil)
+			service.ListAllPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_all_empty_registry")
@@ -486,7 +607,7 @@ func TestListAllPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages(nil)
+			service.ListAllPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_all_download_failure")
@@ -527,7 +648,7 @@ func TestListAllPackagesGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages(nil)
+			service.ListAllPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_all_with_data")
@@ -670,6 +791,12 @@ func TestListCommand(t *testing.T) {
 		assert.Equal(t, "A", allFlag.Shorthand)
 		assert.Equal(t, "List all available packages from the registry", allFlag.Usage)
 	})
+
+	t.Run("list command has filter flags", func(t *testing.T) {
+		assert.NotNil(t, listCmd.Flags().Lookup("only-outdated"))
+		assert.NotNil(t, listCmd.Flags().Lookup("only-providers"))
+		assert.NotNil(t, listCmd.Flags().Lookup("only-categories"))
+	})
 }
 
 func TestListCommandRunPaths(t *testing.T) {
@@ -753,6 +880,8 @@ func TestGetProviderFromSourceID(t *testing.T) {
 		{"unknown package", "pkg:unknown/package-name", "unknown"},
 		{"no prefix", "npm/package-name", "unknown"},
 		{"empty string", "", "unknown"},
+		{"new format npm", "npm:@scope/pkg", "npm"},
+		{"new format gem", "gem:jekyll", "gem"},
 	}
 
 	for _, tt := range tests {
@@ -896,7 +1025,7 @@ func TestListCommandFullOutputGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListInstalledPackages(nil)
+			service.ListInstalledPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_installed_mixed_updates")
@@ -945,7 +1074,7 @@ func TestListCommandFullOutputGolden(t *testing.T) {
 		)
 
 		output := captureOutput(t, func() {
-			service.ListAllPackages(nil)
+			service.ListAllPackages(ListQueryOptions{})
 		})
 
 		goldenPath := getGoldenFilePath("list_all_with_descriptions")
