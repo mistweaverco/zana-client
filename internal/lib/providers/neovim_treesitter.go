@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -356,6 +357,46 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 	return pins, nil
 }
 
+// neovimQueryLanguageNameRe restricts language names embedded into a Neovim -c lua snippet.
+var neovimQueryLanguageNameRe = regexp.MustCompile(`(?i)^[a-z][a-z0-9_-]*$`)
+
+// neovimBundledQueriesPresent reports whether Neovim's own runtime ships highlights.scm for lang
+// (nvim --clean, no user site). When true, installing grammar-local copies into ~/.local/share/nvim/site/queries
+// shadows the bundled queries and can break vim.treesitter.start (e.g. markdown + LSP preview buffers).
+func neovimBundledQueriesPresent(lang string) (bool, error) {
+	lang = strings.TrimSpace(lang)
+	if lang == "" {
+		return false, nil
+	}
+	if !neovimQueryLanguageNameRe.MatchString(lang) {
+		return false, fmt.Errorf("invalid tree-sitter language name for Neovim query check: %q", lang)
+	}
+	// Keep -c as a single Lua chunk; lang is validated above.
+	script := fmt.Sprintf(
+		`lua local f = vim.api.nvim_get_runtime_file("queries/%s/highlights.scm", false); io.stdout:write((f and #f > 0) and "1" or "0")`,
+		lang,
+	)
+	code, out, err := neovimShellOutCapture("nvim", []string{
+		"--clean",
+		"--headless",
+		"-i", "NONE",
+		"-c", script,
+		"-c", "qa",
+	}, "", nil)
+	if err != nil {
+		return false, fmt.Errorf("nvim query probe: %w", err)
+	}
+	if code != 0 {
+		return false, fmt.Errorf("nvim query probe exited %d: %s", code, strings.TrimSpace(out))
+	}
+	return strings.TrimSpace(out) == "1", nil
+}
+
+func neovimForceInstallQueriesFromGrammars() bool {
+	v := strings.ToLower(strings.TrimSpace(neovimGetenv("ZANA_NEOVIM_ALWAYS_INSTALL_QUERIES")))
+	return v == "1" || v == "true" || v == "yes"
+}
+
 func detectNeovimDataPath() (string, error) {
 	// Prefer Neovim itself: this respects OS + user overrides.
 	if code, out, err := neovimShellOutCapture("nvim", []string{
@@ -436,12 +477,34 @@ func installNeovimParsersAndQueriesFromCache(sourceID, version string, languages
 		if st, err := neovimStat(cacheQueries); err == nil && st.IsDir() {
 			entries, rerr := os.ReadDir(cacheQueries)
 			if rerr == nil && len(entries) > 0 {
-				destQueries := filepath.Join(queriesRoot, lang)
-				if err := neovimRemoveAll(destQueries); err != nil {
-					return fmt.Errorf("remove stale neovim queries %s: %w", lang, err)
+				skipQueries := false
+				if !neovimForceInstallQueriesFromGrammars() {
+					bundled, qerr := neovimBundledQueriesPresent(lang)
+					if qerr != nil {
+						return fmt.Errorf("neovim bundled queries check for %s: %w", lang, qerr)
+					}
+					if bundled {
+						skipQueries = true
+						destQueries := filepath.Join(queriesRoot, lang)
+						// Older Zana installs may have copied grammar queries here; they take precedence
+						// over $VIMRUNTIME and can break markdown (and other) treesitter in Neovim.
+						if err := neovimRemoveAll(destQueries); err != nil {
+							return fmt.Errorf("remove shadowing neovim queries %s: %w", lang, err)
+						}
+						AddIntegrationReportLine(sourceID, version, fmt.Sprintf(
+							"Skipped Neovim site/queries install for %s (Neovim runtime already ships highlights; removed stale site/queries/%s if present; set ZANA_NEOVIM_ALWAYS_INSTALL_QUERIES=1 to force grammar queries)",
+							lang, lang,
+						))
+					}
 				}
-				if err := copyNeovimTreeSitterQueriesDir(cacheQueries, destQueries, nil); err != nil {
-					return fmt.Errorf("install neovim queries %s: %w", lang, err)
+				if !skipQueries {
+					destQueries := filepath.Join(queriesRoot, lang)
+					if err := neovimRemoveAll(destQueries); err != nil {
+						return fmt.Errorf("remove stale neovim queries %s: %w", lang, err)
+					}
+					if err := copyNeovimTreeSitterQueriesDir(cacheQueries, destQueries, nil); err != nil {
+						return fmt.Errorf("install neovim queries %s: %w", lang, err)
+					}
 				}
 			}
 		}
