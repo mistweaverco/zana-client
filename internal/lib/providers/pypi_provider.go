@@ -213,6 +213,15 @@ func (p *PyPiProvider) createWrappers() error {
 	return nil
 }
 
+// normalizePyPiBinCommand turns registry bin values like "pypi:yamllint" into the real console script name "yamllint".
+func (p *PyPiProvider) normalizePyPiBinCommand(commandToExec string) string {
+	commandToExec = strings.TrimSpace(commandToExec)
+	if strings.HasPrefix(commandToExec, p.PREFIX) {
+		return strings.TrimPrefix(commandToExec, p.PREFIX)
+	}
+	return commandToExec
+}
+
 // createPythonWrapperForCommand creates a wrapper that prepares the environment and executes the given command.
 func (p *PyPiProvider) createPythonWrapperForCommand(commandToExec string, wrapperPath string) error {
 	sitePackagesDir := p.findSitePackagesDir()
@@ -220,6 +229,7 @@ func (p *PyPiProvider) createPythonWrapperForCommand(commandToExec string, wrapp
 	if sitePackagesDir == "" {
 		sitePackagesDir = p.APP_PACKAGES_DIR
 	}
+	commandToExec = p.normalizePyPiBinCommand(commandToExec)
 	if commandToExec == "" {
 		return fmt.Errorf("empty command for wrapper %s", wrapperPath)
 	}
@@ -482,21 +492,39 @@ func (p *PyPiProvider) areAllPackagesInstalled(desired []local_packages_parser.L
 	return true
 }
 
-// getInstalledPackages gets the list of installed packages using pip freeze
+// getInstalledPackages gets the list of installed packages using pip freeze scoped to this provider's site-packages
+// (--prefix installs are not visible to a plain `pip freeze`, which lists the active interpreter's environment).
 func (p *PyPiProvider) getInstalledPackages() map[string]string {
 	installed := map[string]string{}
-	freezeCode, freezeOut, _ := pipShellOutCapture(pipCmd, []string{"freeze"}, p.APP_PACKAGES_DIR, nil)
-	if freezeCode == 0 && freezeOut != "" {
+	siteDir := p.findSitePackagesDir()
+	args := []string{"freeze"}
+	if siteDir != "" {
+		args = append(args, "--path", siteDir)
+	}
+	freezeCode, freezeOut, freezeErr := pipShellOutCapture(pipCmd, args, p.APP_PACKAGES_DIR, nil)
+	trimmed := strings.TrimSpace(freezeOut)
+	if freezeCode == 0 {
+		if trimmed == "" {
+			return installed
+		}
 		lines := strings.Split(freezeOut, "\n")
 		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
 			parts := strings.Split(line, "==")
 			if len(parts) == 2 {
 				installed[parts[0]] = parts[1]
 			}
 		}
-	} else {
-		Logger.Error(fmt.Sprintf("Error getting installed packages with %s freeze: %s", pipCmd, freezeOut))
+		return installed
 	}
+	errMsg := ""
+	if freezeErr != nil {
+		errMsg = freezeErr.Error()
+	}
+	Logger.Error(fmt.Sprintf("Error getting installed packages with %s freeze (args=%v): %s; output: %q", pipCmd, args, errMsg, freezeOut))
 	return installed
 }
 
