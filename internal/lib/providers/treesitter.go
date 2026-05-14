@@ -10,15 +10,22 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/files"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
+	"github.com/mistweaverco/zana-client/internal/lib/treesitterdeps"
 )
 
+// IsTreeSitterParserCategory is true for curated tree-sitter grammar packages.
+func IsTreeSitterParserCategory(categories []string) bool {
+	return treesitterdeps.IsTreeSitterParserPackage(categories)
+}
+
+// IsTreeSitterQueriesCategory is true for registry packages that primarily ship editor queries.
+func IsTreeSitterQueriesCategory(categories []string) bool {
+	return treesitterdeps.IsTreeSitterQueriesPackage(categories)
+}
+
+// IsTreeSitterCategory is true for any tree-sitter-related registry package handled by the client.
 func IsTreeSitterCategory(categories []string) bool {
-	for _, c := range categories {
-		if strings.EqualFold(strings.TrimSpace(c), "Tree-sitter-parser") {
-			return true
-		}
-	}
-	return false
+	return IsTreeSitterParserCategory(categories) || IsTreeSitterQueriesCategory(categories)
 }
 
 func SharedLibExt() string {

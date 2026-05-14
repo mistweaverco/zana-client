@@ -18,6 +18,7 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
 	"github.com/mistweaverco/zana-client/internal/lib/spinnerutil"
+	"github.com/mistweaverco/zana-client/internal/lib/treesitterdeps"
 )
 
 // Injectable helpers for tests
@@ -202,7 +203,11 @@ func cacheNeovimTreeSitterQueriesAfterBuild(
 
 	var pins []local_packages_parser.TreeSitterExternalQueryPin
 	for _, spec := range build.ExternalQueries {
-		repoURL := strings.TrimSpace(spec.RepoURL)
+		repoURL, err := resolvedExternalQueryRepoURL(spec)
+		if err != nil {
+			return nil, err
+		}
+		repoURL = strings.TrimSpace(repoURL)
 		if repoURL == "" {
 			continue
 		}
@@ -280,7 +285,10 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 	if !integrationEnabled("neovim") {
 		allowExternalQueryClone = func(string, string) bool { return false }
 	} else if externalPreflight != nil {
-		needs := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
+		needs, err := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
+		if err != nil {
+			return nil, err
+		}
 		allowUnpinned := externalPreflight.AllowUnpinned
 		pinned := make(map[string]struct{}, len(needs))
 		for _, n := range needs {
@@ -295,14 +303,17 @@ func cacheNeovimTreeSitterQueriesForBuiltLangs(
 			return allowUnpinned
 		}
 	} else {
-		needs := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
+		needs, err := collectExternalTreeSitterQueryNeeds(repoPath, build, builtLangs)
+		if err != nil {
+			return nil, err
+		}
 		needsConfirm := externalQueryNeedsStillRequiringConfirm(sourceID, version, needs)
 		allowUnpinned := true
-		var err error
 		if len(needsConfirm) > 0 {
-			allowUnpinned, err = batchConfirmExternalTreeSitterQueries(sourceID, needsConfirm)
-			if err != nil {
-				return nil, err
+			var confirmErr error
+			allowUnpinned, confirmErr = batchConfirmExternalTreeSitterQueries(sourceID, needsConfirm)
+			if confirmErr != nil {
+				return nil, confirmErr
 			}
 		}
 		pinned := make(map[string]struct{}, len(needs))
@@ -464,38 +475,11 @@ func installedTreeSitterGrammarLanguages(reg *registry_parser.RegistryParser) ma
 }
 
 func registrySourceIDsForTreeSitterLanguage(lang string, reg *registry_parser.RegistryParser) []string {
-	want := strings.ToLower(strings.TrimSpace(lang))
-	if want == "" {
-		return nil
-	}
-	var out []string
-	for _, item := range reg.GetData(false) {
-		if item.Source.ID == "" || !IsTreeSitterCategory(item.Categories) {
-			continue
-		}
-		ok := false
-		for _, l := range item.Languages {
-			if strings.ToLower(strings.TrimSpace(l)) == want {
-				ok = true
-				break
-			}
-		}
-		if !ok && item.TreeSitter != nil {
-			for _, b := range item.TreeSitter.Build {
-				if strings.ToLower(strings.TrimSpace(b.Language)) == want {
-					ok = true
-					break
-				}
-			}
-		}
-		if ok {
-			out = append(out, item.Source.ID)
-		}
-	}
-	return out
+	return treesitterdeps.ParserCandidates(reg, lang)
 }
 
 func installRegistryTreeSitterPackagesForLanguages(
+	consumerSourceID string,
 	missing []string,
 	reg *registry_parser.RegistryParser,
 	hint string,
@@ -504,12 +488,14 @@ func installRegistryTreeSitterPackagesForLanguages(
 	var ids []string
 	var noRegistry []string
 	for _, l := range missing {
-		candidates := registrySourceIDsForTreeSitterLanguage(l, reg)
-		if len(candidates) == 0 {
+		id, err := resolveParserSourceIDForLanguage(l, reg, consumerSourceID, "")
+		if err != nil {
+			return err
+		}
+		if id == "" {
 			noRegistry = append(noRegistry, l)
 			continue
 		}
-		id := candidates[0]
 		if _, dup := seenID[id]; dup {
 			continue
 		}
@@ -559,7 +545,7 @@ func installRegistryTreeSitterPackagesForLanguages(
 			NeovimInheritInstallNotifierDone(id, instVer)
 		}
 	}
-	have := installedTreeSitterGrammarLanguages(reg)
+	have := installedParserGrammarLanguages(reg)
 	var still []string
 	for _, l := range missing {
 		if _, ok := have[strings.ToLower(strings.TrimSpace(l))]; !ok {
@@ -643,7 +629,7 @@ func resolveNeovimTreeSitterInheritDependencies(
 		return nil
 	}
 	reg := registry_parser.NewDefaultRegistryParser()
-	have := installedTreeSitterGrammarLanguages(reg)
+	have := installedParserGrammarLanguages(reg)
 	var missing []string
 	for l := range need {
 		if _, ok := have[l]; !ok {
@@ -682,7 +668,7 @@ func resolveNeovimTreeSitterInheritDependencies(
 	case neovimInheritsInstall:
 		// Do not carry over a prior "continue anyway" skip from an aborted install attempt.
 		neovimInheritContinueAnywaySourceID = ""
-		return installRegistryTreeSitterPackagesForLanguages(missing, reg, hint.String())
+		return installRegistryTreeSitterPackagesForLanguages(registryItem.Source.ID, missing, reg, hint.String())
 	default:
 		return fmt.Errorf("aborted: install inherited grammar(s) first%s", hint.String())
 	}
@@ -733,10 +719,16 @@ func buildAndMaybeIntegrateTreeSitter(repoPath string, registryItem registry_par
 		return nil, nil
 	}
 
+	if err := ensureTreeSitterParserRequirements(registryItem, version); err != nil {
+		return nil, err
+	}
 	if opts == nil || !opts.SkipInheritDependencies {
 		if err := ensureNeovimTreeSitterInheritDependencies(registryItem); err != nil {
 			return nil, err
 		}
+	}
+	if err := ensureNeovimTreeSitterInjectionQueryPackages(registryItem, version); err != nil {
+		return nil, err
 	}
 
 	langs, err := BuildTreeSitterParsersToCache(repoPath, registryItem.Source.ID, version, registryItem.TreeSitter.Build)

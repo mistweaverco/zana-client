@@ -42,6 +42,54 @@
                 },
                 "uniqueItems": true
               },
+              "treesitter_parser_choices": {
+                "type": "array",
+                "description": "When several Tree-sitter-parser registry packages provide the same language, pins which source id to use for requires / inherit resolution.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["language", "sourceId"],
+                  "properties": {
+                    "language": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Tree-sitter language id (e.g. typescript, html_tags)."
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Registry package id (e.g. github:tree-sitter/tree-sitter-typescript)."
+                    }
+                  }
+                }
+              },
+              "treesitter_query_choices": {
+                "type": "array",
+                "description": "When several Tree-sitter-queries registry packages provide the same language for an integration, pins which source id to install for Neovim query artifacts.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["language", "integration", "sourceId"],
+                  "properties": {
+                    "language": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Tree-sitter language id (e.g. typescript)."
+                    },
+                    "integration": {
+                      "type": "string",
+                      "minLength": 1,
+                      "enum": ["neovim"],
+                      "description": "Editor integration this choice applies to."
+                    },
+                    "sourceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Registry package id (e.g. github:neovim-treesitter/nvim-treesitter-queries-typescript)."
+                    }
+                  }
+                }
+              },
               "treesitter_external_queries": {
                 "type": "array",
                 "description": "Pinned git revisions (full commit SHA) for optional Neovim tree-sitter external_queries repos. Multiple entries may share the same language when several query-only repositories apply; each row is keyed by language plus repo_url.",

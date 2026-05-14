@@ -64,7 +64,15 @@ func SyncAllFromLock() error {
 		}
 
 		langs := languagesFromTreeSitterBuild(item.TreeSitter.Build)
+		if err := ensureTreeSitterParserRequirements(item, version); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
+			continue
+		}
 		if err := ensureNeovimTreeSitterInheritDependencies(item); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
+			continue
+		}
+		if err := ensureNeovimTreeSitterInjectionQueryPackages(item, version); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("apply integrations for %s@%s: %w", sourceID, version, err)
 			continue
 		}

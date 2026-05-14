@@ -11,6 +11,7 @@ import (
 	"github.com/mistweaverco/zana-client/internal/lib/local_packages_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/registry_parser"
 	"github.com/mistweaverco/zana-client/internal/lib/shell_out"
+	"github.com/mistweaverco/zana-client/internal/lib/treesitterdeps"
 	"golang.org/x/mod/semver"
 )
 
@@ -237,6 +238,11 @@ type ExternalQueryPreflightChoice struct {
 	AllowUnpinned bool
 }
 
+func resolvedExternalQueryRepoURL(spec registry_parser.RegistryItemTreeSitterExternalQueries) (string, error) {
+	reg := registry_parser.NewDefaultRegistryParser()
+	return treesitterdeps.ResolveExternalQueryRepoURL(spec, reg)
+}
+
 // plannedTreeSitterBuildLanguages returns every non-empty language from the registry build list
 // (used before parsers are built, e.g. external-query preflight).
 func plannedTreeSitterBuildLanguages(build []registry_parser.RegistryItemTreeSitterBuild) []string {
@@ -253,7 +259,7 @@ func collectExternalTreeSitterQueryNeeds(
 	repoPath string,
 	build []registry_parser.RegistryItemTreeSitterBuild,
 	builtLangs []string,
-) []externalQueryNeed {
+) ([]externalQueryNeed, error) {
 	want := map[string]struct{}{}
 	for _, l := range builtLangs {
 		l = strings.TrimSpace(l)
@@ -282,7 +288,11 @@ func collectExternalTreeSitterQueryNeeds(
 			continue
 		}
 		for _, spec := range b.ExternalQueries {
-			url := strings.TrimSpace(spec.RepoURL)
+			url, err := resolvedExternalQueryRepoURL(spec)
+			if err != nil {
+				return nil, err
+			}
+			url = strings.TrimSpace(url)
 			if url == "" {
 				continue
 			}
@@ -296,7 +306,7 @@ func collectExternalTreeSitterQueryNeeds(
 			out = append(out, externalQueryNeed{Lang: lang, URL: url})
 		}
 	}
-	return out
+	return out, nil
 }
 
 func batchConfirmExternalTreeSitterQueries(sourceID string, needs []externalQueryNeed) (bool, error) {

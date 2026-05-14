@@ -305,6 +305,18 @@ func TestUpdateWithMockFactory(t *testing.T) {
 }
 
 func TestSyncAllFromLockWithMockFactory(t *testing.T) {
+	// SyncAllFromLock replays Neovim tree-sitter integration when the real lock/registry
+	// requests it; avoid invoking a real nvim (can hang in headless/CI).
+	fakeNvimData := t.TempDir()
+	prevNvim := neovimShellOutCapture
+	neovimShellOutCapture = func(cmd string, args []string, dir string, env []string) (int, string, error) {
+		if cmd == "nvim" {
+			return 0, fakeNvimData, nil
+		}
+		return prevNvim(cmd, args, dir, env)
+	}
+	t.Cleanup(func() { neovimShellOutCapture = prevNvim })
+
 	// Create mock providers
 	mockNPM := &MockPackageManager{}
 	mockPyPI := &MockPackageManager{}

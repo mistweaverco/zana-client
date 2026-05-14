@@ -43,7 +43,8 @@ func TestCollectExternalTreeSitterQueryNeeds_IncludesWhenRegistryDeclaresExterna
 			},
 		},
 	}
-	got := collectExternalTreeSitterQueryNeeds(repo, build, []string{"hcl"})
+	got, err := collectExternalTreeSitterQueryNeeds(repo, build, []string{"hcl"})
+	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, "hcl", got[0].Lang)
 	require.Contains(t, got[0].URL, "nvim-treesitter-queries-hcl")
@@ -64,7 +65,8 @@ func TestCollectExternalTreeSitterQueryNeeds_IncludesWhenMissingQueries(t *testi
 			},
 		},
 	}
-	got := collectExternalTreeSitterQueryNeeds(repo, build, []string{"hcl"})
+	got, err := collectExternalTreeSitterQueryNeeds(repo, build, []string{"hcl"})
+	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, "hcl", got[0].Lang)
 	require.Equal(t, "https://example.com/nvim-treesitter-queries-hcl", got[0].URL)
@@ -86,7 +88,8 @@ func TestCollectExternalTreeSitterQueryNeeds_MultipleReposSameLang(t *testing.T)
 			},
 		},
 	}
-	got := collectExternalTreeSitterQueryNeeds(repo, build, []string{"html"})
+	got, err := collectExternalTreeSitterQueryNeeds(repo, build, []string{"html"})
+	require.NoError(t, err)
 	require.Len(t, got, 2)
 	urls := []string{got[0].URL, got[1].URL}
 	require.Contains(t, urls, "https://github.com/neovim-treesitter/nvim-treesitter-queries-html")
@@ -104,7 +107,8 @@ func TestCollectExternalTreeSitterQueryNeeds_QueriesOnlyWithoutGrammarDir(t *tes
 			},
 		},
 	}
-	got := collectExternalTreeSitterQueryNeeds(t.TempDir(), build, []string{"html_tags"})
+	got, err := collectExternalTreeSitterQueryNeeds(t.TempDir(), build, []string{"html_tags"})
+	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, "html_tags", got[0].Lang)
 	require.Contains(t, got[0].URL, "html_tags")
@@ -125,7 +129,8 @@ func TestCollectExternalTreeSitterQueryNeeds_SkipsWhenBuildDoesNotTargetNeovim(t
 			},
 		},
 	}
-	got := collectExternalTreeSitterQueryNeeds(repo, build, []string{"hcl"})
+	got, err := collectExternalTreeSitterQueryNeeds(repo, build, []string{"hcl"})
+	require.NoError(t, err)
 	require.Empty(t, got)
 }
 
