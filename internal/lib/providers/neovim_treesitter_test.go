@@ -140,6 +140,12 @@ func TestInstallNeovimParsersAndQueriesFromCache_AllowsQueriesOnlyMissingParser(
 
 	prevShellOut := neovimShellOutCapture
 	neovimShellOutCapture = func(command string, args []string, dir string, env []string) (int, string, error) {
+		for _, a := range args {
+			if a == "--clean" {
+				// html_tags has no bundled highlights in stock Neovim.
+				return 0, "0", nil
+			}
+		}
 		return 0, dataDir, nil
 	}
 	t.Cleanup(func() { neovimShellOutCapture = prevShellOut })
@@ -163,5 +169,70 @@ func TestInstallNeovimParsersAndQueriesFromCache_AllowsQueriesOnlyMissingParser(
 	}
 	if string(b) != "(tag_name) @tag" {
 		t.Fatalf("unexpected installed query: %q", b)
+	}
+}
+
+func TestNeovimBundledQueriesPresent_InvalidLanguage(t *testing.T) {
+	_, err := neovimBundledQueriesPresent("bad;lang")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestInstallNeovimParsersAndQueriesFromCache_SkipsQueriesWhenBundled(t *testing.T) {
+	home := t.TempDir()
+	dataDir := filepath.Join(home, "nvim-data")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	prevIntegrations := append([]string{}, requestedIntegrations...)
+	SetRequestedIntegrations([]string{"neovim"})
+	t.Cleanup(func() { requestedIntegrations = prevIntegrations })
+
+	prevShellOut := neovimShellOutCapture
+	neovimShellOutCapture = func(command string, args []string, dir string, env []string) (int, string, error) {
+		for _, a := range args {
+			if a == "--clean" {
+				return 0, "1", nil
+			}
+		}
+		return 0, dataDir, nil
+	}
+	t.Cleanup(func() { neovimShellOutCapture = prevShellOut })
+
+	artifact := TreeSitterArtifactPath("github:x/markdown", "v1", "markdown")
+	if err := os.MkdirAll(filepath.Dir(artifact), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(artifact, []byte("fakeparser"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cacheDir := neovimTreeSitterQueriesCacheDir("github:x/markdown", "v1", "markdown")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "highlights.scm"), []byte("(would_break_if_installed)"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a prior install that shadowed Neovim's bundled markdown queries.
+	staleQueries := filepath.Join(dataDir, "site", "queries", "markdown", "highlights.scm")
+	if err := os.MkdirAll(filepath.Dir(staleQueries), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(staleQueries, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := installNeovimParsersAndQueriesFromCache("github:x/markdown", "v1", []string{"markdown"}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = os.Stat(staleQueries)
+	if !os.IsNotExist(err) {
+		t.Fatalf("expected stale queries removed, stat err=%v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dataDir, "site", "parser", "markdown"+SharedLibExt()))
+	if err != nil || string(b) != "fakeparser" {
+		t.Fatalf("parser install: %v %q", err, b)
 	}
 }

@@ -311,6 +311,11 @@ func TestSyncAllFromLockWithMockFactory(t *testing.T) {
 	prevNvim := neovimShellOutCapture
 	neovimShellOutCapture = func(cmd string, args []string, dir string, env []string) (int, string, error) {
 		if cmd == "nvim" {
+			for _, a := range args {
+				if a == "--clean" {
+					return 0, "0", nil
+				}
+			}
 			return 0, fakeNvimData, nil
 		}
 		return prevNvim(cmd, args, dir, env)
