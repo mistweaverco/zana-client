@@ -223,6 +223,16 @@ type RegistryItemTreeSitter struct {
 	Build []RegistryItemTreeSitterBuild `json:"build,omitempty"`
 }
 
+// RegistryItemRequires declares package dependencies that must be satisfied before install.
+type RegistryItemRequires struct {
+	All []string `json:"all,omitempty"`
+	One []string `json:"one,omitempty"`
+}
+
+func (r *RegistryItemRequires) IsEmpty() bool {
+	return r == nil || (len(r.All) == 0 && len(r.One) == 0)
+}
+
 type RegistryItem struct {
 	Name              string                  `json:"name"`
 	Version           string                  `json:"version"`
@@ -236,6 +246,7 @@ type RegistryItem struct {
 	Source            RegistryItemSource      `json:"source"`
 	Bin               map[string]string       `json:"bin"`
 	TreeSitter        *RegistryItemTreeSitter `json:"treesitter,omitempty"`
+	Requires          *RegistryItemRequires   `json:"requires,omitempty"`
 }
 
 type RegistryRoot []RegistryItem

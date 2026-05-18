@@ -360,16 +360,16 @@ Examples:
 				if successCount > 0 {
 					fmt.Printf(" (%d you requested", successCount)
 					if depSuccess == 1 {
-						fmt.Printf(", 1 tree-sitter dependency")
+						fmt.Printf(", 1 dependency")
 					} else {
-						fmt.Printf(", %d tree-sitter dependencies", depSuccess)
+						fmt.Printf(", %d dependencies", depSuccess)
 					}
 					fmt.Printf(")\n")
 				} else {
 					if depSuccess == 1 {
-						fmt.Printf(" (1 tree-sitter dependency)\n")
+						fmt.Printf(" (1 dependency)\n")
 					} else {
-						fmt.Printf(" (%d tree-sitter dependencies)\n", depSuccess)
+						fmt.Printf(" (%d dependencies)\n", depSuccess)
 					}
 				}
 			} else {

@@ -19,6 +19,11 @@ func runZanaInstallWithTreeSitterSpinnerPhases(
 	registryItem registry_parser.RegistryItem,
 	installFn func() bool,
 ) (success bool, err error) {
+	// Top-level registry requires (requires.all / requires.one) must run before any
+	// tree-sitter phased or provider install path (e.g. tree-sitter-cli for GitHub grammars).
+	if e := providers.PreflightPackageRequires(registryItem); e != nil {
+		return false, e
+	}
 	if providers.GitHubTreeSitterUsesPhasedInteractiveInstall(sourceID, registryItem) {
 		if e := providers.GitHubTreeSitterPreflightInteractive(sourceID, resolvedVersion); e != nil {
 			return false, e

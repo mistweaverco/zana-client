@@ -84,6 +84,14 @@ are installed with their exact versions as specified in the lock file.`,
 				return
 			}
 
+			if err := providers.EnsureLockfilePackageRequires(false); err != nil {
+				fmt.Printf("%s %v\n", IconClose(), err)
+				osExit(1)
+				return
+			}
+			providers.ResetTreeSitterDependencyInstallSuccessCount()
+			lock = local_packages_parser.GetData(false)
+
 			type pkgResult struct {
 				id                string
 				version           string

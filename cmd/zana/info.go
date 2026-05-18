@@ -16,6 +16,9 @@ var infoCmd = &cobra.Command{
 	Short:   "Show detailed information about packages",
 	Long: `Show detailed information about one or more packages from the registry.
 
+For Tree-sitter-parser packages, also shows grammar languages, supported integrations,
+optional external query repositories, and registry requires (requires.all / requires.one).
+
 Examples:
   zana info npm:eslint
   zana info pypi:black
@@ -247,6 +250,14 @@ func displayPackageInfoRich(item registry_parser.RegistryItem, sourceID string) 
 		markdown.WriteString("\n")
 	}
 
+	extra := collectPackageExtraDetails(item)
+	if extra.Requires != nil {
+		appendRequiresMarkdown(&markdown, extra.Requires)
+	}
+	if extra.TreeSitter != nil {
+		appendTreeSitterMarkdown(&markdown, extra.TreeSitter)
+	}
+
 	// Render markdown with glamour
 	rendered, err := glamour.Render(markdown.String(), "dark")
 	if err != nil {
@@ -327,6 +338,18 @@ func displayPackageInfoPlain(item registry_parser.RegistryItem, sourceID string)
 			fmt.Printf("  %s: %s\n", binName, binPath)
 		}
 	}
+
+	extra := collectPackageExtraDetails(item)
+	if extra.Requires != nil {
+		var b strings.Builder
+		appendRequiresPlain(&b, extra.Requires)
+		fmt.Print(b.String())
+	}
+	if extra.TreeSitter != nil {
+		var b strings.Builder
+		appendTreeSitterPlain(&b, extra.TreeSitter)
+		fmt.Print(b.String())
+	}
 }
 
 // buildPackageInfoJSON builds a JSON representation of package info
@@ -395,6 +418,8 @@ func buildPackageInfoJSON(item registry_parser.RegistryItem, sourceID string) ma
 	if len(item.Bin) > 0 {
 		result["binaries"] = item.Bin
 	}
+
+	mergeExtraDetailsJSON(result, collectPackageExtraDetails(item))
 
 	return result
 }

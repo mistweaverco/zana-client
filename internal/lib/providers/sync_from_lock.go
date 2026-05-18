@@ -27,6 +27,9 @@ func languagesFromTreeSitterBuild(build []registry_parser.RegistryItemTreeSitter
 
 // SyncAllFromLock syncs packages and replays lockfile-configured integrations.
 func SyncAllFromLock() error {
+	if err := EnsureLockfilePackageRequires(true); err != nil {
+		return err
+	}
 	lock := local_packages_parser.GetData(false)
 
 	// Keep existing behavior for ensuring packages exist.
